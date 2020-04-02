@@ -1,40 +1,82 @@
 include("C://Users//wilhe//Desktop//Package Development Work//DynamicBoundspODEsPILMS.jl//src//taylor_integrator_utilities.jl")
 
 """
+$(TYPEDEF)
 
-Holds storage for the QR factorization
+Provides preallocated storage for the QR factorization, Q, and the inverse of Q.
+
+$(TYPEDFIELDS)
 """
 mutable struct QRDenseStorage
+    "QR Factorization"
     factorization::LinearAlgebra.QR{Float64,Array{Float64,2}}
+    "Orthogonal matrix Q"
     Q::Array{Float64,2}
+    "Inverse of Q"
     inverse::Array{Float64,2}
 end
 
-function QRDenseStorage(A::Matrix{Float64})
+"""
+$(TYPEDSIGNATURES)
+
+A constructor for QRDenseStorage assumes `Q` is of size `nx`-by-`nx` and of
+type `Float64`.
+"""
+function QRDenseStorage(nx::Int)
+    A = Float64.(Matrix(I, nx, nx))
     factorization = LinearAlgebra.qrfactUnblocked!(A)
     Q = similar(A)
     inverse = similar(A)
     QRDenseStorage(factorization, Q, inverse)
 end
 
-function copyto!(x::QRDenseStorage, y::QRDenseStorage)
+"""
+$(TYPEDSIGNATURES)
+
+Copies information in `y` to `x` in place.
+"""
+function Base.copyto!(x::QRDenseStorage, y::QRDenseStorage)
     x.factorization = y.factorization
     x.Q .= y.Q
     x.inverse .= y.inverse
     nothing
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Computes the QR factorization of `A` of size `(nx,nx)` and then stores it to
+fields in `qst`.
+"""
 function calculateQ!(qst::QRDenseStorage, A::Matrix{Float64}, nx::Int)
     qst.factorization = LinearAlgebra.qrfactUnblocked!(A)
     qst.Q .= qst.factorization.Q*Matrix(I,nx,nx)
     nothing
 end
+
+"""
+$(TYPEDSIGNATURES)
+
+Computes `inv(Q)`` via transpose! and stores this to `qst.inverse`.
+"""
 function calculateQinv!(qst::QRDenseStorage)
     transpose!(qst.inverse, qst.Q)
     nothing
 end
 
 """
+$(TYPEDSIGNATURES)
+
+An implementation of the parametric Lohner's method described in the paper in (1)
+based on the non-parametric version given in (2).
+
+1. [Sahlodin, Ali M., and Benoit Chachuat. "Discretize-then-relax approach for
+convex/concave relaxations of the solutions of parametric ODEs." Applied Numerical
+Mathematics 61.7 (2011): 803-820.](https://www.sciencedirect.com/science/article/abs/pii/S0168927411000316)
+2. [R.J. Lohner, Computation of guaranteed enclosures for the solutions of
+ordinary initial and boundary value problems, in: J.R. Cash, I. Gladwell (Eds.),
+Computational Ordinary Differential Equations, vol. 1, Clarendon Press, 1992,
+pp. 425–436.](http://www.goldsztejn.com/old-papers/Lohner-1992.pdf)
 """
 function parametric_lohners_method!(stf!::TaylorFunctor!{F,S,T},
                                     rtf!::TaylorFunctor!{F,S,S},
@@ -129,15 +171,15 @@ Jp = Matrix{Interval{Float64}}[zeros(Interval{Float64},2,2) for i in 1:4]
 Jxsto = zeros(Interval{Float64},2,2)
 Jpsto = zeros(Interval{Float64},2,2)
 
-rtf  = real_TaylorFunctor!(f!, nx, np, k)
+rtf  = TaylorFunctor!(f!, nx, np, k, zero(Float64), zero(Float64))
 Yⱼ = [Interval{Float64}(-10.0, 20.0); Interval{Float64}(-10.0, 20.0)]
 P = [Interval{Float64}(2.0, 3.0); Interval{Float64}(2.0, 3.0)]
 yⱼ = mid.(Yⱼ)
 Δⱼ = Yⱼ - yⱼ
 At = zeros(2,2) + I
-Aⱼ =  QRDenseStorage(At)
-Aⱼ₊₁ =  QRDenseStorage(At)
-itf = TaylorFunctor!(f!, nx, np, k)
+Aⱼ =  QRDenseStorage(nx)
+Aⱼ₊₁ =  QRDenseStorage(nx)
+itf = TaylorFunctor!(f!, nx, np, k, zero(Interval{Float64}), zero(Float64))
 dtf = g
 hⱼ = 0.001
 # TODO: Remember rP is computed outside iteration and stored to JacTaylorFunctor

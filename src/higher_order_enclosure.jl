@@ -1,5 +1,11 @@
 """
-Fast check for the follow condition norm(diam.(Ỹⱼ[1:nx]), Inf)/norm(diam.(Ỹⱼ₀[1:nx]), Inf) > 1.01
+$(TYPEDSIGNATURES)
+
+Fast check for to see if the ratio of the L∞ norm is improving in a given iteration
+using a hard-code ratio tolerance of 1.01. This is the improvement condition from
+Nedialko S. Nedialkov. Computing rigorous bounds on the solution of an initial
+value problem for an ordinary differential equation. 1999. Universisty of Toronto,
+PhD Dissertation, Algorithm 5.1, page 73-74).
 """
 function improvement_condition(Ỹⱼ::Vector{Interval{T}}, Ỹⱼ₀::Vector{Interval{T}}, nx::Int) where {T <: Real}
     Y0norm = 0.0
@@ -14,7 +20,7 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Checks that an interval vector `Ỹⱼ` of length `nx` is contained in `Ỹⱼ₀``.
+Checks that an interval vector `Ỹⱼ` of length `nx` is contained in `Ỹⱼ₀`.
 """
 function contains(Ỹⱼ::Vector{Interval{T}}, Ỹⱼ₀::Vector{Interval{T}}, nx::Int) where {T <: Real}
     flag = true

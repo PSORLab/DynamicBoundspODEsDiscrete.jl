@@ -1,5 +1,5 @@
 using LinearAlgebra, IntervalArithmetic, StaticArrays, TaylorSeries,
-      TaylorIntegration, ForwardDiff, McCormick, BenchmarkTools, DocStringExtension
+      TaylorIntegration, ForwardDiff, McCormick, BenchmarkTools, DocStringExtensions
 
 using DiffResults: JacobianResult, MutableDiffResult
 using ForwardDiff: Partials, JacobianConfig, vector_mode_dual_eval, value, vector_mode_jacobian!
@@ -12,6 +12,16 @@ $(TYPEDSIGNATURES)
 A variant of the jetcoeffs! function used in TaylorIntegration.jl
 (https://github.com/PerezHz/TaylorIntegration.jl/blob/master/src/explicitode.jl)
 which preallocates taux and updates taux coefficients to avoid further allocations.
+
+The TaylorIntegration.jl package is licensed under the MIT "Expat" License:
+Copyright (c) 2016-2020: Jorge A. Perez and Luis Benet. Permission is hereby
+granted, free of charge, to any person obtaining a copy of this software and
+associated documentation files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of the Software, and to permit
+persons to whom the Software is furnished to do so, subject to the following
+conditions: The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
 """
 function jetcoeffs!(eqsdiff!, t::Taylor1{T}, x::AbstractVector{Taylor1{U}},
                     dx::AbstractVector{Taylor1{U}}, xaux::AbstractVector{Taylor1{U}},
@@ -66,22 +76,43 @@ struct TaylorFunctor!{F <: Function, T <: Real, S <: Real} <: Function
     np::Int
     "Order of TaylorSeries"
     s::Int
+    "Temporary storage for computing Ỹⱼ₀ in existence and uniqueness"
     Vⱼ::Vector{S}
+    "Temporary storage for computing Taylor coefficient f̃ₜ in existence and uniqueness"
     f̃ₜ::Vector{S}
+    "Temporary storage for computing Taylor coefficient f̃ in existence and uniqueness"
     f̃::Matrix{S}
+    "Temporary storage for computing Ỹⱼ₀ in existence and uniqueness"
     Ỹⱼ₀::Vector{S}
+    "Temporary storage for computing Ỹⱼ in existence and uniqueness"
     Ỹⱼ::Vector{S}
+    "Temporary storage for computing ∂f∂y in existence and uniqueness"
     ∂f∂y::Vector{Matrix{S}}
+    "Temporary storage for computing βⱼ in existence and uniqueness"
     βⱼⱼ::Matrix{S}
+    "Temporary storage for computing βⱼ in existence and uniqueness"
     βⱼᵥ::Vector{S}
+    "Temporary storage for computing βⱼ in existence and uniqueness"
     βⱼₖ::Vector{S}
+    "Temporary storage for computing Ỹⱼ₀ in existence and uniqueness"
     Uⱼ::Vector{S}
+    "In-place storage for Taylor coefficient input"
     xtaylor::Vector{Taylor1{S}}
+    "In-place storage for Taylor coefficient output"
     xout::Vector{Taylor1{S}}
+    "In-place temproary storage for Taylor coefficient calculation"
     xaux::Vector{Taylor1{S}}
+    "State variables x"
     x::Vector{S}
+    "Decision variables p"
     p::Vector{S}
 end
+
+"""
+$(TYPEDSIGNATURES)
+
+Computes the Taylor coefficients at `y` and stores them inplace to `out`.
+"""
 function (d::TaylorFunctor!{F, T, S})(out, y) where {F <: Function, T <: Real, S}
     s = d.s
     x = d.x
@@ -103,38 +134,41 @@ function (d::TaylorFunctor!{F, T, S})(out, y) where {F <: Function, T <: Real, S
 end
 
 """
-A constructor for TaylorFunctor that preallocates storage for computing interval
-extensions of Taylor coefficients.
+$(TYPEDSIGNATURES)
+
+A constructor for `TaylorFunctor` that preallocates storage for computing
+interval extensions of Taylor coefficients.
 """
-function TaylorFunctor!(g!, nx::Int, np::Int, s::Int)
-    taux = Taylor1{Float64}[]
+function TaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <: Number, Q <: Number}
+    @assert eltype(t) == Q
+    taux = Taylor1{Q}[]
     for i in 0:(s-1)
-        push!(taux, Taylor1(zeros(i+1)))
+        push!(taux, Taylor1(zeros(Q, i+1)))
     end
-    x0 = zeros(Interval{Float64}, nx)
-    t = Taylor1(Float64, s)
-    Vⱼ = zeros(Interval{Float64}, nx)
-    f̃ₜ = zeros(Interval{Float64}, nx*(s+1))
-    f̃ = zeros(Interval{Float64}, nx, s+1)
-    Ỹⱼ₀ = zeros(Interval{Float64}, nx + np)
-    Ỹⱼ = zeros(Interval{Float64}, nx + np)
-    ∂f∂y = fill(zeros(Interval{Float64},nx,nx), s+1)
-    βⱼⱼ = zeros(Interval{Float64},nx,nx)
-    βⱼᵥ = zeros(Interval{Float64}, nx)
-    βⱼₖ = zeros(Interval{Float64}, nx)
-    Uⱼ = zeros(Interval{Float64}, nx)
+    x0 = zeros(T, nx)
+    t = Taylor1(Q, s)
+    Vⱼ = zeros(T, nx)
+    f̃ₜ = zeros(T, nx*(s+1))
+    f̃ = zeros(T, nx, s+1)
+    Ỹⱼ₀ = zeros(T, nx + np)
+    Ỹⱼ = zeros(T, nx + np)
+    ∂f∂y = fill(zeros(T,nx,nx), s+1)
+    βⱼⱼ = zeros(T,nx,nx)
+    βⱼᵥ = zeros(T, nx)
+    βⱼₖ = zeros(T, nx)
+    Uⱼ = zeros(T, nx)
     xtaylor = Taylor1.(x0, s)
     xout = Taylor1.(x0, s)
     xaux = Taylor1.(x0, s)
-    x = zeros(Interval{Float64}, nx)
-    p = zeros(Interval{Float64}, np)
-    return TaylorFunctor!{typeof(g!), Float64, Interval{Float64}}(g!, taux, t, nx, np,
-                                                                  s, Vⱼ, f̃ₜ, f̃, Ỹⱼ₀, Ỹⱼ,
-                                                                  ∂f∂y, βⱼⱼ, βⱼᵥ, βⱼₖ, Uⱼ,
-                                                                  xtaylor, xout, xaux,
-                                                                  x,p)
+    x = zeros(T, nx)
+    p = zeros(T, np)
+    return TaylorFunctor!{typeof(g!), Q, T}(g!, taux, t, nx, np,
+                                            s, Vⱼ, f̃ₜ, f̃, Ỹⱼ₀, Ỹⱼ,
+                                            ∂f∂y, βⱼⱼ, βⱼᵥ, βⱼₖ, Uⱼ,
+                                            xtaylor, xout, xaux, x,p)
 end
 
+#=
 """
 A constructor for TaylorFunctor that preallocates storage for computing float64
 data type Taylor coefficients.
@@ -167,6 +201,7 @@ function real_TaylorFunctor!(g!, nx::Int, np::Int, s::Int)
                                                         xtaylor, xout, xaux,
                                                         x,p)
 end
+=#
 
 """
 $(TYPEDSIGNATURES)
@@ -207,23 +242,41 @@ struct JacTaylorFunctor!{F <: Function, T <: Real, S <: Real, D} <: Function
     np::Int
     "Order of TaylorSeries"
     s::Int
+    "In-place storage for Taylor coefficient input"
     xtaylor::Vector{Taylor1{D}}
+    "In-place storage for Taylor coefficient output"
     xout::Vector{Taylor1{D}}
+    "In-place temporary storage for Taylor coefficient calculation"
     xaux::Vector{Taylor1{D}}
+    "In-place temporary storage for Taylor coefficient calculation"
     out::Vector{S}
+    "Variables y = (x,p)"
     y::Vector{S}
+    "State variables x"
     x::Vector{D}
+    "Decision variables p"
     p::Vector{D}
+    "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     B::Matrix{T}
+    "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     Δⱼ₊₁::Vector{S}
+    "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     Yⱼ₊₁::Vector{S}
+    "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     yⱼ₊₁::Vector{T}
+    "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     Rⱼ₊₁::Vector{S}
+    "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     mRⱼ₊₁::Vector{T}
+    "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     vⱼ₊₁::Vector{T}
+    "P - p"
     rP::Vector{S}
+    "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     M1::Vector{S}
+    "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     M2::Matrix{S}
+    "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     M2Y::Matrix{S}
 end
 
@@ -231,10 +284,11 @@ end
 $(TYPEDSIGNATURES)
 
 A constructor for TaylorFunctor that preallocates storage for computing interval
-extensions of Taylor coefficients. The type `T` should do computation is
+extensions of Taylor coefficients. The type `T` should use type `Q` for internal
+computations.
 """
 function JacTaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <: Number, Q <: Number}
-    @assert eltype(T) == Q
+    @assert eltype(t) == Q
     taux = Taylor1{Q}[]
     for i in 0:(s-1)
         push!(taux, Taylor1(zeros(Q, i+1)))
@@ -265,6 +319,13 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <:
                              nx, np, s, xtaylor, xout, xaux, out, y, x, p, B,
                              Δⱼ₊₁, Yⱼ₊₁, yⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, vⱼ₊₁, rP, M1, M2, M2Y)
 end
+
+"""
+$(TYPEDSIGNATURES)
+
+Defines the call to `JacTaylorFunctor!` that preallocates storage to `Taylor1`
+objects as necessary.
+"""
 function (d::JacTaylorFunctor!{F, T, S, D})(out, y) where {F <: Function, T <: Real, S, D}
     s = d.s
     nx = d.nx
@@ -344,7 +405,7 @@ k = 3
 x = [1.0; 2.0]
 p = [2.2; 2.2]
 y = Interval{Float64}.([x; p])
-g = JacTaylorFunctor!(f!, nx, np, k)
+g = JacTaylorFunctor!(f!, nx, np, k, Interval{Float64}(0.0), 0.0)
 out = g.out
 cfg = ForwardDiff.JacobianConfig(nothing, out, y)
 result = JacobianResult(out, y)
