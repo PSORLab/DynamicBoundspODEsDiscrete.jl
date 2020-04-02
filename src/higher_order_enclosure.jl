@@ -11,6 +11,11 @@ function improvement_condition(Ỹⱼ::Vector{Interval{T}}, Ỹⱼ₀::Vector{In
     return (Ynorm/Y0norm) > 1.01
 end
 
+"""
+$(TYPEDSIGNATURES)
+
+Checks that an interval vector `Ỹⱼ` of length `nx` is contained in `Ỹⱼ₀``.
+"""
 function contains(Ỹⱼ::Vector{Interval{T}}, Ỹⱼ₀::Vector{Interval{T}}, nx::Int) where {T <: Real}
     flag = true
     for i in 1:nx
@@ -23,13 +28,16 @@ function contains(Ỹⱼ::Vector{Interval{T}}, Ỹⱼ₀::Vector{Interval{T}}, n
 end
 
 """
+$(TYPEDSIGNATURES)
 
-Implements the adaptive higher-order enclosure approach detailed in
-Nedyalkov's dissertation (Algorithm 5.1).
+Implements the adaptive higher-order enclosure approach detailed in Nedialkov's
+dissertation (Nedialko S. Nedialkov. Computing rigorous bounds on the solution of
+an initial value problem for an ordinary differential equation. 1999. Universisty
+of Toronto, PhD Dissertation, Algorithm 5.1, page 73-74).
 """
 function existence_uniqueness(tf!::TaylorFunctor!, Yⱼ::Vector{T},
-                              P::Vector{T}, hⱼ::Float64, hmin::Float64, f::Matrix{T},
-                              ∂f∂y_in) where {T <: Real}
+                              P::Vector{T}, hⱼ::Float64, hmin::Float64,
+                              f::Matrix{T}, ∂f∂y_in) where {T <: Real}
 
     k = tf!.s
     nx = tf!.nx
