@@ -179,9 +179,9 @@ hⱼ = 0.001
 hmin = 0.00001
 Yⱼ = [Interval(0.1, 5.1); Interval(0.1, 8.9)]
 P = [Interval(0.1, 5.1); Interval(0.1, 8.9)]
-existence_uniqueness(jacobianfunctor, Yⱼ, P, hⱼ, hmin, routIntv, Jx)
+existence_uniqueness(g, Yⱼ, P, hⱼ, hmin, routIntv, Jx)
 #@btime improvement_condition($Yⱼ, $Yⱼ, $nx)
-#@btime existence_uniqueness($jacobianfunctor, $Yⱼ, $P, $hⱼ, $hmin, $routIntv, $Jx)
+@btime existence_uniqueness($g, $Yⱼ, $P, $hⱼ, $hmin, $routIntv, $Jx)
 #tv, xv = validated_integration(f!, Interval{Float64}.([3.0, 3.0]), 0.0, 0.3, 4, 1.0e-20, maxsteps=100 )
 Q = [Yⱼ; P]
 #@btime jacobianfunctor($outIntv, $yInterval)
@@ -193,5 +193,5 @@ zqwc = d.xtaylor
 zqwd = d.xout
 zqwe = d.xaux
 zqwr = d.taux
-@btime jetcoeffs!($zqwa, $zqwb, $zqwc, $zqwd, $zqwe, $zqwr, $s, $p)
+#@btime jetcoeffs!($zqwa, $zqwb, $zqwc, $zqwd, $zqwe, $zqwr, $s, $p)
 #@code_warntype jetcoeffs!(zqwa, zqwb, zqwc, zqwd, zqwe, zqwr, p)

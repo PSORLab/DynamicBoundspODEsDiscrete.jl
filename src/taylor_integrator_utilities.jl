@@ -168,41 +168,6 @@ function TaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <: Nu
                                             xtaylor, xout, xaux, x,p)
 end
 
-#=
-"""
-A constructor for TaylorFunctor that preallocates storage for computing float64
-data type Taylor coefficients.
-"""
-function real_TaylorFunctor!(g!, nx::Int, np::Int, s::Int)
-    taux = Taylor1{Float64}[]
-    for i in 0:(s-1)
-        push!(taux, Taylor1(zeros(i+1)))
-    end
-    x0 = zeros(Float64, nx)
-    t = Taylor1(Float64, s)
-    Vⱼ = zeros(Float64, nx)
-    f̃ₜ = zeros(Float64, nx*(s+1))
-    f̃ = zeros(Float64, nx, s+1)
-    Ỹⱼ₀ = zeros(Float64, nx + np)
-    Ỹⱼ = zeros(Float64, nx + np)
-    ∂f∂y = fill(zeros(Float64,nx,nx), s+1)
-    βⱼⱼ = zeros(Float64,nx,nx)
-    βⱼᵥ = zeros(Float64, nx)
-    βⱼₖ = zeros(Float64, nx)
-    Uⱼ = zeros(Float64, nx)
-    xtaylor = Taylor1.(x0, s)
-    xout = Taylor1.(x0, s)
-    xaux = Taylor1.(x0, s)
-    x = zeros(Float64, nx)
-    p = zeros(Float64, np)
-    return TaylorFunctor!{typeof(g!), Float64, Float64}(g!, taux, t, nx, np,
-                                                        s, Vⱼ, f̃ₜ, f̃, Ỹⱼ₀, Ỹⱼ,
-                                                        ∂f∂y, βⱼⱼ, βⱼᵥ, βⱼₖ, Uⱼ,
-                                                        xtaylor, xout, xaux,
-                                                        x,p)
-end
-=#
-
 """
 $(TYPEDSIGNATURES)
 
@@ -391,6 +356,70 @@ function extract_JxJp!(Jx::Vector{Matrix{T}}, Jp::Vector{Matrix{T}},
             end
         end
     end
+    nothing
+end
+
+"""
+$(TYPEDEF)
+
+Provides preallocated storage for the QR factorization, Q, and the inverse of Q.
+
+$(TYPEDFIELDS)
+"""
+mutable struct QRDenseStorage
+    "QR Factorization"
+    factorization::LinearAlgebra.QR{Float64,Array{Float64,2}}
+    "Orthogonal matrix Q"
+    Q::Array{Float64,2}
+    "Inverse of Q"
+    inv::Array{Float64,2}
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+A constructor for QRDenseStorage assumes `Q` is of size `nx`-by-`nx` and of
+type `Float64`.
+"""
+function QRDenseStorage(nx::Int)
+    A = Float64.(Matrix(I, nx, nx))
+    factorization = LinearAlgebra.qrfactUnblocked!(A)
+    Q = similar(A)
+    inverse = similar(A)
+    QRDenseStorage(factorization, Q, inverse)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Copies information in `y` to `x` in place.
+"""
+function Base.copyto!(x::QRDenseStorage, y::QRDenseStorage)
+    x.factorization = y.factorization
+    x.Q .= y.Q
+    x.inv .= y.inv
+    nothing
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Computes the QR factorization of `A` of size `(nx,nx)` and then stores it to
+fields in `qst`.
+"""
+function calculateQ!(qst::QRDenseStorage, A::Matrix{Float64}, nx::Int)
+    qst.factorization = LinearAlgebra.qrfactUnblocked!(A)
+    qst.Q .= qst.factorization.Q*Matrix(I,nx,nx)
+    nothing
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Computes `inv(Q)`` via transpose! and stores this to `qst.inverse`.
+"""
+function calculateQinv!(qst::QRDenseStorage)
+    transpose!(qst.inv, qst.Q)
     nothing
 end
 

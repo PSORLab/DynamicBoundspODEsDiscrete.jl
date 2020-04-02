@@ -1,70 +1,6 @@
 include("C://Users//wilhe//Desktop//Package Development Work//DynamicBoundspODEsPILMS.jl//src//taylor_integrator_utilities.jl")
 
 """
-$(TYPEDEF)
-
-Provides preallocated storage for the QR factorization, Q, and the inverse of Q.
-
-$(TYPEDFIELDS)
-"""
-mutable struct QRDenseStorage
-    "QR Factorization"
-    factorization::LinearAlgebra.QR{Float64,Array{Float64,2}}
-    "Orthogonal matrix Q"
-    Q::Array{Float64,2}
-    "Inverse of Q"
-    inverse::Array{Float64,2}
-end
-
-"""
-$(TYPEDSIGNATURES)
-
-A constructor for QRDenseStorage assumes `Q` is of size `nx`-by-`nx` and of
-type `Float64`.
-"""
-function QRDenseStorage(nx::Int)
-    A = Float64.(Matrix(I, nx, nx))
-    factorization = LinearAlgebra.qrfactUnblocked!(A)
-    Q = similar(A)
-    inverse = similar(A)
-    QRDenseStorage(factorization, Q, inverse)
-end
-
-"""
-$(TYPEDSIGNATURES)
-
-Copies information in `y` to `x` in place.
-"""
-function Base.copyto!(x::QRDenseStorage, y::QRDenseStorage)
-    x.factorization = y.factorization
-    x.Q .= y.Q
-    x.inverse .= y.inverse
-    nothing
-end
-
-"""
-$(TYPEDSIGNATURES)
-
-Computes the QR factorization of `A` of size `(nx,nx)` and then stores it to
-fields in `qst`.
-"""
-function calculateQ!(qst::QRDenseStorage, A::Matrix{Float64}, nx::Int)
-    qst.factorization = LinearAlgebra.qrfactUnblocked!(A)
-    qst.Q .= qst.factorization.Q*Matrix(I,nx,nx)
-    nothing
-end
-
-"""
-$(TYPEDSIGNATURES)
-
-Computes `inv(Q)`` via transpose! and stores this to `qst.inverse`.
-"""
-function calculateQinv!(qst::QRDenseStorage)
-    transpose!(qst.inverse, qst.Q)
-    nothing
-end
-
-"""
 $(TYPEDSIGNATURES)
 
 An implementation of the parametric Lohner's method described in the paper in (1)
@@ -78,14 +14,14 @@ ordinary initial and boundary value problems, in: J.R. Cash, I. Gladwell (Eds.),
 Computational Ordinary Differential Equations, vol. 1, Clarendon Press, 1992,
 pp. 425–436.](http://www.goldsztejn.com/old-papers/Lohner-1992.pdf)
 """
-function parametric_lohners_method!(stf!::TaylorFunctor!{F,S,T},
-                                    rtf!::TaylorFunctor!{F,S,S},
-                                    dtf!::JacTaylorFunctor!{F,S,D},
-                                    hⱼ, Ỹⱼ, Yⱼ, yⱼ, P, p, Aⱼ₊₁, Aⱼ, Δⱼ,
-                                    result, tjac,
-                                    cfg, Jxsto, Jpsto,
-                                    Jx, Jp) where  {F <: Function, T <: Real,
-                                                    S <: Real, D <: Real}
+function parametric_lohners!(stf!::TaylorFunctor!{F,S,T},
+                             rtf!::TaylorFunctor!{F,S,S},
+                             dtf!::JacTaylorFunctor!{F,S,D},
+                             hⱼ, Ỹⱼ, Yⱼ, yⱼ, P, p, Aⱼ₊₁, Aⱼ, Δⱼ,
+                             result, tjac,
+                             cfg, Jxsto, Jpsto,
+                             Jx, Jp) where  {F <: Function, T <: Real,
+                             S <: Real, D <: Real}
 
     nx = stf!.nx
     np = stf!.np
@@ -149,19 +85,20 @@ function parametric_lohners_method!(stf!::TaylorFunctor!{F,S,T},
         hji = hji*hⱼ
     end
 
-    M2Y .= Jxsto*Aⱼ.Q                        # 4 allocs
+    # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
+    M2Y .= Jxsto*Aⱼ.Q
     dtf!.B .= mid.(M2Y)
-    calculateQ!(Aⱼ₊₁, dtf!.B, nx)            # + 3 allocs
-    calculateQinv!(Aⱼ₊₁)                     # + 1 alloc
+    calculateQ!(Aⱼ₊₁, dtf!.B, nx)
+    calculateQinv!(Aⱼ₊₁)
 
     @. dtf!.Yⱼ₊₁ = dtf!.vⱼ₊₁ + dtf!.Rⱼ₊₁
     @. dtf!.yⱼ₊₁ = dtf!.vⱼ₊₁ + dtf!.mRⱼ₊₁
     dtf!.Rⱼ₊₁ .-= dtf!.mRⱼ₊₁
-    mul!(M1, Aⱼ₊₁.inverse, dtf!.Rⱼ₊₁);                     dtf!.Δⱼ₊₁ .= M1    #dtf!.Δⱼ₊₁ .= Aⱼ₊₁.inverse*dtf!.Rⱼ₊₁
-    mul!(M2, Aⱼ₊₁.inverse, M2Y);        mul!(M1, M2, Δⱼ);  dtf!.Δⱼ₊₁ .+= M1   #dtf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Y)*Δⱼ
-    mul!(M2, Aⱼ₊₁.inverse, Jpsto);      mul!(M1, M2, rP);  dtf!.Δⱼ₊₁ .+= M1   #dtf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Jpsto)*rP
-    mul!(M1, M2Y, Δⱼ);                                     dtf!.Yⱼ₊₁ .= M1    #dtf!.Yⱼ₊₁ .+= Y*Δⱼ
-    mul!(M1, Jpsto, rP);                                   dtf!.Yⱼ₊₁ .+= M1   # dtf!.Yⱼ₊₁ .+= Jpsto*rP
+    mul!(M1, Aⱼ₊₁.inv, dtf!.Rⱼ₊₁);                     dtf!.Δⱼ₊₁ .= M1    #dtf!.Δⱼ₊₁ .= Aⱼ₊₁.inverse*dtf!.Rⱼ₊₁
+    mul!(M2, Aⱼ₊₁.inv, M2Y);        mul!(M1, M2, Δⱼ);  dtf!.Δⱼ₊₁ .+= M1   #dtf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Y)*Δⱼ
+    mul!(M2, Aⱼ₊₁.inv, Jpsto);      mul!(M1, M2, rP);  dtf!.Δⱼ₊₁ .+= M1   #dtf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Jpsto)*rP
+    mul!(M1, M2Y, Δⱼ);                                 dtf!.Yⱼ₊₁ .= M1    #dtf!.Yⱼ₊₁ .+= Y*Δⱼ
+    mul!(M1, Jpsto, rP);                               dtf!.Yⱼ₊₁ .+= M1   # dtf!.Yⱼ₊₁ .+= Jpsto*rP
     copyto!(Aⱼ, Aⱼ₊₁)
     nothing
 end
@@ -183,10 +120,10 @@ itf = TaylorFunctor!(f!, nx, np, k, zero(Interval{Float64}), zero(Float64))
 dtf = g
 hⱼ = 0.001
 # TODO: Remember rP is computed outside iteration and stored to JacTaylorFunctor
-plohners = parametric_lohners_method!(itf, rtf, dtf, hⱼ, Yⱼ, Yⱼ, yⱼ,
+plohners = parametric_lohners!(itf, rtf, dtf, hⱼ, Yⱼ, Yⱼ, yⱼ,
                                      P, p, Aⱼ₊₁, Aⱼ, Δⱼ, result, tjac, cfg,
                                      Jxsto, Jpsto, Jx, Jp)
 
-@btime parametric_lohners_method!($itf, $rtf, $dtf, $hⱼ, $Yⱼ, $Yⱼ, $yⱼ,
+@btime parametric_lohners!($itf, $rtf, $dtf, $hⱼ, $Yⱼ, $Yⱼ, $yⱼ,
                                  $P, $p, $Aⱼ₊₁, $Aⱼ, $Δⱼ, $result, $tjac, $cfg,
                                  $Jxsto, $Jpsto, $Jx, $Jp)
