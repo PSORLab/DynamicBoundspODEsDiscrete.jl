@@ -15,14 +15,13 @@ pp. 425–436.](http://www.goldsztejn.com/old-papers/Lohner-1992.pdf)
 function parametric_lohners!(stf!::TaylorFunctor!{F,S,T},
                              rtf!::TaylorFunctor!{F,S,S},
                              dtf!::JacTaylorFunctor!{F,S,D},
-                             hⱼ, Ỹⱼ, Yⱼ, yⱼ, P, p, Aⱼ₊₁, Aⱼ, Δⱼ,
-                             result, tjac,
-                             cfg, Jxsto, Jpsto,
-                             Jx, Jp) where  {F <: Function, T <: Real,
+                             hⱼ, Ỹⱼ, Yⱼ, yⱼ, Aⱼ₊₁, Aⱼ, Δⱼ,
+                             result, tjac, cfg, Jx, Jp) where {F <: Function, T <: Real,
                              S <: Real, D <: Real}
 
     nx = stf!.nx
     np = stf!.np
+    k = stf!.s
 
     sf̃ₜ = stf!.f̃ₜ
     sf̃ = stf!.f̃
@@ -39,18 +38,10 @@ function parametric_lohners!(stf!::TaylorFunctor!{F,S,T},
     M2 = dtf!.M2
     M2Y = dtf!.M2Y
 
-    copyto!(sỸⱼ₀, 1, Yⱼ, 1, nx)
-    copyto!(sỸⱼ, 1, Yⱼ, 1, nx)
-    copyto!(sỸⱼ₀, 1+nx, P, 1, np)
-    copyto!(sỸⱼ, 1+nx, P, 1, np)
-
-    copyto!(rỸⱼ₀, 1, yⱼ, 1, nx)
-    copyto!(rỸⱼ, 1, yⱼ, 1, nx)
-    copyto!(rỸⱼ₀, 1+nx, p, 1, np)
-    copyto!(rỸⱼ, 1+nx, p, 1, np)
-
-    k = stf!.s
-    nx = stf!.nx
+    copyto!(sỸⱼ₀, 1, Yⱼ, 1, nx + np)
+    copyto!(sỸⱼ, 1, Yⱼ, 1, nx + np)
+    copyto!(rỸⱼ₀, 1, yⱼ, 1, nx + np)
+    copyto!(rỸⱼ, 1, yⱼ, 1, nx + np)
 
     stf!(sf̃ₜ, sỸⱼ)
     coeff_to_matrix!(sf̃, sf̃ₜ, nx, k)
@@ -71,20 +62,20 @@ function parametric_lohners!(stf!::TaylorFunctor!{F,S,T},
         end
     end
 
-    jacobian_taylor_coeffs!(result, dtf!, Yⱼ, P, cfg)
+    jacobian_taylor_coeffs!(result, dtf!, Yⱼ, cfg)
     extract_JxJp!(Jx, Jp, result, tjac, nx, np, k)
 
     hji = 1.0
     for i in 1:k
         Jx[i] .*= hji
         Jp[i] .*= hji
-        Jxsto .+= Jx[i]
-        Jpsto .+= Jp[i]
+        dtf!.Jxsto .+= Jx[i]
+        dtf!.Jpsto .+= Jp[i]
         hji = hji*hⱼ
     end
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
-    M2Y .= Jxsto*Aⱼ.Q
+    M2Y .= dtf!.Jxsto*Aⱼ.Q
     dtf!.B .= mid.(M2Y)
     calculateQ!(Aⱼ₊₁, dtf!.B, nx)
     calculateQinv!(Aⱼ₊₁)
@@ -92,11 +83,11 @@ function parametric_lohners!(stf!::TaylorFunctor!{F,S,T},
     @. dtf!.Yⱼ₊₁ = dtf!.vⱼ₊₁ + dtf!.Rⱼ₊₁
     @. dtf!.yⱼ₊₁ = dtf!.vⱼ₊₁ + dtf!.mRⱼ₊₁
     dtf!.Rⱼ₊₁ .-= dtf!.mRⱼ₊₁
-    mul!(M1, Aⱼ₊₁.inv, dtf!.Rⱼ₊₁);                     dtf!.Δⱼ₊₁ .= M1    #dtf!.Δⱼ₊₁ .= Aⱼ₊₁.inverse*dtf!.Rⱼ₊₁
-    mul!(M2, Aⱼ₊₁.inv, M2Y);        mul!(M1, M2, Δⱼ);  dtf!.Δⱼ₊₁ .+= M1   #dtf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Y)*Δⱼ
-    mul!(M2, Aⱼ₊₁.inv, Jpsto);      mul!(M1, M2, rP);  dtf!.Δⱼ₊₁ .+= M1   #dtf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Jpsto)*rP
-    mul!(M1, M2Y, Δⱼ);                                 dtf!.Yⱼ₊₁ .= M1    #dtf!.Yⱼ₊₁ .+= Y*Δⱼ
-    mul!(M1, Jpsto, rP);                               dtf!.Yⱼ₊₁ .+= M1   # dtf!.Yⱼ₊₁ .+= Jpsto*rP
+    mul!(M1, Aⱼ₊₁.inv, dtf!.Rⱼ₊₁);                          dtf!.Δⱼ₊₁ .= M1    #dtf!.Δⱼ₊₁ .= Aⱼ₊₁.inverse*dtf!.Rⱼ₊₁
+    mul!(M2, Aⱼ₊₁.inv, M2Y);             mul!(M1, M2, Δⱼ);  dtf!.Δⱼ₊₁ .+= M1   #dtf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Y)*Δⱼ
+    mul!(M2, Aⱼ₊₁.inv, dtf!.Jpsto);      mul!(M1, M2, rP);  dtf!.Δⱼ₊₁ .+= M1   #dtf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Jpsto)*rP
+    mul!(M1, M2Y, Δⱼ);                                      dtf!.Yⱼ₊₁ .= M1    #dtf!.Yⱼ₊₁ .+= Y*Δⱼ
+    mul!(M1, dtf!.Jpsto, rP);                               dtf!.Yⱼ₊₁ .+= M1   # dtf!.Yⱼ₊₁ .+= Jpsto*rP
     copyto!(Aⱼ, Aⱼ₊₁)
     nothing
 end

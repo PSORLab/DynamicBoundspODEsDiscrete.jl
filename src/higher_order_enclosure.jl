@@ -45,8 +45,7 @@ dissertation (Nedialko S. Nedialkov. Computing rigorous bounds on the solution o
 an initial value problem for an ordinary differential equation. 1999. Universisty
 of Toronto, PhD Dissertation, Algorithm 5.1, page 73-74).
 """
-function existence_uniqueness(tf!::TaylorFunctor!, Yⱼ::Vector{T},
-                              P::Vector{T}, hⱼ::Float64, hmin::Float64,
+function existence_uniqueness(tf!::TaylorFunctor!, Yⱼ::Vector{T}, hⱼ::Float64, hmin::Float64,
                               f::Matrix{T}, ∂f∂y_in) where {T <: Real}
 
     k = tf!.s
@@ -62,10 +61,8 @@ function existence_uniqueness(tf!::TaylorFunctor!, Yⱼ::Vector{T},
     βⱼₖ = tf!.βⱼₖ
     Uⱼ = tf!.Uⱼ
 
-    copyto!(Ỹⱼ₀, 1, Yⱼ, 1, nx)
-    copyto!(Ỹⱼ, 1, Yⱼ, 1, nx)
-    copyto!(Ỹⱼ₀, 1+nx, P, 1, np)
-    copyto!(Ỹⱼ, 1+nx, P, 1, np)
+    copyto!(Ỹⱼ₀, 1, Yⱼ, 1, nx+np)
+    copyto!(Ỹⱼ, 1, Yⱼ, 1, nx+np)
 
     ∂f∂y = tf!.∂f∂y
     hIk = hIk = Interval{Float64}(0.0, hⱼ^k)
@@ -99,7 +96,7 @@ function existence_uniqueness(tf!::TaylorFunctor!, Yⱼ::Vector{T},
         #βⱼᵥ = f[k,:] .+ ∂f∂y[k]*Vⱼ
         mul!(βⱼᵥ, ∂f∂y[k], Vⱼ)
         for j in 1:nx
-            βⱼᵥ[j] += f[k,j]
+            βⱼᵥ[j] += f[j,k]
         end
         mul!(βⱼₖ, βⱼⱼ, βⱼᵥ)
 
@@ -110,7 +107,7 @@ function existence_uniqueness(tf!::TaylorFunctor!, Yⱼ::Vector{T},
         end
 
         tf!(f̃ₜ, Ỹⱼ₀)
-        coeff_to_matrix!(f̃, f̃ₜ, nx, s)
+        coeff_to_matrix!(f̃, f̃ₜ, nx, k)
         inβ = true
         for j in 1:nx
             if ~(f̃[j,k] ⊆ βⱼₖ[j])
@@ -128,7 +125,7 @@ function existence_uniqueness(tf!::TaylorFunctor!, Yⱼ::Vector{T},
             Ỹⱼ₀[j] = Uⱼ[j] + hIk*f̃[j,k]
         end
         tf!(f̃ₜ, Ỹⱼ₀)
-        coeff_to_matrix!(f̃, f̃ₜ, nx, s)
+        coeff_to_matrix!(f̃, f̃ₜ, nx, k)
 
         reduced = 0
         while ~verified && reduced < 2

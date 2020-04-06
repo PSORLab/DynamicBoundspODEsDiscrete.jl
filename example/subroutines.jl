@@ -1,3 +1,5 @@
+using Revise
+
 using DynamicBoundspODEsPILMS, LinearAlgebra, IntervalArithmetic, StaticArrays, TaylorSeries,
       TaylorIntegration, ForwardDiff, McCormick, BenchmarkTools, DocStringExtensions
 
@@ -23,7 +25,8 @@ cfg = ForwardDiff.JacobianConfig(nothing, out, y)
 result = JacobianResult(out, y)
 xIntv = Interval{Float64}.(x)
 pIntv = Interval{Float64}.(p)
-tcoeffs = DynamicBoundspODEsPILMS.jacobian_taylor_coeffs!(result, g, xIntv, pIntv, cfg)
+yIntv = [xIntv; pIntv]
+tcoeffs = DynamicBoundspODEsPILMS.jacobian_taylor_coeffs!(result, g, yIntv, cfg)
 #@btime jacobian_taylor_coeffs!($result, $g, $xIntv, $pIntv, $cfg)
 jac = result.derivs[1]
 tjac = zeros(Interval{Float64}, 4, 8)
@@ -41,14 +44,26 @@ hmin = 0.00001
 Yⱼ = [Interval(0.1, 5.1); Interval(0.1, 8.9)]
 P = [Interval(0.1, 5.1); Interval(0.1, 8.9)]
 routIntv = copy(Yⱼ)
-DynamicBoundspODEsPILMS.existence_uniqueness(g, Yⱼ, P, hⱼ, hmin, routIntv, Jx)
+
+rtf!  = DynamicBoundspODEsPILMS.TaylorFunctor!(f!, nx, np, k, zero(Float64), zero(Float64))
+itf! = DynamicBoundspODEsPILMS.TaylorFunctor!(f!, nx, np, k, zero(Interval{Float64}), zero(Float64))
+out = zeros(Interval{Float64},8)
+coeff_out = zeros(Interval{Float64},2,4)
+Ycat = [Yⱼ; P]
+itf!(out, Ycat)
+
+@btime itf!($out, $Ycat)
+DynamicBoundspODEsPILMS.coeff_to_matrix!(coeff_out, out, nx, k)
+@btime DynamicBoundspODEsPILMS.coeff_to_matrix!($coeff_out, $out, $nx, $k)
+
+DynamicBoundspODEsPILMS.existence_uniqueness(itf!, Ycat, hⱼ, hmin, coeff_out, Jx)
 #@btime improvement_condition($Yⱼ, $Yⱼ, $nx)
-@btime DynamicBoundspODEsPILMS.existence_uniqueness($g, $Yⱼ, $P, $hⱼ, $hmin, $routIntv, $Jx)
+@btime DynamicBoundspODEsPILMS.existence_uniqueness($itf!, $Ycat, $hⱼ, $hmin, $coeff_out, $Jx)
 #tv, xv = validated_integration(f!, Interval{Float64}.([3.0, 3.0]), 0.0, 0.3, 4, 1.0e-20, maxsteps=100 )
 Q = [Yⱼ; P]
 #@btime jacobianfunctor($outIntv, $yInterval)
 
-d = jacobianfunctor
+d = g
 zqwa = d.g!
 zqwb = d.t
 zqwc = d.xtaylor
@@ -64,22 +79,20 @@ Jp = Matrix{Interval{Float64}}[zeros(Interval{Float64},2,2) for i in 1:4]
 Jxsto = zeros(Interval{Float64},2,2)
 Jpsto = zeros(Interval{Float64},2,2)
 
-rtf  = DynamicBoundspODEsPILMS.TaylorFunctor!(f!, nx, np, k, zero(Float64), zero(Float64))
 Yⱼ = [Interval{Float64}(-10.0, 20.0); Interval{Float64}(-10.0, 20.0)]
 P = [Interval{Float64}(2.0, 3.0); Interval{Float64}(2.0, 3.0)]
+Ycat = [Yⱼ; P]
 yⱼ = mid.(Yⱼ)
 Δⱼ = Yⱼ - yⱼ
 At = zeros(2,2) + I
 Aⱼ =  DynamicBoundspODEsPILMS.QRDenseStorage(nx)
 Aⱼ₊₁ =  DynamicBoundspODEsPILMS.QRDenseStorage(nx)
-itf = DynamicBoundspODEsPILMS.TaylorFunctor!(f!, nx, np, k, zero(Interval{Float64}), zero(Float64))
 dtf = g
 hⱼ = 0.001
+yjcat = vcat(yⱼ,p)
 # TODO: Remember rP is computed outside iteration and stored to JacTaylorFunctor
-plohners = DynamicBoundspODEsPILMS.parametric_lohners!(itf, rtf, dtf, hⱼ, Yⱼ, Yⱼ, yⱼ,
-                                     P, p, Aⱼ₊₁, Aⱼ, Δⱼ, result, tjac, cfg,
-                                     Jxsto, Jpsto, Jx, Jp)
+plohners = DynamicBoundspODEsPILMS.parametric_lohners!(itf!, rtf!, dtf, hⱼ, Ycat, Ycat, yjcat,
+                                                       Aⱼ₊₁, Aⱼ, Δⱼ, result, tjac, cfg, Jx, Jp)
 
-@btime DynamicBoundspODEsPILMS.parametric_lohners!($itf, $rtf, $dtf, $hⱼ, $Yⱼ, $Yⱼ, $yⱼ,
-                                 $P, $p, $Aⱼ₊₁, $Aⱼ, $Δⱼ, $result, $tjac, $cfg,
-                                 $Jxsto, $Jpsto, $Jx, $Jp)
+@btime DynamicBoundspODEsPILMS.parametric_lohners!($itf!, $rtf!, $dtf, $hⱼ, $Ycat, $Ycat, $yjcat,
+                                                   $Aⱼ₊₁, $Aⱼ, $Δⱼ, $result, $tjac, $cfg, $Jx, $Jp)

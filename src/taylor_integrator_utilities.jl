@@ -24,13 +24,13 @@ function jetcoeffs!(eqsdiff!, t::Taylor1{T}, x::AbstractVector{Taylor1{U}},
       for ord in 0:(order - 1)
           ordnext = ord + 1
           for i in 1:ordnext
-              @inbounds taux[ordnext].coeffs[i] = t.coeffs[i]
+              taux[ordnext].coeffs[i] = t.coeffs[i]
           end
 
           # Set `xaux`, auxiliary vector of Taylor1 to order `ord`
           for j in eachindex(x)
               for i in 1:ordnext
-                  @inbounds xaux[j].coeffs[i] = x[j].coeffs[i]
+                  xaux[j].coeffs[i] = x[j].coeffs[i]
               end
           end
 
@@ -39,7 +39,7 @@ function jetcoeffs!(eqsdiff!, t::Taylor1{T}, x::AbstractVector{Taylor1{U}},
 
           # Recursion relations
           for j in eachindex(x)
-              @inbounds x[j].coeffs[ordnext+1] = dx[j].coeffs[ordnext]/Float64(ordnext)
+              x[j].coeffs[ordnext+1] = dx[j].coeffs[ordnext]/Float64(ordnext)
           end
       end
   nothing
@@ -157,7 +157,7 @@ function TaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <: Nu
     return TaylorFunctor!{typeof(g!), Q, T}(g!, taux, t, nx, np,
                                             s, Vⱼ, f̃ₜ, f̃, Ỹⱼ₀, Ỹⱼ,
                                             ∂f∂y, βⱼⱼ, βⱼᵥ, βⱼₖ, Uⱼ,
-                                            xtaylor, xout, xaux, x,p)
+                                            xtaylor, xout, xaux, x, p)
 end
 
 """
@@ -235,6 +235,10 @@ struct JacTaylorFunctor!{F <: Function, T <: Real, S <: Real, D} <: Function
     M2::Matrix{S}
     "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     M2Y::Matrix{S}
+    "Storage for sum of Jacobian w.r.t x"
+    Jxsto::Matrix{S}
+    "Storage for sum of Jacobian w.r.t p"
+    Jpsto::Matrix{S}
 end
 
 """
@@ -271,10 +275,13 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <:
     M1 = zeros(T, nx)
     M2 = zeros(T, nx, nx)
     M2Y = zeros(T, nx, nx)
+    Jxsto = zeros(T, nx, nx)
+    Jpsto = zeros(T, nx, np)
     return JacTaylorFunctor!{typeof(g!), Q, T,
                              Dual{Nothing, T, nx+np}}(g!, taux, t,
                              nx, np, s, xtaylor, xout, xaux, out, y, x, p, B,
-                             Δⱼ₊₁, Yⱼ₊₁, yⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, vⱼ₊₁, rP, M1, M2, M2Y)
+                             Δⱼ₊₁, Yⱼ₊₁, yⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, vⱼ₊₁, rP, M1, M2, M2Y,
+                             Jxsto, Jpsto)
 end
 
 """
@@ -311,16 +318,19 @@ is required input and is initialized from `cfg = ForwardDiff.JacobianConfig(noth
 The JacTaylorFunctor! used for the evaluation is `g` and inputs are `x` and `p`.
 """
 function jacobian_taylor_coeffs!(result::MutableDiffResult{1,Vector{S},Tuple{Matrix{S}}},
-                                 g::JacTaylorFunctor!, x::Vector{S}, p::Vector{S},
-                                 cfg::JacobianConfig{T,V,N}) where {S <: Real, T,V,N}
+                                 g::JacTaylorFunctor!, yin::Vector{S},
+                                 cfg::JacobianConfig{T,V,N}) where {S <: Real, T, V, N}
 
     # copyto! is used to avoid allocations
-    copyto!(g.y, 1, x, 1, g.nx)
-    copyto!(g.y, 1 + g.nx, p, 1, g.np)
+    copyto!(g.y, 1, yin, 1, g.nx + g.np)
 
     # other AD schemes may be usable as well but this is a length(g.out) >> nx + np
     # situtation typically
     jacobian!(result, g, g.out, g.y, cfg)
+
+    # reset sum of Jacobian storage
+    fill!(g.Jxsto, zero(S))
+    fill!(g.Jpsto, zero(S))
     nothing
 end
 

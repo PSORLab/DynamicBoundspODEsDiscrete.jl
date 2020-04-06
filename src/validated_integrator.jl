@@ -27,12 +27,12 @@ $(TYPEDSIGNATURES)
 
 Performs a single-step of the validated integrator.
 """
-function single_step!(f, hj_in, γ, hmin, P, Yⱼ)
+function single_step!(f, hj_in, γ, hmin, Yⱼ)
 
     hj = hj_in
     hj1 = 0.0
     # validate existence & uniqueness
-    hⱼ, Ỹⱼ, f̃, step_flag = existence_uniqueness(tf!, Yⱼ, P, hⱼ, hmin, f, ∂f∂y_in)
+    hⱼ, Ỹⱼ, f̃, step_flag = existence_uniqueness(tf!, Yⱼ, hⱼ, hmin, f, ∂f∂y_in)
     if ~success_flag
         return success_flag
     end
