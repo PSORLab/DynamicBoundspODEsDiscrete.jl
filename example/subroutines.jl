@@ -26,7 +26,7 @@ result = JacobianResult(out, y)
 xIntv = Interval{Float64}.(x)
 pIntv = Interval{Float64}.(p)
 yIntv = [xIntv; pIntv]
-tcoeffs = DynamicBoundspODEsPILMS.jacobian_taylor_coeffs!(result, g, yIntv, cfg)
+tcoeffs = DynamicBoundspODEsPILMS.jacobian_taylor_coeffs!(result, g, yIntv)
 #@btime jacobian_taylor_coeffs!($result, $g, $xIntv, $pIntv, $cfg)
 jac = result.derivs[1]
 tjac = zeros(Interval{Float64}, 4, 8)
@@ -92,7 +92,7 @@ hⱼ = 0.001
 yjcat = vcat(yⱼ,p)
 # TODO: Remember rP is computed outside iteration and stored to JacTaylorFunctor
 plohners = DynamicBoundspODEsPILMS.parametric_lohners!(itf!, rtf!, dtf, hⱼ, Ycat, Ycat, yjcat,
-                                                       Aⱼ₊₁, Aⱼ, Δⱼ, result, tjac, cfg, Jx, Jp)
+                                                       Aⱼ₊₁, Aⱼ, Δⱼ, result, Jx, Jp)
 
 @btime DynamicBoundspODEsPILMS.parametric_lohners!($itf!, $rtf!, $dtf, $hⱼ, $Ycat, $Ycat, $yjcat,
-                                                   $Aⱼ₊₁, $Aⱼ, $Δⱼ, $result, $tjac, $cfg, $Jx, $Jp)
+                                                   $Aⱼ₊₁, $Aⱼ, $Δⱼ, $result, $Jx, $Jp)

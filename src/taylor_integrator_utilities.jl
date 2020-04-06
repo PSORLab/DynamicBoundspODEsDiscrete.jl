@@ -239,6 +239,10 @@ struct JacTaylorFunctor!{F <: Function, T <: Real, S <: Real, D} <: Function
     Jxsto::Matrix{S}
     "Storage for sum of Jacobian w.r.t p"
     Jpsto::Matrix{S}
+    "Temporary for transpose of Jacobian w.r.t y"
+    tjac::Matrix{S}
+    "Jacobian Configuration for ForwardDiff"
+    cfg
 end
 
 """
@@ -277,11 +281,13 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <:
     M2Y = zeros(T, nx, nx)
     Jxsto = zeros(T, nx, nx)
     Jpsto = zeros(T, nx, np)
+    tjac = zeros(T, np + nx, nx*(s+1))
+    cfg = JacobianConfig(nothing, out, zeros(T, nx + np))
     return JacTaylorFunctor!{typeof(g!), Q, T,
                              Dual{Nothing, T, nx+np}}(g!, taux, t,
                              nx, np, s, xtaylor, xout, xaux, out, y, x, p, B,
                              Δⱼ₊₁, Yⱼ₊₁, yⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, vⱼ₊₁, rP, M1, M2, M2Y,
-                             Jxsto, Jpsto)
+                             Jxsto, Jpsto, tjac, cfg)
 end
 
 """
@@ -318,15 +324,14 @@ is required input and is initialized from `cfg = ForwardDiff.JacobianConfig(noth
 The JacTaylorFunctor! used for the evaluation is `g` and inputs are `x` and `p`.
 """
 function jacobian_taylor_coeffs!(result::MutableDiffResult{1,Vector{S},Tuple{Matrix{S}}},
-                                 g::JacTaylorFunctor!, yin::Vector{S},
-                                 cfg::JacobianConfig{T,V,N}) where {S <: Real, T, V, N}
+                                 g::JacTaylorFunctor!, yin::Vector{S}) where {S <: Real}
 
     # copyto! is used to avoid allocations
     copyto!(g.y, 1, yin, 1, g.nx + g.np)
 
     # other AD schemes may be usable as well but this is a length(g.out) >> nx + np
     # situtation typically
-    jacobian!(result, g, g.out, g.y, cfg)
+    jacobian!(result, g, g.out, g.y, g.cfg)
 
     # reset sum of Jacobian storage
     fill!(g.Jxsto, zero(S))
@@ -346,8 +351,10 @@ w.r.t. y = (x,p).
 function extract_JxJp!(Jx::Vector{Matrix{T}}, Jp::Vector{Matrix{T}},
                        result::MutableDiffResult{1,Vector{T},Tuple{Matrix{T}}},
                        tjac::Matrix{T}, nx::Int, np::Int, s::Int) where {T <: Real}
+
     jac = result.derivs[1]
     transpose!(tjac, jac)
+    
     for i in 1:(s+1)
         for q in 1:nx
             for z in 1:nx

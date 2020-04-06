@@ -16,7 +16,7 @@ function parametric_lohners!(stf!::TaylorFunctor!{F,S,T},
                              rtf!::TaylorFunctor!{F,S,S},
                              dtf!::JacTaylorFunctor!{F,S,D},
                              hⱼ, Ỹⱼ, Yⱼ, yⱼ, Aⱼ₊₁, Aⱼ, Δⱼ,
-                             result, tjac, cfg, Jx, Jp) where {F <: Function, T <: Real,
+                             result, Jx, Jp) where {F <: Function, T <: Real,
                              S <: Real, D <: Real}
 
     nx = stf!.nx
@@ -62,8 +62,8 @@ function parametric_lohners!(stf!::TaylorFunctor!{F,S,T},
         end
     end
 
-    jacobian_taylor_coeffs!(result, dtf!, Yⱼ, cfg)
-    extract_JxJp!(Jx, Jp, result, tjac, nx, np, k)
+    jacobian_taylor_coeffs!(result, dtf!, Yⱼ)
+    extract_JxJp!(Jx, Jp, result, dtf!.tjac, nx, np, k)
 
     hji = 1.0
     for i in 1:k
