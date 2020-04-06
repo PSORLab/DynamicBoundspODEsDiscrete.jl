@@ -1,11 +1,3 @@
-using LinearAlgebra, IntervalArithmetic, StaticArrays, TaylorSeries,
-      TaylorIntegration, ForwardDiff, McCormick, BenchmarkTools, DocStringExtensions
-
-using DiffResults: JacobianResult, MutableDiffResult
-using ForwardDiff: Partials, JacobianConfig, vector_mode_dual_eval, value, vector_mode_jacobian!
-
-import Base.copyto!
-
 """
 $(TYPEDSIGNATURES)
 
@@ -259,15 +251,15 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <:
         push!(taux, Taylor1(zeros(Q, i+1)))
     end
     x0 = zeros(T, nx)
-    xd0 = zeros(ForwardDiff.Dual{Nothing, T, nx+np}, nx)
+    xd0 = zeros(Dual{Nothing, T, nx+np}, nx)
     t = Taylor1(Q, s)
     xtaylor = Taylor1.(xd0, s)
     xout = Taylor1.(xd0, s)
     xaux = Taylor1.(xd0, s)
     out = zeros(T, nx*(s+1))
     y = zeros(T, nx + np)
-    x = zeros(ForwardDiff.Dual{Nothing, T, nx+np}, nx)
-    p = zeros(ForwardDiff.Dual{Nothing, T, nx+np}, np)
+    x = zeros(Dual{Nothing, T, nx+np}, nx)
+    p = zeros(Dual{Nothing, T, nx+np}, np)
     B = zeros(Q, nx,nx)
     Δⱼ₊₁ = zeros(T, nx)
     Yⱼ₊₁ = zeros(T, nx)
@@ -280,7 +272,7 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <:
     M2 = zeros(T, nx, nx)
     M2Y = zeros(T, nx, nx)
     return JacTaylorFunctor!{typeof(g!), Q, T,
-                             ForwardDiff.Dual{Nothing, T, nx+np}}(g!, taux, t,
+                             Dual{Nothing, T, nx+np}}(g!, taux, t,
                              nx, np, s, xtaylor, xout, xaux, out, y, x, p, B,
                              Δⱼ₊₁, Yⱼ₊₁, yⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, vⱼ₊₁, rP, M1, M2, M2Y)
 end
@@ -324,11 +316,11 @@ function jacobian_taylor_coeffs!(result::MutableDiffResult{1,Vector{S},Tuple{Mat
 
     # copyto! is used to avoid allocations
     copyto!(g.y, 1, x, 1, g.nx)
-    copyto!(g.y, 1+nx, p, 1, g.np)
+    copyto!(g.y, 1 + g.nx, p, 1, g.np)
 
     # other AD schemes may be usable as well but this is a length(g.out) >> nx + np
     # situtation typically
-    ForwardDiff.jacobian!(result, g, g.out, g.y, cfg)
+    jacobian!(result, g, g.out, g.y, cfg)
     nothing
 end
 
@@ -422,33 +414,3 @@ function calculateQinv!(qst::QRDenseStorage)
     transpose!(qst.inv, qst.Q)
     nothing
 end
-
-function f!(dx,x,p,t)
-    dx[1] = x[1]
-    dx[2] = x[2]
-    nothing
-end
-np = 2
-nx = 2
-k = 3
-x = [1.0; 2.0]
-p = [2.2; 2.2]
-y = Interval{Float64}.([x; p])
-g = JacTaylorFunctor!(f!, nx, np, k, Interval{Float64}(0.0), 0.0)
-out = g.out
-cfg = ForwardDiff.JacobianConfig(nothing, out, y)
-result = JacobianResult(out, y)
-xIntv = Interval{Float64}.(x)
-pIntv = Interval{Float64}.(p)
-tcoeffs = jacobian_taylor_coeffs!(result, g, xIntv, pIntv, cfg)
-#@btime jacobian_taylor_coeffs!($result, $g, $xIntv, $pIntv, $cfg)
-jac = result.derivs[1]
-tjac = zeros(Interval{Float64}, 4, 8)
-val = result.value
-
-Jx = Matrix{Interval{Float64}}[zeros(Interval{Float64},2,2) for i in 1:4]
-Jp = Matrix{Interval{Float64}}[zeros(Interval{Float64},2,2) for i in 1:4]
-extract_JxJp!(Jx, Jp, result, tjac, nx, np, k)
-#@btime extract_JxJp!($Jx, $Jp, $result, $tjac, $nx, $np, $k)
-
-# extact is good... actual jacobians look odd...

@@ -1,5 +1,3 @@
-include("C://Users//wilhe//Desktop//Package Development Work//DynamicBoundspODEsPILMS.jl//src//taylor_integrator_utilities.jl")
-
 """
 $(TYPEDSIGNATURES)
 
@@ -102,28 +100,3 @@ function parametric_lohners!(stf!::TaylorFunctor!{F,S,T},
     copyto!(Aⱼ, Aⱼ₊₁)
     nothing
 end
-
-Jx = Matrix{Interval{Float64}}[zeros(Interval{Float64},2,2) for i in 1:4]
-Jp = Matrix{Interval{Float64}}[zeros(Interval{Float64},2,2) for i in 1:4]
-Jxsto = zeros(Interval{Float64},2,2)
-Jpsto = zeros(Interval{Float64},2,2)
-
-rtf  = TaylorFunctor!(f!, nx, np, k, zero(Float64), zero(Float64))
-Yⱼ = [Interval{Float64}(-10.0, 20.0); Interval{Float64}(-10.0, 20.0)]
-P = [Interval{Float64}(2.0, 3.0); Interval{Float64}(2.0, 3.0)]
-yⱼ = mid.(Yⱼ)
-Δⱼ = Yⱼ - yⱼ
-At = zeros(2,2) + I
-Aⱼ =  QRDenseStorage(nx)
-Aⱼ₊₁ =  QRDenseStorage(nx)
-itf = TaylorFunctor!(f!, nx, np, k, zero(Interval{Float64}), zero(Float64))
-dtf = g
-hⱼ = 0.001
-# TODO: Remember rP is computed outside iteration and stored to JacTaylorFunctor
-plohners = parametric_lohners!(itf, rtf, dtf, hⱼ, Yⱼ, Yⱼ, yⱼ,
-                                     P, p, Aⱼ₊₁, Aⱼ, Δⱼ, result, tjac, cfg,
-                                     Jxsto, Jpsto, Jx, Jp)
-
-@btime parametric_lohners!($itf, $rtf, $dtf, $hⱼ, $Yⱼ, $Yⱼ, $yⱼ,
-                                 $P, $p, $Aⱼ₊₁, $Aⱼ, $Δⱼ, $result, $tjac, $cfg,
-                                 $Jxsto, $Jpsto, $Jx, $Jp)

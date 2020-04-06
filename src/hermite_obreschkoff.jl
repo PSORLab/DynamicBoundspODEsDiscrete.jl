@@ -42,47 +42,23 @@ in a forthcoming paper.
 function parametric_hermite_obreschkoff!(stf!::TaylorFunctor!{F,S,T},
                                          rtf!::TaylorFunctor!{F,S,S},
                                          dtf!::JacTaylorFunctor!{F,S,D},
-                                         hⱼ, Ỹⱼ, Yⱼ, Y0ⱼ₊₁, yⱼ, P, p, Aⱼ₊₁, Aⱼ, Δⱼ,
+                                         hₖ, Ỹₖ, Xₖ, X0ₖ₊₁, xₖ, P, p, Aₖ₊₁, Aₖ, Δₖ,
                                          result, tjac,
                                          cfg, Jxsto, Jpsto,
                                          Jx, Jp, ho::HermiteObreschkoff{Pho,Qho}) where  {F <: Function, T <: Real,
                                                                                       S <: Real, D <: Real,
                                                                                       Qho, Pho}
 
-    k = stf!.s
-    nx = stf!.nx
-    np = stf!.nx
-
-    rf̃ₜ = rtf!.f̃ₜ
-    rf̃ₜ = rtf!.f̃ₜ
-    rỸⱼ₀ = rtf!.Ỹⱼ₀
-    rỸⱼ = rtf!.Ỹⱼ
-    mY0ⱼ₊₁ = mid.(Y0ⱼ₊₁)
-    copyto!(rỸⱼ₀, 1, mY0ⱼ₊₁, 1, nx)
-    copyto!(rỸⱼ, 1+nx, p, 1, np)
-
-    rtf!(rf̃ₜ , rỸⱼ₀)
-    coeff_to_matrix!(rf̃, rf̃ₜ, nx, k)               # vⱼ₊₁ = f- j+1,i
-    for j in 1:nx
-        dtf!.vⱼ₊₁[j] = rf̃[j,1]
-    end
-    for i=2:(k+1)
-        for j in 1:nx
-            dtf!.vⱼ₊₁[j] += (hⱼ^i)*rf̃[j,k]
-        end
-    end
-
-    mYⱼ₊₁ = mid.(Y0ⱼ₊₁)
-    # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
-    Bⱼ₊₁ .= inv(mid.(Jxₖ₊₁))*(Jxsto*Aⱼ.Q)
-    Cⱼ₊₁ = inv(mid.(Jxₖ₊₁))*Jxₖ₊₁
-    dtf!.B .= mid.(M2Y)
-    calculateQ!(Aⱼ₊₁, dtf!.B, nx)
-    calculateQinv!(Aⱼ₊₁)
-    Yⱼ₊₁ = (mY0ⱼ₊₁ + Bⱼ*Δⱼ + Cⱼ₊₁*(Y0ⱼ₊₁ - mYⱼ₊₁) + δⱼ₊₁ + ) ∩ Y0ⱼ₊₁
-    yⱼ₊₁ = mid.(Yⱼ₊₁)
-    Δⱼ₊₁ = (Aⱼ₊₁.inv*Bⱼ₊₁)*Δⱼ + (Aⱼ₊₁.inv*Cⱼ₊₁)*vⱼ₊₁ + (mY0ⱼ₊₁ - mYⱼ₊₁)
-
+    x̂0ₖ₊₁ = mid.(X0ₖ₊₁)
+    Rₖ₊₁ =
+    δₖ₊₁ = vₖ₊₁ - vₖ + Rₖ₊₁
+    mJx = mid(Jxsto)
+    Bₖ₊₁ = mJx*(Jxsto*Aₖ)
+    Cₖ₊₁ = mJx*Jxsto1
+    Xₖ₊₁ = X + Bₖ₊₁*Δₖ + Cₖ₊₁*(X0ₖ₊₁ - x̂0ₖ₊₁) + δₖ₊₁ +
+    xₖ₊₁ = mid.(Xₖ₊₁)
+    Q = inv(Aⱼ₊₁)
+    Δₖ₊₁ = (Q*Bₖ₊₁)*Δₖ + (Q*Cₖ₊₁)*(X0ₖ₊₁ - x̂0ₖ₊₁) + Q*Jpsto*rP - Q*Jpsto1*rP + Q*inv(mid(Jxsto1)*δₖ₊₁
     nothing
 end
 

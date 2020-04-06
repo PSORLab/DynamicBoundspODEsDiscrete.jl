@@ -10,9 +10,13 @@ PhD Dissertation, Algorithm 5.1, page 73-74).
 function improvement_condition(Ỹⱼ::Vector{Interval{T}}, Ỹⱼ₀::Vector{Interval{T}}, nx::Int) where {T <: Real}
     Y0norm = 0.0
     Ynorm = 0.0
+    diam1 = 0.0
+    diam2 = 0.0
     for i in 1:nx
-        Ynorm = max(diam(Ỹⱼ[i]), Ynorm)
-        Y0norm = max(diam(Ỹⱼ₀[i]), Y0norm)
+        diam1 = diam(Ỹⱼ[i])
+        diam2 = diam(Ỹⱼ₀[i])
+        Ynorm = (diam1 > Ynorm) ? diam1 : Ynorm
+        Y0norm = (diam2 > Y0norm) ? diam2 : Y0norm
     end
     return (Ynorm/Y0norm) > 1.01
 end
@@ -174,24 +178,3 @@ function existence_uniqueness(tf!::TaylorFunctor!, Yⱼ::Vector{T},
     f̃[k] *= hⱼ^k
     return hⱼ, Ỹⱼ, f̃[k], flag
 end
-
-hⱼ = 0.001
-hmin = 0.00001
-Yⱼ = [Interval(0.1, 5.1); Interval(0.1, 8.9)]
-P = [Interval(0.1, 5.1); Interval(0.1, 8.9)]
-existence_uniqueness(g, Yⱼ, P, hⱼ, hmin, routIntv, Jx)
-#@btime improvement_condition($Yⱼ, $Yⱼ, $nx)
-@btime existence_uniqueness($g, $Yⱼ, $P, $hⱼ, $hmin, $routIntv, $Jx)
-#tv, xv = validated_integration(f!, Interval{Float64}.([3.0, 3.0]), 0.0, 0.3, 4, 1.0e-20, maxsteps=100 )
-Q = [Yⱼ; P]
-#@btime jacobianfunctor($outIntv, $yInterval)
-
-d = jacobianfunctor
-zqwa = d.g!
-zqwb = d.t
-zqwc = d.xtaylor
-zqwd = d.xout
-zqwe = d.xaux
-zqwr = d.taux
-#@btime jetcoeffs!($zqwa, $zqwb, $zqwc, $zqwd, $zqwe, $zqwr, $s, $p)
-#@code_warntype jetcoeffs!(zqwa, zqwb, zqwc, zqwd, zqwe, zqwr, p)
