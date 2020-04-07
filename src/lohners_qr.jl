@@ -87,6 +87,5 @@ function parametric_lohners!(set_tf!::TaylorFunctor!{F,S,T},
     mul!(M2, Aⱼ₊₁.inv, jac_tf!.Jpsto);    mul!(M1, M2, rP);    jac_tf!.Δⱼ₊₁ .+= M1   #jac_tf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Jpsto)*rP
     mul!(M1, M2Y, Δⱼ);                                         jac_tf!.Yⱼ₊₁ .= M1    #jac_tf!.Yⱼ₊₁ .+= Y*Δⱼ
     mul!(M1, jac_tf!.Jpsto, rP);                               jac_tf!.Yⱼ₊₁ .+= M1   # jac_tf!.Yⱼ₊₁ .+= Jpsto*rP
-    copyto!(Aⱼ, Aⱼ₊₁)
     nothing
 end

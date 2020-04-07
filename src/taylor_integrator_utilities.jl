@@ -433,9 +433,30 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Computes `inv(Q)`` via transpose! and stores this to `qst.inverse`.
+Computes `inv(Q)` via transpose! and stores this to `qst.inverse`.
 """
 function calculateQinv!(qst::QRDenseStorage)
     transpose!(qst.inv, qst.Q)
     nothing
 end
+
+"""
+$(TYPEDEF)
+
+Provides preallocated storage for an array of QR factorizations.
+
+$(TYPEDFIELDS)
+"""
+struct QRStack
+    "Vector of Dense QR Factorization Storage"
+    a::Vector{QRDenseStorage}
+end
+function QRStack(nx::Int, steps::Int)
+    QRStack(fill(QRDenseStorage(nx), steps))
+end
+
+function setindex!(x::QRStack, b::QRDenseStorage, i::Int)
+    x.a[i] = b
+    nothing
+end
+getindex(x::QRStack, i::Int) = x.a[i]
