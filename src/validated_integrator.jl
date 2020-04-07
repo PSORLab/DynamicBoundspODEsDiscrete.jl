@@ -37,8 +37,7 @@ function single_step!(f, hj_in, γ, hmin, Yⱼ)
         return success_flag
     end
     while hj > hmin
-        parametric_lohners!(stf!, rtf!, dtf!, hⱼ, Ỹⱼ, Yⱼ, yⱼ, P, p,
-                            Aⱼ₊₁, Aⱼ, Δⱼ, result, tjac, cfg, Jxsto, Jpsto, Jx, Jp)
+        parametric_lohners!(stf!, rtf!, dtf!, hⱼ, Ỹⱼ, Yⱼ, yⱼ, Aⱼ₊₁, Aⱼ, Δⱼ)
 
         # Lepus error control scheme
         errⱼ = estimate_excess(hj, k, f̃[k], γ, nx)

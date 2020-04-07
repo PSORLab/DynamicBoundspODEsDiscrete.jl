@@ -241,6 +241,12 @@ struct JacTaylorFunctor!{F <: Function, T <: Real, S <: Real, D} <: Function
     Jpsto::Matrix{S}
     "Temporary for transpose of Jacobian w.r.t y"
     tjac::Matrix{S}
+    "Storage for vector of Jacobian w.r.t x"
+    Jx::Vector{Matrix{S}}
+    "Storage for vector of Jacobian w.r.t p"
+    Jp::Vector{Matrix{S}}
+    "Jacobian Result from DiffResults"
+    result::MutableDiffResult{1, Vector{S}, Tuple{Matrix{S}}}
     "Jacobian Configuration for ForwardDiff"
     cfg
 end
@@ -283,11 +289,14 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <:
     Jpsto = zeros(T, nx, np)
     tjac = zeros(T, np + nx, nx*(s+1))
     cfg = JacobianConfig(nothing, out, zeros(T, nx + np))
+    result = JacobianResult(out, zeros(T, nx + np))
+    Jx = fill(zeros(T,nx,nx), s+1)
+    Jp = fill(zeros(T,nx,np), s+1)
     return JacTaylorFunctor!{typeof(g!), Q, T,
                              Dual{Nothing, T, nx+np}}(g!, taux, t,
                              nx, np, s, xtaylor, xout, xaux, out, y, x, p, B,
                              Δⱼ₊₁, Yⱼ₊₁, yⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, vⱼ₊₁, rP, M1, M2, M2Y,
-                             Jxsto, Jpsto, tjac, cfg)
+                             Jxsto, Jpsto, tjac, Jx, Jp, result, cfg)
 end
 
 """
@@ -323,15 +332,14 @@ output inplace to `result`. A JacobianConfig object without tag checking, cfg,
 is required input and is initialized from `cfg = ForwardDiff.JacobianConfig(nothing, out, y)`.
 The JacTaylorFunctor! used for the evaluation is `g` and inputs are `x` and `p`.
 """
-function jacobian_taylor_coeffs!(result::MutableDiffResult{1,Vector{S},Tuple{Matrix{S}}},
-                                 g::JacTaylorFunctor!, yin::Vector{S}) where {S <: Real}
+function jacobian_taylor_coeffs!(g::JacTaylorFunctor!, yin::Vector{S}) where {S <: Real}
 
     # copyto! is used to avoid allocations
     copyto!(g.y, 1, yin, 1, g.nx + g.np)
 
     # other AD schemes may be usable as well but this is a length(g.out) >> nx + np
     # situtation typically
-    jacobian!(result, g, g.out, g.y, g.cfg)
+    jacobian!(g.result, g, g.out, g.y, g.cfg)
 
     # reset sum of Jacobian storage
     fill!(g.Jxsto, zero(S))
@@ -354,7 +362,7 @@ function extract_JxJp!(Jx::Vector{Matrix{T}}, Jp::Vector{Matrix{T}},
 
     jac = result.derivs[1]
     transpose!(tjac, jac)
-    
+
     for i in 1:(s+1)
         for q in 1:nx
             for z in 1:nx
