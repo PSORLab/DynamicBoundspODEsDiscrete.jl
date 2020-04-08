@@ -46,6 +46,10 @@ mutable struct DiscretizeRelax{F,X,T} <: AbstractODERelaxIntegator
     support_dict::ImmutableDict{Int,Int}
     "Holds data for numeric error encountered in integration step"
     error_code::TerminationStatusCode
+    "Number of state variables"
+    nx::Int
+    "Number of decision variables"
+    np::Int
     "Relaxation Type"
     type
 end
@@ -96,15 +100,16 @@ $(TYPEDSIGNATURES)
 
 Performs a single-step of the validated integrator.
 """
-function single_step!(hj_in, A::QRStack, Yⱼ, repeat_limit,
-                      f, γ, hmin, nx)
+function single_step!(stf!, rtf!, dtf!, hj_in, A::QRStack, repeat_limit, hmin, nx, Yⱼ,
+                      f, γ)
 
     status_flag = COMPLETED
     hj = hj_in
     hj1 = 0.0
 
     # validate existence & uniqueness
-    hⱼ, Ỹⱼ, f̃, step_flag = existence_uniqueness(tf!, Yⱼ, hⱼ, hmin, f, ∂f∂y_in)
+    ∂f∂y_in  =  #TODO
+    hⱼ, Ỹⱼ, f̃, step_flag = existence_uniqueness(stf!, Yⱼ, hⱼ, hmin, f, ∂f∂y_in)
     if ~step_flag
         status_flag = NUMERICAL_ERROR
         return status_flag, hj, hj1
@@ -113,7 +118,7 @@ function single_step!(hj_in, A::QRStack, Yⱼ, repeat_limit,
     # repeat until desired tolerance is otained or repetition limit is hit
     count = 1
     while (hj > hmin) && (count < repeat_limit)
-        yⱼ₊₁, Yⱼ₊₁ = parametric_lohners!(stf!, rtf!, dtf!, hⱼ, Ỹⱼ, Yⱼ, yⱼ, Aⱼ₊₁, Aⱼ, Δⱼ)
+        yⱼ₊₁, Yⱼ₊₁ = parametric_lohners!(stf!, rtf!, dtf!, hⱼ, Ỹⱼ, Yⱼ, yⱼ, A, Δⱼ)
         zⱼ₊₁ .= real_tf!.f̃
         Yⱼ₊₁ = jac_tf!.Yⱼ₊₁
         # Lepus error control scheme
@@ -198,7 +203,7 @@ function relax!(d::DiscretizeRelax)
         hnext = min(hnext, next_support - t, tmax - t)
 
         # perform step size calculation and update bound information
-        hlast, hnext = single_step!(hnext, d.A, d.repeat_limit)
+        step_flag, hlast, hnext = single_step!(d.set_tf!, d.real_tf!, d.jac_tf!, hnext, d.A, d.repeat_limit, d.hmin, d.nx)
 
         # advance step counters
         t += hlast
@@ -208,10 +213,17 @@ function relax!(d::DiscretizeRelax)
         if nsteps > d.step_limit
             d.error_code = NUMERICAL_ERROR
             break
+        elseif step_flag !== COMPLETED
+            d.error_code = NUMERICAL_ERROR
+            break
         end
 
         #unpack variables computed in single step
         # TODO
+    end
+
+    if d.error_code === EMPTY
+        d.error_code = COMPLETED
     end
 
     nothing

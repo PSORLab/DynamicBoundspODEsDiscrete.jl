@@ -85,14 +85,15 @@ Ycat = [Yⱼ; P]
 yⱼ = mid.(Yⱼ)
 Δⱼ = Yⱼ - yⱼ
 At = zeros(2,2) + I
-Aⱼ =  DynamicBoundspODEsPILMS.QRDenseStorage(nx)
-Aⱼ₊₁ =  DynamicBoundspODEsPILMS.QRDenseStorage(nx)
+#Aⱼ =  DynamicBoundspODEsPILMS.QRDenseStorage(nx)
+#Aⱼ₊₁ =  DynamicBoundspODEsPILMS.QRDenseStorage(nx)
+A =  DynamicBoundspODEsPILMS.QRStack(nx, 2)
 dtf = g
 hⱼ = 0.001
 yjcat = vcat(yⱼ,p)
 # TODO: Remember rP is computed outside iteration and stored to JacTaylorFunctor
-plohners = DynamicBoundspODEsPILMS.parametric_lohners!(itf!, rtf!, dtf, hⱼ, Ycat, Ycat, yjcat,
-                                                       Aⱼ₊₁, Aⱼ, Δⱼ)
+plohners = DynamicBoundspODEsPILMS.parametric_lohners!(itf!, rtf!, dtf, hⱼ, Ycat, Ycat,
+                                                       A, yjcat, Δⱼ)
 
-@btime DynamicBoundspODEsPILMS.parametric_lohners!($itf!, $rtf!, $dtf, $hⱼ, $Ycat, $Ycat, $yjcat,
-                                                   $Aⱼ₊₁, $Aⱼ, $Δⱼ)
+@btime DynamicBoundspODEsPILMS.parametric_lohners!($itf!, $rtf!, $dtf, $hⱼ, $Ycat, $Ycat,
+                                                    $A, $yjcat, $Δⱼ)
