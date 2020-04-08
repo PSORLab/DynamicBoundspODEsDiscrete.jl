@@ -450,13 +450,25 @@ $(TYPEDFIELDS)
 struct QRStack
     "Vector of Dense QR Factorization Storage"
     a::Vector{QRDenseStorage}
+    "Length of Storge in QRStack"
+    s::Int
 end
-function QRStack(nx::Int, steps::Int)
-    QRStack(fill(QRDenseStorage(nx), steps))
-end
+QRStack(nx::Int, steps::Int) = QRStack(fill(QRDenseStorage(nx), steps), steps)
 
 function setindex!(x::QRStack, b::QRDenseStorage, i::Int)
     x.a[i] = b
     nothing
 end
 getindex(x::QRStack, i::Int) = x.a[i]
+
+"""
+$(TYPEDEF)
+
+Copies the ith element of the QR stack to the (i+1)th element.
+"""
+function advance!(x::QRStack)
+    for i in 1:(x.s-1)
+        Base.copyto!(x.a[i], x.a[i+1])
+    end
+    nothing
+end

@@ -1,7 +1,8 @@
 module DynamicBoundspODEsPILMS
 
 using McCormick, DocStringExtensions, DynamicBoundsBase,
-      Reexport, LinearAlgebra, IntervalArithmetic, StaticArrays, TaylorSeries
+      Reexport, LinearAlgebra, IntervalArithmetic, StaticArrays, TaylorSeries,
+      ElasticArrays
 #@reexport using DynamicBoundsBase
 
 using ForwardDiff: Chunk, Dual, Partials, construct_seeds, single_seed,
@@ -12,7 +13,7 @@ using ForwardDiff: Chunk, Dual, Partials, construct_seeds, single_seed,
 #using DiffEqBase: remake, AbstractODEProblem, AbstractContinuousCallback, solve
 using DiffResults: JacobianResult, MutableDiffResult
 
-import Base.copyto!
+import Base: setindex!, getindex, copyto!
 
 #import DynamicBoundsBase: relax!, integrate!
 #export Wilhelm2019, set, setall!, get, getall!, relax!, integrate!
