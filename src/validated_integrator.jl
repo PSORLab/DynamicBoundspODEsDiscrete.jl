@@ -8,8 +8,6 @@ An elastic array is Y
 $(TYPEDFIELDS)
 """
 mutable struct DiscretizeRelax{F,X,T} <: AbstractODERelaxIntegator
-    "Right-hand side function for pODEs"
-    f::F
     "Initial Conditiion for pODEs"
     x0f::X
     "Parameter value for pODEs"
@@ -30,8 +28,10 @@ mutable struct DiscretizeRelax{F,X,T} <: AbstractODERelaxIntegator
     jac_tf!::JacTaylorFunctor!
     "Storage for QR Factorizations"
     A::QRStack
-    "LEPUS gamma constant"
-    γ::Float64
+    "LEPUS gamma constant for Hermite-Obreschkoff"
+    γHO::Float64
+    "LEPUS gamma constant for parametric linear multistep methods"
+    γPILMS::Float64
     "LEPUS repetition limit"
     repeat_limit::Int
     "Maximum number of integration steps"
@@ -53,11 +53,15 @@ mutable struct DiscretizeRelax{F,X,T} <: AbstractODERelaxIntegator
     "Relaxation Type"
     type
 end
-function DiscretizeRelax(d::ODERelaxProb, relax = false)
+function DiscretizeRelax(d::ODERelaxProb, repeat_limit = 50, step_limit = 20000,
+                         tol = 1E-3, hmin = 1E-13, typePILMS = :lohner,
+                         typeHO =:lohner, relax = false)
+    nx = d.nx
     np = d.np
     p = d.p
     pL = d.pL
     pU = d.pU
+    f! = d.f!
 
     # build functors for evaluating Taylor coefficients
     if relax == true
@@ -69,11 +73,25 @@ function DiscretizeRelax(d::ODERelaxProb, relax = false)
     end
     real_tf! = TaylorFunctor!(f!, nx, np, k, zero(Float64), zero(Float64))
 
-    qr_stack = QRStack(nx)
-    storage = ElasticArray()
-    sizehint!(storage, nx+np, 1000)                   # suggest 1000*(nx+np) steps likely
+    γHO = ### typeHO
+    γPILMS = ### typePILMS
 
-    return DiscretizeRelax{F,X,T}()
+    A = QRStack(nx)
+    storage = ElasticArray()
+    sizehint!(storage, nx+np, 1000)   # suggest 1000*(nx+np) steps likely
+
+    if (tsupports[1] == 0.0)
+        # first support is at time index 1
+        support_dict = ImmutableDict(d.support_dict, 1 => 1)
+    else
+        # meaningless placeholder
+        support_dict = ImmutableDict(d.support_dict, -1 => -1)
+    end
+    error_code = RELAXATION_NOT_CALLED
+
+    return DiscretizeRelax{F,X,T}(d.x0, p, pL, pU, d.tspan, d.tsupports, real_tf!,
+                                  set_tf!, real_tf!, A, γHO, γPILMS, repeat_limit,
+                                  step_limit, tol, hmin, storage, nx, np, type)
 end
 
 
@@ -94,21 +112,19 @@ function estimate_excess(hj, k, fk, γ, nx)
 end
 
 
-
 """
 $(TYPEDSIGNATURES)
 
 Performs a single-step of the validated integrator.
 """
 function single_step!(stf!, rtf!, dtf!, hj_in, A::QRStack, repeat_limit, hmin, nx, Yⱼ,
-                      f, γ)
+                      f, γ, Δ, ∂f∂y_in)
 
     status_flag = COMPLETED
     hj = hj_in
     hj1 = 0.0
 
     # validate existence & uniqueness
-    ∂f∂y_in  =  #TODO
     hⱼ, Ỹⱼ, f̃, step_flag = existence_uniqueness(stf!, Yⱼ, hⱼ, hmin, f, ∂f∂y_in)
     if ~step_flag
         status_flag = NUMERICAL_ERROR
@@ -118,9 +134,11 @@ function single_step!(stf!, rtf!, dtf!, hj_in, A::QRStack, repeat_limit, hmin, n
     # repeat until desired tolerance is otained or repetition limit is hit
     count = 1
     while (hj > hmin) && (count < repeat_limit)
-        yⱼ₊₁, Yⱼ₊₁ = parametric_lohners!(stf!, rtf!, dtf!, hⱼ, Ỹⱼ, Yⱼ, yⱼ, A, Δⱼ)
+
+        yⱼ₊₁, Yⱼ₊₁ = parametric_lohners!(stf!, rtf!, dtf!, hⱼ, Ỹⱼ, Yⱼ, yⱼ, A, Δ)
         zⱼ₊₁ .= real_tf!.f̃
         Yⱼ₊₁ = jac_tf!.Yⱼ₊₁
+
         # Lepus error control scheme
         errⱼ = estimate_excess(hj, k, f̃[k], γ, nx)
         if errⱼ <= hj*tol
@@ -138,7 +156,7 @@ function single_step!(stf!, rtf!, dtf!, hj_in, A::QRStack, repeat_limit, hmin, n
     # updates Aj for next step
     advance!(A)
 
-    return status_flag, hj, hj1
+    return status_flag, hj, hj1, yⱼ₊₁, zⱼ₊₁, Yⱼ₊₁
 end
 
 function set_p!(jac_tf!::JacTaylorFunctor!{F,T,MC{N,NS},D}, p, pL, pU) where {F <: Function, T <: Real, N, D}
@@ -169,6 +187,9 @@ function compute_y0!(out::ElasticArray{MC{N,NS},2}, x0, p, pL, pU, nx, np) where
     nothing
 end
 
+set_Δ!(Δ::Vector{Vector{Interval{Float64}}}, out::ElasticArray{Interval{Float64},2})
+set_Δ!(Δ::Vector{Vector{MC{N,NS}}}, out::ElasticArray{MC{N,NS},2})
+
 function relax!(d::DiscretizeRelax)
 
     # Functor set P and P - p values for calculations
@@ -186,11 +207,14 @@ function relax!(d::DiscretizeRelax)
     support_indx = 1
     if (tsupports[1] == 0.0)
         next_support = tsupports[2]
-        d.support_dict = ImmutableDict(d.support_dict, support_indx => 1)
         support_indx += 1
     else
         next_support = tsupports[1]
     end
+
+    # initialize QR type storage
+    set_Δ!(d.Δ, d.storage)
+    reinitialize!(d.A)
 
     # Begin integration loop
     hlast = 0.0
@@ -203,7 +227,8 @@ function relax!(d::DiscretizeRelax)
         hnext = min(hnext, next_support - t, tmax - t)
 
         # perform step size calculation and update bound information
-        step_flag, hlast, hnext = single_step!(d.set_tf!, d.real_tf!, d.jac_tf!, hnext, d.A, d.repeat_limit, d.hmin, d.nx)
+        step_flag, hlast, hnext = single_step!(d.set_tf!, d.real_tf!, d.jac_tf!, hnext,
+                                               d.A, d.repeat_limit, d.hmin, d.nx)
 
         # advance step counters
         t += hlast

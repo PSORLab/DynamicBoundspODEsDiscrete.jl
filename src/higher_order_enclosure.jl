@@ -67,6 +67,7 @@ function existence_uniqueness(tf!::TaylorFunctor!, Yⱼ::Vector{T}, hⱼ::Float6
     ∂f∂y = tf!.∂f∂y
     hIk = hIk = Interval{Float64}(0.0, hⱼ^k)
 
+    inβ = true
     α = 0.8
     ϵ = 1.0
     for i in 1:(k+1)

@@ -18,24 +18,50 @@ nx = 2
 k = 3
 x = [1.0; 2.0]
 p = [2.2; 2.2]
-y = Interval{Float64}.([x; p])
-g = DynamicBoundspODEsPILMS.JacTaylorFunctor!(f!, nx, np, k, Interval{Float64}(0.0), 0.0)
-out = g.out
-cfg = ForwardDiff.JacobianConfig(nothing, out, y)
-result = JacobianResult(out, y)
+jtf! = DynamicBoundspODEsPILMS.JacTaylorFunctor!(f!, nx, np, k, Interval{Float64}(0.0), 0.0)
+
+
 xIntv = Interval{Float64}.(x)
 pIntv = Interval{Float64}.(p)
 yIntv = [xIntv; pIntv]
-tcoeffs = DynamicBoundspODEsPILMS.jacobian_taylor_coeffs!(g, yIntv)
-#@btime jacobian_taylor_coeffs!($result, $g, $xIntv, $pIntv, $cfg)
+tcoeffs = DynamicBoundspODEsPILMS.jacobian_taylor_coeffs!(jtf!, yIntv)
+
+result = JacobianResult(jtf!.out, yIntv)
 jac = result.derivs[1]
 tjac = zeros(Interval{Float64}, 4, 8)
 val = result.value
-
 Jx = Matrix{Interval{Float64}}[zeros(Interval{Float64},2,2) for i in 1:4]
 Jp = Matrix{Interval{Float64}}[zeros(Interval{Float64},2,2) for i in 1:4]
+
 DynamicBoundspODEsPILMS.extract_JxJp!(Jx, Jp, result, tjac, nx, np, k)
-#@btime extract_JxJp!($Jx, $Jp, $result, $tjac, $nx, $np, $k)
+rtf!  = DynamicBoundspODEsPILMS.TaylorFunctor!(f!, nx, np, k, zero(Float64), zero(Float64))
+itf! = DynamicBoundspODEsPILMS.TaylorFunctor!(f!, nx, np, k, zero(Interval{Float64}), zero(Float64))
+
+itf!(g.out, yIntv)
+
+outIntv =
+jtf!(outIntv, yIntv)
+
+
+coeff_out = zeros(Interval{Float64},2,4)
+DynamicBoundspODEsPILMS.coeff_to_matrix!(coeff_out, jtf!.out, nx, k)
+
+hⱼ = 0.001
+hmin = 0.00001
+DynamicBoundspODEsPILMS.existence_uniqueness(itf!, yIntv, hⱼ, hmin, coeff_out, Jx)
+DynamicBoundspODEsPILMS.improvement_condition(yIntv, yIntv, nx)
+
+storage = DynamicBoundspODEsPILMS.QRDenseStorage(nx)
+stack = DynamicBoundspODEsPILMS.QRStack(nx, 2)
+
+plohners = DynamicBoundspODEsPILMS.parametric_lohners!(itf!, rtf!, dtf, hⱼ, Ycat, Ycat,
+                                                       A, yjcat, Δⱼ)
+
+jetcoeffs!(zqwa, zqwb, zqwc, zqwd, zqwe, zqwr, p)
+#=
+y = Interval{Float64}.([x; p])
+out = g.out
+cfg = ForwardDiff.JacobianConfig(nothing, out, y)
 
 # extact is good... actual jacobians look odd...
 
@@ -45,8 +71,6 @@ Yⱼ = [Interval(0.1, 5.1); Interval(0.1, 8.9)]
 P = [Interval(0.1, 5.1); Interval(0.1, 8.9)]
 routIntv = copy(Yⱼ)
 
-rtf!  = DynamicBoundspODEsPILMS.TaylorFunctor!(f!, nx, np, k, zero(Float64), zero(Float64))
-itf! = DynamicBoundspODEsPILMS.TaylorFunctor!(f!, nx, np, k, zero(Interval{Float64}), zero(Float64))
 out = zeros(Interval{Float64},8)
 coeff_out = zeros(Interval{Float64},2,4)
 Ycat = [Yⱼ; P]
@@ -56,7 +80,7 @@ itf!(out, Ycat)
 DynamicBoundspODEsPILMS.coeff_to_matrix!(coeff_out, out, nx, k)
 @btime DynamicBoundspODEsPILMS.coeff_to_matrix!($coeff_out, $out, $nx, $k)
 
-DynamicBoundspODEsPILMS.existence_uniqueness(itf!, Ycat, hⱼ, hmin, coeff_out, Jx)
+DynamicBoundspODEsPILoutIntvMS.existence_uniqueness(itf!, Ycat, hⱼ, hmin, coeff_out, Jx)
 #@btime improvement_condition($Yⱼ, $Yⱼ, $nx)
 @btime DynamicBoundspODEsPILMS.existence_uniqueness($itf!, $Ycat, $hⱼ, $hmin, $coeff_out, $Jx)
 #tv, xv = validated_integration(f!, Interval{Float64}.([3.0, 3.0]), 0.0, 0.3, 4, 1.0e-20, maxsteps=100 )
@@ -97,3 +121,4 @@ plohners = DynamicBoundspODEsPILMS.parametric_lohners!(itf!, rtf!, dtf, hⱼ, Yc
 
 @btime DynamicBoundspODEsPILMS.parametric_lohners!($itf!, $rtf!, $dtf, $hⱼ, $Ycat, $Ycat,
                                                     $A, $yjcat, $Δⱼ)
+=#

@@ -462,13 +462,26 @@ end
 getindex(x::QRStack, i::Int) = x.a[i]
 
 """
-$(TYPEDEF)
+$(TYPEDSIGNATURES)
 
 Copies the ith element of the QR stack to the (i+1)th element.
 """
 function advance!(x::QRStack)
     for i in 1:(x.s-1)
         Base.copyto!(x.a[i], x.a[i+1])
+    end
+    nothing
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Sets the first QR storage to the identity matrix.
+"""
+function reinitialize!(x::QRStack)
+    fill!(0.0, x[1])
+    for i in 1:length(x)
+        x[1][i,i] = 1.0
     end
     nothing
 end
