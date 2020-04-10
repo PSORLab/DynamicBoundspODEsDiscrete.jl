@@ -21,6 +21,8 @@ import Base: setindex!, getindex, copyto!
 include("taylor_integrator_utilities.jl")
 include("higher_order_enclosure.jl")
 include("lohners_qr.jl")
+include("validated_pilms.jl")
+include("hermite_obreschkoff.jl")
 
 #include("local_integration_problem.jl")
 #include("interval_contractor.jl")
