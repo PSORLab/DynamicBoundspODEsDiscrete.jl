@@ -1,5 +1,3 @@
-include("C://Users//wilhe//Desktop//Package Development Work//DynamicBoundspODEsPILMS.jl//src//taylor_integrator_utilities.jl")
-
 """
 $(TYPEDEF)
 
@@ -29,7 +27,7 @@ function HermiteObreschkoff(p::Int, q::Int)
     HermiteObreschkoff(SVector{p}(cpq), SVector{q}(cqp))
 end
 
-
+#=
 """
 $(TYPEDSIGNATURES)
 
@@ -87,3 +85,4 @@ plohners = parametric_hermite_obreschkoff!itf, rtf, dtf, hⱼ, Yⱼ, Yⱼ, Y0ⱼ
 @btime parametric_hermite_obreschkoff!($itf, $rtf, $dtf, $hⱼ, $Yⱼ, $Yⱼ, $Y0ⱼ₊₁, $yⱼ,
                                        $P, $p, $Aⱼ₊₁, $Aⱼ, $Δⱼ, $result, $tjac, $cfg,
                                        $Jxsto, $Jpsto, $Jx, $Jp)
+=#

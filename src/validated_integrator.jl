@@ -7,7 +7,7 @@ An elastic array is Y
 
 $(TYPEDFIELDS)
 """
-mutable struct DiscretizeRelax{F,X,T} <: AbstractODERelaxIntegator
+mutable struct DiscretizeRelax{F,X,T,P,Q,K} <: AbstractODERelaxIntegator
     "Initial Conditiion for pODEs"
     x0f::X
     "Parameter value for pODEs"
@@ -32,6 +32,10 @@ mutable struct DiscretizeRelax{F,X,T} <: AbstractODERelaxIntegator
     γHO::Float64
     "LEPUS gamma constant for parametric linear multistep methods"
     γPILMS::Float64
+    "Parametric Linear Multistep Method Storage"
+    methodPLMS::PILMS{N,K}
+    "Hermite Obreschkoff Storage"
+    methodHO::HermiteObreschkoff{P,Q}
     "LEPUS repetition limit"
     repeat_limit::Int
     "Maximum number of integration steps"
@@ -53,8 +57,11 @@ mutable struct DiscretizeRelax{F,X,T} <: AbstractODERelaxIntegator
     "Relaxation Type"
     type
 end
-function DiscretizeRelax(d::ODERelaxProb, repeat_limit = 50, step_limit = 20000,
-                         tol = 1E-3, hmin = 1E-13, typePILMS = :lohner,
+function DiscretizeRelax(d::ODERelaxProb;
+                         typeHO::PILMS = PILMS(1)
+                         typePILMS::HermiteObreschkoff = HermiteObreschkoff(0,0),
+                         repeat_limit = 50, step_limit = 20000,
+                         tol = 1E-3, hmin = 1E-13,
                          typeHO =:lohner, relax = false)
     nx = d.nx
     np = d.np
