@@ -2,7 +2,7 @@ module DynamicBoundspODEsPILMS
 
 using McCormick, DocStringExtensions, DynamicBoundsBase,
       Reexport, LinearAlgebra, IntervalArithmetic, StaticArrays, TaylorSeries,
-      ElasticArrays
+      ElasticArrays, DataStructures
 #@reexport using DynamicBoundsBase
 
 using ForwardDiff: Chunk, Dual, Partials, construct_seeds, single_seed,

@@ -4,6 +4,7 @@ authors = ["Matthew Wilhelm <matthew.wilhelm@uconn.edu>"]
 version = "0.1.0"
 
 [deps]
+DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
 DiffResults = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 DynamicBoundsBase = "890bb398-7f8e-4565-ac8e-279ab2833f68"
@@ -17,6 +18,7 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 TaylorSeries = "6aa5eb33-94cf-58f4-a9d0-e4b2c4fc25ea"
 
 [compat]
+DataStructures = "0.17.11"
 DiffResults = "~1.0"
 DocStringExtensions = "~0.8"
 DynamicBoundsBase = "~0.1"
