@@ -18,6 +18,8 @@ import Base: setindex!, getindex, copyto!
 #import DynamicBoundsBase: relax!, integrate!
 #export Wilhelm2019, set, setall!, get, getall!, relax!, integrate!
 
+export AdamsMoulton, BDF
+
 include("taylor_integrator_utilities.jl")
 include("higher_order_enclosure.jl")
 include("lohners_qr.jl")

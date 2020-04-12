@@ -14,7 +14,7 @@ $(TYPEDFIELDS)
 """
 struct PLMS{N,T<:AbstractLinearMethod}
     "Time ordered from current time step 1 to (N-1)th prior time"
-    times::CircularBuffer{Vector{Float64}}
+    times::CircularBuffer{Float64}
     "Coefficients of the PLMs method"
     coeffs::Vector{Float64}
     "A vector of length N used to compute β part coefficients"
@@ -25,7 +25,9 @@ struct PLMS{N,T<:AbstractLinearMethod}
     g::Vector{Float64}
 end
 function PLMS(x::Val{N}, s::T) where {N, T<:AbstractLinearMethod}
-    PLMS{N,T}(zeros(Float64,N), zeros(Float64,N))
+    c = CircularBuffer{Float64}(N)
+    fill!(c, 0.0)
+    PLMS{N,T}(c, zeros(Float64,N), zeros(Float64,N), zeros(Float64,N,N), zeros(Float64,N))
 end
 
 @generated function seed_tuple(u::Val{U}, n::Val{N}) where {U,N}
@@ -34,6 +36,7 @@ end
     return expr
 end
 
+#=
 """
 $(TYPEDSIGNATURES)
 
@@ -49,10 +52,12 @@ function compute_coefficients!(x::PLMS{N, AdamsMoulton}) where N
     for q = 1:N
         c[0,q] = 1/q
     end
-    for q = 2:(N+1)
+    for q = 1:N
         for j = 1:N
-            if
-                c[j, q] = c[j-1, q] - c[j-1,q+1]*hn/(t[1] - t[j+1])
+            if j == 1
+                c[1,q] = 1/q
+            elseif j >= q
+                c[q, j] = c[j-1, q] - c[j-1,q+1]*hn/(t[1] - t[j+1])
             else
                 break
             end
@@ -65,6 +70,7 @@ function compute_coefficients!(x::PLMS{N, AdamsMoulton}) where N
     end
     nothing
 end
+=#
 
 struct PILMsFunctor{N,T,S,JX,JP}
     "PLMS Storage"
@@ -73,17 +79,41 @@ struct PILMsFunctor{N,T,S,JX,JP}
     buffer_Jx::CircularBuffer{Matrix{S}}
     "Circular Buffer for Holding Jp's"
     buffer_Jp::CircularBuffer{Matrix{S}}
+    "Circular Buffer for state bounds/relaxations X's"
     X::CircularBuffer{Vector{S}}
-    t::CircularBuffer{Vector{Float64}}
+    "Circular Buffer for times"
+    t::CircularBuffer{Float64}
+    "Holds parameter values P"
     P::Vector{S}
+    "Holds parameter values shift by reference, P - p"
     rP::Vector{S}
+    "Number of state variables"
     nx::Int
+    "Number of decision variables"
     np::Int
+    "Jacobian of the rhs w.r.t to the state variables"
     Jx!::JX
+    "Jacobian of the rhs w.r.t to the descision variables"
     Jp!::JP
-    "Temporary Storage for "
+    "Temporary Storage for sum of the Jacobian w.r.t p "
     sJp::Matrix{S}
 end
+function PILMsFunctor(s::S, plms::PLMS{N,T}, Jx!, Jp!, nx, np) where {S, N, T<:AbstractLinearMethod}
+    buffer_Jx = CircularBuffer{Matrix{S}}(N)
+    buffer_Jp = CircularBuffer{Matrix{S}}(N)
+    X = CircularBuffer{Vector{S}}(N)
+    t = CircularBuffer{Float64}(N)
+    fill!(buffer_Jx, zeros(S, nx, nx))
+    fill!(buffer_Jp, zeros(S, nx, np))
+    fill!(X, zeros(S, nx))
+    fill!(t, 0.0)
+    P = zeros(S,np)
+    rP = zeros(S,np)
+    sJp = zeros(S, nx, np)
+    PILMsFunctor{N,T,S,typeof(Jx!),typeof(Jp!)}(plms, buffer_Jx, buffer_Jp, X,
+                                                t, P, rP, nx, np, Jx!, Jp!, sJp)
+end
+
 
 function update_coefficients!(pf::PILMsFunctor{N,T}, t0::Float64) where {N, T<:AbstractLinearMethod}
     pushfirst!(pf.plms.times, t0)
@@ -104,6 +134,7 @@ function compute_sum_Jp!(pf::PILMsFunctor)
     accumulate!(.+, pf.buffer_Jp, pf.buffer_Jp)
     nothing
 end
+#=
 function compute_δₖ!(pf::PILMsFunctor)
 end
 
@@ -117,6 +148,7 @@ function compute_Δₖ!(pf::PILMsFunctor)
     Δ = Yinv*()*(X-x) + (Yinv*((I - Jk1nx)*Aₖ₋₁))*Δₖ₋₁ + Yinv*Jkp*pf.rP
         + Yinv*δₖ + sum(Yinv*(Jkjnx*Akj)*Δₖⱼ for j=2:n)
 end
+=#
 
 """
 $(TYPEDSIGNATURES)

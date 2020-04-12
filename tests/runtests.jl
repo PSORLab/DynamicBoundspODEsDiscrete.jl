@@ -18,13 +18,13 @@ using Test, DynamicBoundspODEsPILMS #, DataStructures
     @test buffs.buffer[3][1,1] == 1.0
 
     plms = DynamicBoundspODEsPILMS.PLMS(Val(2), AdamsMoulton())
-    plms.times = [3.0; 1.5; 1.0]
-    DynamicBoundspODEsPILMS.compute_coefficients!(plms)
-    plms.β[1] = 1.0
-    plms.β[2] = 3.0
+    append!(plms.times, [3.0; 1.5; 1.0])
+    #DynamicBoundspODEsPILMS.compute_coefficients!(plms)
+    #plms.β[1] = 1.0
+    #plms.β[2] = 3.0
 
-    DynamicBoundspODEsPILMS.eval_cycle_Jx!(pf)
-    DynamicBoundspODEsPILMS.eval_cycle_Jp!(pf)
-    DynamicBoundspODEsPILMS.compute_sum_Jp!(pf)
-    DynamicBoundspODEsPILMS.compute_δₖ!(pf)
+    #DynamicBoundspODEsPILMS.eval_cycle_Jx!(pf)
+    #DynamicBoundspODEsPILMS.eval_cycle_Jp!(pf)
+    #DynamicBoundspODEsPILMS.compute_sum_Jp!(pf)
+    #DynamicBoundspODEsPILMS.compute_δₖ!(pf)
 end
