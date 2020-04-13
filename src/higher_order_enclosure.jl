@@ -46,7 +46,7 @@ an initial value problem for an ordinary differential equation. 1999. Universist
 of Toronto, PhD Dissertation, Algorithm 5.1, page 73-74).
 """
 function existence_uniqueness(tf!::TaylorFunctor!, Yⱼ::Vector{T}, hⱼ::Float64, hmin::Float64,
-                              f::Matrix{T}, ∂f∂y_in) where {T <: Real}
+                              f::Matrix{T}, ∂f∂x_in, ∂f∂p_in) where {T <: Real}
 
     k = tf!.s
     nx = tf!.nx
@@ -64,15 +64,15 @@ function existence_uniqueness(tf!::TaylorFunctor!, Yⱼ::Vector{T}, hⱼ::Float6
     copyto!(Ỹⱼ₀, 1, Yⱼ, 1, nx+np)
     copyto!(Ỹⱼ, 1, Yⱼ, 1, nx+np)
 
-    ∂f∂y = tf!.∂f∂y
+    ∂f∂x = tf!.∂f∂x
     hIk = hIk = Interval{Float64}(0.0, hⱼ^k)
 
     inβ = true
     α = 0.8
     ϵ = 1.0
     for i in 1:(k+1)
-        for j in eachindex(∂f∂y_in[i])
-            ∂f∂y[i][j] = Interval{Float64}(∂f∂y_in[i][j])
+        for j in eachindex(∂f∂x_in[i])
+            ∂f∂x[i][j] = Interval{Float64}(∂f∂x_in[i][j])
         end
     end
     ϵInterval = Interval(-ϵ,ϵ)
@@ -88,14 +88,14 @@ function existence_uniqueness(tf!::TaylorFunctor!, Yⱼ::Vector{T}, hⱼ::Float6
         end
 
         #βⱼⱼ .= (I + Interval{Float64}(0.0, hⱼ^k).*∂f∂y[k])
-        βⱼⱼ .= ∂f∂y[k]
+        βⱼⱼ .= ∂f∂x[k]
         βⱼⱼ .*= hIk
         for i in 1:nx
             βⱼⱼ[i,i] += one(Interval{Float64})
         end
 
         #βⱼᵥ = f[k,:] .+ ∂f∂y[k]*Vⱼ
-        mul!(βⱼᵥ, ∂f∂y[k], Vⱼ)
+        mul!(βⱼᵥ, ∂f∂x[k], Vⱼ)
         for j in 1:nx
             βⱼᵥ[j] += f[j,k]
         end

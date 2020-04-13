@@ -78,8 +78,10 @@ mutable struct TaylorFunctor!{F <: Function, T <: Real, S <: Real} <: Function
     Ỹⱼ₀::Vector{S}
     "Temporary storage for computing Ỹⱼ in existence and uniqueness"
     Ỹⱼ::Vector{S}
-    "Temporary storage for computing ∂f∂y in existence and uniqueness"
-    ∂f∂y::Vector{Matrix{S}}
+    "Temporary storage for computing ∂f∂x in existence and uniqueness"
+    ∂f∂x::Vector{Matrix{S}}
+    "Temporary storage for computing ∂f∂p in existence and uniqueness"
+    ∂f∂p::Vector{Matrix{S}}
     "Temporary storage for computing βⱼ in existence and uniqueness"
     βⱼⱼ::Matrix{S}
     "Temporary storage for computing βⱼ in existence and uniqueness"
@@ -144,7 +146,8 @@ function TaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <: Nu
     f̃ = zeros(T, nx, s+1)
     Ỹⱼ₀ = zeros(T, nx + np)
     Ỹⱼ = zeros(T, nx + np)
-    ∂f∂y = fill(zeros(T,nx,nx), s+1)
+    ∂f∂x = fill(zeros(T,nx,nx), s+1)
+    ∂f∂p = fill(zeros(T,nx,np), s+1)
     βⱼⱼ = zeros(T,nx,nx)
     βⱼᵥ = zeros(T, nx)
     βⱼₖ = zeros(T, nx)
@@ -156,7 +159,7 @@ function TaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <: Nu
     p = zeros(T, np)
     return TaylorFunctor!{typeof(g!), Q, T}(g!, taux, t, nx, np,
                                             s, Vⱼ, f̃ₜ, f̃, Ỹⱼ₀, Ỹⱼ,
-                                            ∂f∂y, βⱼⱼ, βⱼᵥ, βⱼₖ, Uⱼ,
+                                            ∂f∂x, ∂f∂p, βⱼⱼ, βⱼᵥ, βⱼₖ, Uⱼ,
                                             xtaylor, xout, xaux, x, p)
 end
 
@@ -409,18 +412,6 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Copies information in `y` to `x` in place.
-"""
-function Base.copyto!(x::QRDenseStorage, y::QRDenseStorage)
-    x.factorization = y.factorization
-    x.Q .= y.Q
-    x.inv .= y.inv
-    nothing
-end
-
-"""
-$(TYPEDSIGNATURES)
-
 Computes the QR factorization of `A` of size `(nx,nx)` and then stores it to
 fields in `qst`.
 """
@@ -459,16 +450,14 @@ function eval_cycle!(f!, cb::CircularBuffer, x, p, t)
 end
 
 """
-$(TYPEDEF)
+$(TYPEDSIGNATURES)
 
 Creates preallocated storage for an array of QR factorizations.
-
-$(TYPEDFIELDS)
 """
-function QRStack(nx::Int, steps::Int)
-    qrstack = CircularBuffer{QRDenseStorage}()
+function qr_stack(nx::Int, steps::Int)
+    qrstack = CircularBuffer{QRDenseStorage}(steps)
     vector = fill(QRDenseStorage(nx), steps)
-    append!(a, vector)
+    append!(qrstack, vector)
     qrstack
 end
 
@@ -478,9 +467,9 @@ $(TYPEDSIGNATURES)
 Sets the first QR storage to the identity matrix.
 """
 function reinitialize!(x::CircularBuffer{QRDenseStorage})
-    fill!(0.0, x[1])
-    for i in 1:length(x)
-        x[1][i,i] = 1.0
+    fill!(x[1].Q, 0.0)
+    for i in 1:size(x[1].Q, 1)
+        x[1].Q[i,i] = 1.0
     end
     nothing
 end

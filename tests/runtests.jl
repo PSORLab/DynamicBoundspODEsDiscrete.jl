@@ -1,8 +1,43 @@
 #!/usr/bin/env julia
 using Test, DynamicBoundspODEsPILMS, IntervalArithmetic
 using DiffResults: JacobianResult
+
 @testset "Discretize and Relax" begin
 
+    # test improvement condition for existence & uniqueness
+    Yold = [Interval(1.0, 3.0); Interval(2.0, 4.0); Interval(1.0, 3.0)]
+    Ynew = [Interval(1.5, 2.0); Interval(3.0, 3.5); Interval(0.5, 3.5)]
+    nx_ic = 2
+    @test DynamicBoundspODEsPILMS.improvement_condition(Yold, Ynew, nx_ic)
+
+    # construct storage for QR factorizations
+    storage = DynamicBoundspODEsPILMS.QRDenseStorage(nx_ic)
+    @test storage.factorization.Q[1,1] == -1.0
+    @test storage.factorization.Q[2,2] == 1.0
+    @test storage.factorization.R[1,1] == -1.0
+    @test storage.factorization.R[2,2] == 1.0
+
+    DynamicBoundspODEsPILMS.calculateQ!(storage, [1.0 3.0; 2.0 1.0], nx_ic)
+    @test isapprox(storage.Q[1,1], -0.447214, atol = 1E-3)
+    @test isapprox(storage.Q[1,2], -0.894427, atol = 1E-3)
+    @test isapprox(storage.Q[2,1], -0.894427, atol = 1E-3)
+    @test isapprox(storage.Q[2,2], 0.4472135, atol = 1E-3)
+
+    # results in symmetric matrix
+    DynamicBoundspODEsPILMS.calculateQinv!(storage)
+    @test storage.inv[1,1] == storage.Q[1,1]
+    @test storage.inv[1,2] == storage.Q[1,2]
+    @test storage.inv[2,1] == storage.Q[2,1]
+    @test storage.inv[2,2] == storage.Q[2,2]
+
+    stack = DynamicBoundspODEsPILMS.qr_stack(nx_ic, 3)
+    DynamicBoundspODEsPILMS.reinitialize!(stack)
+    @test stack[1].Q[1,1] == 1.0
+    @test stack[1].Q[1,2] == 0.0
+    @test stack[1].Q[2,1] == 0.0
+    @test stack[1].Q[2,2] == 1.0
+
+    # eval_cycle! test
     buffs = DynamicBoundspODEsPILMS.CircularBuffer(zeros(2,2),3)
 
     function J!(out, x, p ,t)
