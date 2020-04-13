@@ -232,10 +232,12 @@ mutable struct JacTaylorFunctor!{F <: Function, T <: Real, S <: Real, D} <: Func
     vⱼ₊₁::Vector{T}
     "P - p"
     rP::Vector{S}
-    "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
+    "Temporary storage nx-by-1 in Lohner's QR & Hermite-Obreschkoff"
     M1::Vector{S}
-    "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
+    "Temporary storage nx-by-nx in Lohner's QR & Hermite-Obreschkoff"
     M2::Matrix{S}
+    "Temporary storage nx-by-np in Lohner's QR & Hermite-Obreschkoff"
+    M3::Matrix{S}
     "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     M2Y::Matrix{S}
     "Storage for sum of Jacobian w.r.t x"
@@ -287,6 +289,7 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <:
     rP = zeros(T, np)
     M1 = zeros(T, nx)
     M2 = zeros(T, nx, nx)
+    M3 = zeros(T, nx, np)
     M2Y = zeros(T, nx, nx)
     Jxsto = zeros(T, nx, nx)
     Jpsto = zeros(T, nx, np)
@@ -298,7 +301,7 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <:
     return JacTaylorFunctor!{typeof(g!), Q, T,
                              Dual{Nothing, T, nx+np}}(g!, taux, t,
                              nx, np, s, xtaylor, xout, xaux, out, y, x, p, B,
-                             Δⱼ₊₁, Yⱼ₊₁, yⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, vⱼ₊₁, rP, M1, M2, M2Y,
+                             Δⱼ₊₁, Yⱼ₊₁, yⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, vⱼ₊₁, rP, M1, M2, M3, M2Y,
                              Jxsto, Jpsto, tjac, Jx, Jp, result, cfg)
 end
 

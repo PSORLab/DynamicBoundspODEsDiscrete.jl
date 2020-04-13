@@ -44,6 +44,7 @@ rtf!(out, y)
 coeff_out = zeros(Interval{Float64},2,4)
 DynamicBoundspODEsPILMS.coeff_to_matrix!(coeff_out, jtf!.out, nx, k)
 
+#=
 hⱼ = 0.001
 hmin = 0.00001
 function euf!(out, x, p, t)
@@ -74,11 +75,28 @@ bool3a = isapprox(unique_result.Ỹⱼ[1].lo, -1.50001E-6, atol=1E-10)
 bool3b = isapprox(unique_result.Ỹⱼ[1].hi, 0.00150001, atol=1E-6)
 bool4 = isapprox(unique_result.f̃k[1].lo, -7.50001E-16, atol = 1E-19)
 bool5 = isapprox(unique_result.f̃k[1].hi, 7.50001E-13, atol = 1E-16)
+=#
+
+function fplohn!(out, x, p, t)
+    out[1] = x[1]
+    out[2] = -x[2]
+    nothing
+end
+np = 1
+nx = 2
+k = 3
+itf! = DynamicBoundspODEsPILMS.TaylorFunctor!(fplohn!, nx, np, k, zero(Interval{Float64}), zero(Float64))
+rtf! = DynamicBoundspODEsPILMS.TaylorFunctor!(fplohn!, nx, np, k, zero(Float64), zero(Float64))
+jtf! = DynamicBoundspODEsPILMS.JacTaylorFunctor!(fplohn!, nx, np, k, Interval{Float64}(0.0), 0.0)
+hⱼ = 0.001
+Ỹⱼ = [Interval(0.1, 5.1); Interval(0.1, 8.9); Interval(0.1, 8.9)]
+Yⱼ = [Interval(0.1, 5.1); Interval(0.1, 8.9); Interval(0.1, 8.9)]
+A = DynamicBoundspODEsPILMS.qr_stack(nx, 2)
+yⱼ = mid.(Yⱼ)
+Δⱼ = Yⱼ[1:2] - yⱼ[1:2]
+DynamicBoundspODEsPILMS.parametric_lohners!(itf!, rtf!, jtf!, hⱼ, Ỹⱼ, Yⱼ, A, yⱼ, Δⱼ)
 
 #=
-plohners = DynamicBoundspODEsPILMS.parametric_lohners!(itf!, rtf!, dtf, hⱼ, Ycat, Ycat,
-                                                       A, yjcat, Δⱼ)
-
 jetcoeffs!(zqwa, zqwb, zqwc, zqwd, zqwe, zqwr, p)
 y = Interval{Float64}.([x; p])
 out = g.out

@@ -17,24 +17,13 @@ function parametric_lohners!(set_tf!::TaylorFunctor!{F,S,T},
                              jac_tf!::JacTaylorFunctor!{F,S,D}, hⱼ, Ỹⱼ, Yⱼ,
                              A::CircularBuffer{QRDenseStorage},
                              yⱼ, Δⱼ) where {F <: Function, T <: Real,
-                                                      S <: Real, D <: Real}
-    nx = set_tf!.nx
-    np = set_tf!.np
-    k = set_tf!.s
+                                            S <: Real, D <: Real}
 
-    sf̃ₜ = set_tf!.f̃ₜ
-    sf̃ = set_tf!.f̃
-    sỸⱼ₀ = set_tf!.Ỹⱼ₀
-    sỸⱼ = set_tf!.Ỹⱼ
-
-    rf̃ₜ = real_tf!.f̃ₜ
-    rf̃ = real_tf!.f̃
-    rỸⱼ₀ = real_tf!.Ỹⱼ₀
-    rỸⱼ = real_tf!.Ỹⱼ
-
-    rP = jac_tf!.rP
-    M1 = jac_tf!.M1
-    M2 = jac_tf!.M2
+    # abbreviate feild access
+    nx = set_tf!.nx; np = set_tf!.np; k = set_tf!.s
+    sf̃ₜ = set_tf!.f̃ₜ; sf̃ = set_tf!.f̃; sỸⱼ₀ = set_tf!.Ỹⱼ₀; sỸⱼ = set_tf!.Ỹⱼ
+    rf̃ₜ = real_tf!.f̃ₜ; rf̃ = real_tf!.f̃; rỸⱼ₀ = real_tf!.Ỹⱼ₀;  rỸⱼ = real_tf!.Ỹⱼ
+    rP = jac_tf!.rP;    M1 = jac_tf!.M1;    M2 = jac_tf!.M2;  M3 = jac_tf!.M3
     M2Y = jac_tf!.M2Y
 
     copyto!(sỸⱼ₀, 1, Yⱼ, 1, nx + np)
@@ -84,10 +73,28 @@ function parametric_lohners!(set_tf!::TaylorFunctor!{F,S,T},
     @. jac_tf!.Yⱼ₊₁ = jac_tf!.vⱼ₊₁ + jac_tf!.Rⱼ₊₁
     @. jac_tf!.yⱼ₊₁ = jac_tf!.vⱼ₊₁ + jac_tf!.mRⱼ₊₁
     jac_tf!.Rⱼ₊₁ .-= jac_tf!.mRⱼ₊₁
-    mul!(M1, Aⱼ₊₁.inv, jac_tf!.Rⱼ₊₁);                          jac_tf!.Δⱼ₊₁ .= M1    #jac_tf!.Δⱼ₊₁ .= Aⱼ₊₁.inverse*jac_tf!.Rⱼ₊₁
-    mul!(M2, Aⱼ₊₁.inv, M2Y);              mul!(M1, M2, Δⱼ);    jac_tf!.Δⱼ₊₁ .+= M1   #jac_tf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Y)*Δⱼ
-    mul!(M2, Aⱼ₊₁.inv, jac_tf!.Jpsto);    mul!(M1, M2, rP);    jac_tf!.Δⱼ₊₁ .+= M1   #jac_tf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Jpsto)*rP
-    mul!(M1, M2Y, Δⱼ);                                         jac_tf!.Yⱼ₊₁ .= M1    #jac_tf!.Yⱼ₊₁ .+= Y*Δⱼ
-    mul!(M1, jac_tf!.Jpsto, rP);                               jac_tf!.Yⱼ₊₁ .+= M1   # jac_tf!.Yⱼ₊₁ .+= Jpsto*rP
+
+    #jac_tf!.Δⱼ₊₁ .= Aⱼ₊₁.inverse*jac_tf!.Rⱼ₊₁
+    mul!(M1, Aⱼ₊₁.inv, jac_tf!.Rⱼ₊₁);
+    jac_tf!.Δⱼ₊₁ .= M1
+
+    #jac_tf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Y)*Δⱼ
+    mul!(M2, Aⱼ₊₁.inv, M2Y);
+    mul!(M1, M2, Δⱼ);
+    jac_tf!.Δⱼ₊₁ .+= M1
+
+    #jac_tf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Jpsto)*rP
+    mul!(M3, Aⱼ₊₁.inv, jac_tf!.Jpsto);
+    mul!(M1, M3, rP);
+    jac_tf!.Δⱼ₊₁ .+= M1
+
+    #jac_tf!.Yⱼ₊₁ .+= Y*Δⱼ
+    mul!(M1, M2Y, Δⱼ);
+    jac_tf!.Yⱼ₊₁ .= M1
+
+    # jac_tf!.Yⱼ₊₁ .+= Jpsto*rP
+    mul!(M1, jac_tf!.Jpsto, rP);
+    jac_tf!.Yⱼ₊₁ .+= M1
+
     nothing
 end

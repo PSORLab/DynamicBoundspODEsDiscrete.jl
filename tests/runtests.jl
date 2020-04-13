@@ -149,4 +149,38 @@ using DiffResults: JacobianResult
     @test isapprox(outIntv[3], 0.011001, atol=1E-3)
     @test isapprox(outIntv[6], 1.04001, atol=1E-3)
     @test isapprox(outIntv[8], 0.173334, atol=1E-3)
+
+    # higher order existence tests
+    hⱼ = 0.001
+    hmin = 0.00001
+    function euf!(out, x, p, t)
+        out[1,1] = -x[1]
+        nothing
+    end
+    eufY = [Interval{Float64}(0.5,1.5); Interval(0.0)]
+    itf_exist_unique! = DynamicBoundspODEsPILMS.TaylorFunctor!(euf!, 1, 1, k, zero(Interval{Float64}), zero(Float64))
+    jtf_exist_unique! = DynamicBoundspODEsPILMS.JacTaylorFunctor!(euf!, 1, 1, k, Interval{Float64}(0.0), 0.0)
+    DynamicBoundspODEsPILMS.jacobian_taylor_coeffs!(jtf_exist_unique!, eufY)
+    coeff_out = zeros(Interval{Float64},1,k)
+    DynamicBoundspODEsPILMS.coeff_to_matrix!(coeff_out, jtf!.out, 1, k)
+    Jx = Matrix{Interval{Float64}}[zeros(Interval{Float64},1,1) for i in 1:4]
+    Jp = Matrix{Interval{Float64}}[zeros(Interval{Float64},1,1) for i in 1:4]
+    tjac = zeros(Interval{Float64}, 2, 4)
+    outIntv_exist_unique! = zeros(Interval{Float64},4)
+    itf_exist_unique!(outIntv_exist_unique!, eufY)
+    coeff_out_exist_unique! = zeros(Interval{Float64},1,k+1)
+    DynamicBoundspODEsPILMS.coeff_to_matrix!(coeff_out_exist_unique!, outIntv_exist_unique!, 1, k)
+    DynamicBoundspODEsPILMS.extract_JxJp!(Jx, Jp, jtf_exist_unique!.result, tjac, 1, 1, k)
+    un_result = DynamicBoundspODEsPILMS.UniquenessResult(1,1)
+    DynamicBoundspODEsPILMS.existence_uniqueness!(u_result, itf_exist_unique!,
+                                                  eufY, hⱼ, hmin, coeff_out_exist_unique!, Jx, Jp)
+
+    @test u_result.step == 0.001
+    @test u_result.confirmed
+
+    # add when upgraded to Julia 1.4... seems to fail in Juno (passes in script)
+    #@test isapprox(unique_result.Y[1].lo, -1.50001E-6, atol=1E-10)
+    #@test isapprox(unique_result.Y[1].hi, 0.00150001, atol=1E-6)
+    #@test isapprox(unique_result.fk[1].lo, -7.50001E-16, atol = 1E-19)
+    #@test isapprox(unique_result.fk[1].hi, 7.50001E-13, atol = 1E-16)
 end
