@@ -37,6 +37,18 @@ function contains(Ỹⱼ::Vector{Interval{T}}, Ỹⱼ₀::Vector{Interval{T}}, n
     flag
 end
 
+mutable struct UniquenessResult
+    step::Float64
+    confirmed::Bool
+    Y::Vector{Interval{Float64}}
+    fk::Vector{Interval{Float64}}
+end
+function UniquenessResult(nx::Int, np::Int)
+    Y = zeros(Interval{Float64}, nx + np)
+    fk = zeros(Interval{Float64}, nx)
+    UniquenessResult(0.0, false, Y, fk)
+end
+
 """
 $(TYPEDSIGNATURES)
 
@@ -45,8 +57,8 @@ dissertation (Nedialko S. Nedialkov. Computing rigorous bounds on the solution o
 an initial value problem for an ordinary differential equation. 1999. Universisty
 of Toronto, PhD Dissertation, Algorithm 5.1, page 73-74).
 """
-function existence_uniqueness(tf!::TaylorFunctor!, Yⱼ::Vector{T}, hⱼ::Float64, hmin::Float64,
-                              f::Matrix{T}, ∂f∂x_in, ∂f∂p_in) where {T <: Real}
+function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Yⱼ::Vector{T}, hⱼ::Float64,
+                              hmin::Float64, f::Matrix{T}, ∂f∂x_in, ∂f∂p_in) where {T <: Real}
 
     k = tf!.s
     nx = tf!.nx
@@ -80,10 +92,10 @@ function existence_uniqueness(tf!::TaylorFunctor!, Yⱼ::Vector{T}, hⱼ::Float6
 
     while ((hⱼ >= hmin) && ~verified) #&& (max_iters > iters)
         #iters += 1
-        for j in 1:nx
-            Vⱼ[j] = Interval{Float64}(0.0, hⱼ)*f[1,j]
-            for i in 2:(k-1)
-                Vⱼ[j] += Interval{Float64}(0.0, hⱼ^i)*f[i,j]
+        fill!(Vⱼ, Interval{Float64}(0.0))
+        for i in 1:nx
+            for j in 1:(k-1)
+                Vⱼ[i] += Interval{Float64}(0.0, hⱼ^j)*f[i,j]
             end
         end
 
@@ -132,10 +144,10 @@ function existence_uniqueness(tf!::TaylorFunctor!, Yⱼ::Vector{T}, hⱼ::Float6
         while ~verified && reduced < 2
             s = 0
             for l = 1:k
-                for j in 1:l
-                    Vⱼ[j] = Interval{Float64}(0.0, hⱼ)*f[1,j]
-                    for i in 2:(k-1)
-                        Vⱼ[j] += Interval{Float64}(0.0, hⱼ^i)*f[i,j]
+                fill!(Vⱼ, Interval{Float64}(0.0))
+                for j in 1:nx
+                    for i in 1:l
+                        Vⱼ[j] += Interval{Float64}(0.0, hⱼ^i)*f[j,i]
                     end
                 end
                 for j in 1:nx
@@ -173,6 +185,11 @@ function existence_uniqueness(tf!::TaylorFunctor!, Yⱼ::Vector{T}, hⱼ::Float6
     flag = hⱼ > hmin
     tf!(f̃ₜ, Ỹⱼ)
     coeff_to_matrix!(f̃, f̃ₜ, nx, k)
-    f̃[k] *= hⱼ^k
-    return hⱼ, Ỹⱼ, f̃[k], flag
+    out.fk .= f̃[:,k]
+    out.fk .*= hⱼ^k
+    out.step = hⱼ
+    out.confirmed = flag
+    out.Y .= Ỹⱼ
+
+    nothing
 end

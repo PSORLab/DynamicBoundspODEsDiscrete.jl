@@ -31,14 +31,6 @@ tjac = zeros(Interval{Float64}, 4, 8)
 Jx = Matrix{Interval{Float64}}[zeros(Interval{Float64},2,2) for i in 1:4]
 Jp = Matrix{Interval{Float64}}[zeros(Interval{Float64},2,2) for i in 1:4]
 DynamicBoundspODEsPILMS.extract_JxJp!(Jx, Jp, jtf!.result, tjac, nx, np, k)
-bool1 = isapprox(Jp[2][2,1].lo, 0.4, atol=1E-3)
-bool2 = isapprox(Jp[2][1,2].lo, 1.0, atol=1E-3)
-bool3 = isapprox(Jp[4][2,1].lo, 0.0666666, atol=1E-3)
-bool4 = isapprox(Jp[4][1,2].lo, 0.079999, atol=1E-3)
-bool1a = isapprox(Jx[2][1,1].lo, 0.2, atol=1E-3)
-bool2a = isapprox(Jx[2][2,2].lo, 1.0, atol=1E-3)
-bool3a = isapprox(Jx[4][1,1].lo, 0.030666, atol=1E-3)
-bool4a = isapprox(Jx[4][2,2].lo, 0.1666, atol=1E-3)
 
 itf! = DynamicBoundspODEsPILMS.TaylorFunctor!(f!, nx, np, k, zero(Interval{Float64}), zero(Float64))
 outIntv = zeros(Interval{Float64},8)
@@ -52,15 +44,38 @@ rtf!(out, y)
 coeff_out = zeros(Interval{Float64},2,4)
 DynamicBoundspODEsPILMS.coeff_to_matrix!(coeff_out, jtf!.out, nx, k)
 
-#=
 hⱼ = 0.001
 hmin = 0.00001
-DynamicBoundspODEsPILMS.existence_uniqueness(itf!, yIntv, hⱼ, hmin, coeff_out, Jx)
-DynamicBoundspODEsPILMS.improvement_condition(yIntv, yIntv, nx)
+function euf!(out, x, p, t)
+    out[1,1] = -x[1]
+    nothing
+end
+eufY = [Interval{Float64}(0.5,1.5); Interval(0.0)]
+itf_exist_unique! = DynamicBoundspODEsPILMS.TaylorFunctor!(euf!, 1, 1, k, zero(Interval{Float64}), zero(Float64))
+jtf_exist_unique! = DynamicBoundspODEsPILMS.JacTaylorFunctor!(euf!, 1, 1, k, Interval{Float64}(0.0), 0.0)
+DynamicBoundspODEsPILMS.jacobian_taylor_coeffs!(jtf_exist_unique!, eufY)
+coeff_out = zeros(Interval{Float64},1,k)
+DynamicBoundspODEsPILMS.coeff_to_matrix!(coeff_out, jtf!.out, 1, k)
+Jx = Matrix{Interval{Float64}}[zeros(Interval{Float64},1,1) for i in 1:4]
+Jp = Matrix{Interval{Float64}}[zeros(Interval{Float64},1,1) for i in 1:4]
+tjac = zeros(Interval{Float64}, 2, 4)
+outIntv_exist_unique! = zeros(Interval{Float64},4)
+itf_exist_unique!(outIntv_exist_unique!, eufY)
+coeff_out_exist_unique! = zeros(Interval{Float64},1,k+1)
+DynamicBoundspODEsPILMS.coeff_to_matrix!(coeff_out_exist_unique!, outIntv_exist_unique!, 1, k)
+DynamicBoundspODEsPILMS.extract_JxJp!(Jx, Jp, jtf_exist_unique!.result, tjac, 1, 1, k)
+unique_result = DynamicBoundspODEsPILMS.UniquenessResult(1,1)
+DynamicBoundspODEsPILMS.existence_uniqueness!(unique_result, itf_exist_unique!,
+                                              eufY, hⱼ, hmin, coeff_out_exist_unique!, Jx, Jp)
 
-storage = DynamicBoundspODEsPILMS.QRDenseStorage(nx)
-stack = DynamicBoundspODEsPILMS.QRStack(nx, 2)
+bool1 = unique_result.step == 0.001
+bool2 = unique_result.confirmed
+bool3a = isapprox(unique_result.Ỹⱼ[1].lo, -1.50001E-6, atol=1E-10)
+bool3b = isapprox(unique_result.Ỹⱼ[1].hi, 0.00150001, atol=1E-6)
+bool4 = isapprox(unique_result.f̃k[1].lo, -7.50001E-16, atol = 1E-19)
+bool5 = isapprox(unique_result.f̃k[1].hi, 7.50001E-13, atol = 1E-16)
 
+#=
 plohners = DynamicBoundspODEsPILMS.parametric_lohners!(itf!, rtf!, dtf, hⱼ, Ycat, Ycat,
                                                        A, yjcat, Δⱼ)
 
