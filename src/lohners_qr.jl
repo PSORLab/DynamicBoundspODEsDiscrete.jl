@@ -15,7 +15,7 @@ pp. 425–436.](http://www.goldsztejn.com/old-papers/Lohner-1992.pdf)
 function parametric_lohners!(set_tf!::TaylorFunctor!{F,S,T},
                              real_tf!::TaylorFunctor!{F,S,S},
                              jac_tf!::JacTaylorFunctor!{F,S,D}, hⱼ, Ỹⱼ, Yⱼ,
-                             A::QRStack,
+                             A::CircularBuffer{QRDenseStorage},
                              yⱼ, Δⱼ) where {F <: Function, T <: Real,
                                                       S <: Real, D <: Real}
     nx = set_tf!.nx

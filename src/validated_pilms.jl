@@ -2,9 +2,6 @@ abstract type AbstractLinearMethod end
 struct AdamsMoulton <: AbstractLinearMethod end
 struct BDF <: AbstractLinearMethod end
 
-#struct PLMSStorage
-#end
-
 """
 $(TYPEDEF)
 
@@ -72,7 +69,12 @@ function compute_coefficients!(x::PLMS{N, AdamsMoulton}) where N
 end
 =#
 
-struct PILMsFunctor{N,T,S,JX,JP}
+"""
+$(TYPEDEF)
+
+Functor used to evaluate an N-step PLM method.
+"""
+struct PLMsFunctor{N,T,S,JX,JP}
     "PLMS Storage"
     plms::PLMS{N,T}
     "Circular Buffer for Holding Jx's"
@@ -98,7 +100,8 @@ struct PILMsFunctor{N,T,S,JX,JP}
     "Temporary Storage for sum of the Jacobian w.r.t p "
     sJp::Matrix{S}
 end
-function PILMsFunctor(s::S, plms::PLMS{N,T}, Jx!, Jp!, nx, np) where {S, N, T<:AbstractLinearMethod}
+function PLMsFunctor(s::S, plms::PLMS{N,T}, Jx!::JX, Jp!::JP,
+                     nx::Int, np::Int) where {JX, JP, S, N, T<:AbstractLinearMethod}
     buffer_Jx = CircularBuffer{Matrix{S}}(N)
     buffer_Jp = CircularBuffer{Matrix{S}}(N)
     X = CircularBuffer{Vector{S}}(N)
@@ -110,12 +113,12 @@ function PILMsFunctor(s::S, plms::PLMS{N,T}, Jx!, Jp!, nx, np) where {S, N, T<:A
     P = zeros(S,np)
     rP = zeros(S,np)
     sJp = zeros(S, nx, np)
-    PILMsFunctor{N,T,S,typeof(Jx!),typeof(Jp!)}(plms, buffer_Jx, buffer_Jp, X,
-                                                t, P, rP, nx, np, Jx!, Jp!, sJp)
+    PLMsFunctor{N,T,S,JX,JP}(plms, buffer_Jx, buffer_Jp, X,
+                             t, P, rP, nx, np, Jx!, Jp!, sJp)
 end
 
 
-function update_coefficients!(pf::PILMsFunctor{N,T}, t0::Float64) where {N, T<:AbstractLinearMethod}
+function update_coefficients!(pf::PLMsFunctor{N,T}, t0::Float64) where {N, T<:AbstractLinearMethod}
     pushfirst!(pf.plms.times, t0)
     compute_coefficients!(x.plms)
     nothing
@@ -126,10 +129,10 @@ function set_cycle_X!(pf, Yⱼ)
     copyto!(pf.X.buffer[pf.X.first], 1, Yⱼ, 1, pf.nx)
     nothing
 end
-eval_cycle_Jx!(pf::PILMsFunctor) = eval_cycle!(pf.Jx!, pf.buffer_Jx, first(pf.X), pf.P, first(pf.t))
-eval_cycle_Jp!(pf::PILMsFunctor) = eval_cycle!(pf.Jp!, pf.buffer_Jp, first(pf.X), pf.P, first(pf.t))
+eval_cycle_Jx!(pf::PLMsFunctor) = eval_cycle!(pf.Jx!, pf.buffer_Jx, first(pf.X), pf.P, first(pf.t))
+eval_cycle_Jp!(pf::PLMsFunctor) = eval_cycle!(pf.Jp!, pf.buffer_Jp, first(pf.X), pf.P, first(pf.t))
 
-function compute_sum_Jp!(pf::PILMsFunctor)
+function compute_sum_Jp!(pf::PLMsFunctor)
     map!((x,y) -> x.*y, pf.buffer_Jp, pf.plms.coeffs, pf.buffer_Jp)
     accumulate!(.+, pf.buffer_Jp, pf.buffer_Jp)
     nothing
@@ -155,7 +158,7 @@ $(TYPEDSIGNATURES)
 
 Experimental implementation of parametric linear multistep methods.
 """
-function parametric_pilms!(pf::PILMsFunctor, hⱼ, t0, Ỹⱼ, Yⱼ, A::QRStack, Δ)
+function parametric_pilms!(pf::PLMsFunctor, hⱼ, t0, Ỹⱼ, Yⱼ, A::CircularBuffer{QRDenseStorage}, Δ)
 
     update_coefficients!(pf.plms, hⱼ)     # update coefficients in linear multistep method
     set_cycle_X!(pf, Yⱼ)                  # update X, rP & P is set in relax

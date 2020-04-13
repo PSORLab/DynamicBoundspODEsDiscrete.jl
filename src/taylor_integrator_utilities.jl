@@ -55,7 +55,7 @@ are the Taylor coefficients of the second component, and so on.
 
 $(TYPEDFIELDS)
 """
-struct TaylorFunctor!{F <: Function, T <: Real, S <: Real} <: Function
+mutable struct TaylorFunctor!{F <: Function, T <: Real, S <: Real} <: Function
     "Right-hand side function for pODE which operates in place as g!(dx,x,p,t)"
     g!::F
     "Storage for 1D Taylor series of t used in computing Taylor cofficients."
@@ -186,7 +186,7 @@ pODEs (Lohner's QR, Hermite-Obreschkoff, etc.)
 
 $(TYPEDFIELDS)
 """
-struct JacTaylorFunctor!{F <: Function, T <: Real, S <: Real, D} <: Function
+mutable struct JacTaylorFunctor!{F <: Function, T <: Real, S <: Real, D} <: Function
     "Right-hand side function for pODE which operates in place as g!(dx,x,p,t)"
     g!::F
     "Storage for 1D Taylor series of t used in computing Taylor cofficients."
@@ -440,31 +440,10 @@ function calculateQinv!(qst::QRDenseStorage)
     nothing
 end
 
-#=
-Copyright (c) 2013 Dahua Lin
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to use,
-copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the
-Software, and to permit persons to whom the Software is furnished to do so,
-subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-=#
 """
 An circular buffer of fixed capacity and length which allows
 for access via getindex and copying of an element to the last then cycling
-the last element to the first and shifting all other elements. Adapted from
+the last element to the first and shifting all other elements. See
 [DataStructures.jl](https://github.com/JuliaCollections/DataStructures.jl).
 """
 function DataStructures.CircularBuffer(a::T, length::Int) where T
@@ -479,38 +458,18 @@ function eval_cycle!(f!, cb::CircularBuffer, x, p, t)
     nothing
 end
 
-
 """
 $(TYPEDEF)
 
-Provides preallocated storage for an array of QR factorizations.
+Creates preallocated storage for an array of QR factorizations.
 
 $(TYPEDFIELDS)
 """
-struct QRStack
-    "Vector of Dense QR Factorization Storage"
-    a::Vector{QRDenseStorage}
-    "Length of Storge in QRStack"
-    s::Int
-end
-QRStack(nx::Int, steps::Int) = QRStack(fill(QRDenseStorage(nx), steps), steps)
-
-function setindex!(x::QRStack, b::QRDenseStorage, i::Int)
-    x.a[i] = b
-    nothing
-end
-getindex(x::QRStack, i::Int) = x.a[i]
-
-"""
-$(TYPEDSIGNATURES)
-
-Copies the ith element of the QR stack to the (i+1)th element.
-"""
-function advance!(x::QRStack)
-    for i in 1:(x.s-1)
-        Base.copyto!(x.a[i], x.a[i+1])
-    end
-    nothing
+function QRStack(nx::Int, steps::Int)
+    qrstack = CircularBuffer{QRDenseStorage}()
+    vector = fill(QRDenseStorage(nx), steps)
+    append!(a, vector)
+    qrstack
 end
 
 """
@@ -518,7 +477,7 @@ $(TYPEDSIGNATURES)
 
 Sets the first QR storage to the identity matrix.
 """
-function reinitialize!(x::QRStack)
+function reinitialize!(x::CircularBuffer{QRDenseStorage})
     fill!(0.0, x[1])
     for i in 1:length(x)
         x[1][i,i] = 1.0
