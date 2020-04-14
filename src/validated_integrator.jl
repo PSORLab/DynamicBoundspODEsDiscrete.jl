@@ -72,6 +72,9 @@ mutable struct DiscretizeRelax{X,T} <: AbstractODERelaxIntegator
     step_result::StepResult{T}
     step_params::StepParams
 
+    new_decision_pnt::Bool
+    new_decision_box::Bool
+
 end
 function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
                          tol = 1E-5, hmin = 1E-13, relax = false, k = 4,
@@ -113,7 +116,7 @@ function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
     return DiscretizeRelax{typeof(d.x0),T}(d.x0, p, pL, pU, nx, np, d.tspan,
                                            d.tsupports, step_limit, 0, storage, support_dict,
                                            error_code, A, Δ, P, rP, style, set_tf!,
-                                           method_f!, step_result, step_params)
+                                           method_f!, step_result, step_params, true, true)
 end
 
 

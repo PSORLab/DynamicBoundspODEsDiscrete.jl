@@ -22,68 +22,32 @@ function setall!(t::DiscretizeRelax, v::ParameterValue, value::Vector{Float64})
     return
 end
 
-function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax, g::Gradient{Nominal})
+function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, g::Subgradient{Lower}) where {X, T < AbstractInterval}
+    for i in 1:t.np
+        fill!(out[i], 0.0)
+    end
+    return
+end
+function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, g::Subgradient{Lower}) where {X, T < MC}
     for i in 1:t.np
         @inbounds for j in eachindex(out[i])
-            out[i][j] = t.local_problem_storage.pode_dxdp[i][j]
+            out[i][j] = t.storage[j].cv_grad[j]
         end
     end
     return
 end
 
-function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax, g::Gradient{Lower})
-    if ~t.differentiable
-        error("Integrator does not generate differential relaxations. Set the
-               differentiable_flag field to true and reintegrate.")
-    end
+function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, g::Subgradient{Upper}) where {X, T < AbstractInterval}
     for i in 1:t.np
-        if t.evaluate_interval
-            fill!(out[i], 0.0)
-        else
-            @inbounds for j in eachindex(out[i])
-                out[i][j] = t.relax_cv_grad[j][i]
-            end
-        end
-    end
-    return
-end
-function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax, g::Gradient{Upper})
-    if ~t.differentiable_flag
-        error("Integrator does not generate differential relaxations. Set the
-               differentiable_flag field to true and reintegrate.")
-    end
-    for i in 1:t.np
-        if t.evaluate_interval
-            fill!(out[i], 0.0)
-        else
-            @inbounds for j in eachindex(out[i])
-                out[i][j] = t.relax_cc_grad[j][i]
-            end
-        end
+        fill!(out[i], 0.0)
     end
     return
 end
 
-function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax, g::Subgradient{Lower})
+function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T} g::Subgradient{Upper}) where {X, T < MC}
     for i in 1:t.np
-        if t.evaluate_interval
-            fill!(out[i], 0.0)
-        else
-            @inbounds for j in eachindex(out[i])
-                out[i][j] = t.relax_cv_grad[j][i]
-            end
-        end
-    end
-    return
-end
-function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax, g::Subgradient{Upper})
-    for i in 1:t.np
-        if t.evaluate_interval
-            fill!(out[i], 0.0)
-        else
-            @inbounds for j in eachindex(out[i])
-                out[i][j] = t.relax_cc_grad[j][i]
-            end
+        @inbounds for j in eachindex(out[i])
+            out[i][j] = t.storage[j].cc_grad[j]
         end
     end
     return
