@@ -67,7 +67,7 @@ mutable struct TaylorFunctor!{F <: Function, T <: Real, S <: Real} <: Function
     "Dimensionality of p"
     np::Int
     "Order of TaylorSeries"
-    s::Int
+    k::Int
     "Temporary storage for computing Ỹⱼ₀ in existence and uniqueness"
     Vⱼ::Vector{S}
     "Temporary storage for computing Taylor coefficient f̃ₜ in existence and uniqueness"
@@ -75,9 +75,9 @@ mutable struct TaylorFunctor!{F <: Function, T <: Real, S <: Real} <: Function
     "Temporary storage for computing Taylor coefficient f̃ in existence and uniqueness"
     f̃::Matrix{S}
     "Temporary storage for computing Ỹⱼ₀ in existence and uniqueness"
-    Ỹⱼ₀::Vector{S}
+    X̃ⱼ₀::Vector{S}
     "Temporary storage for computing Ỹⱼ in existence and uniqueness"
-    Ỹⱼ::Vector{S}
+    X̃ⱼ::Vector{S}
     "Temporary storage for computing ∂f∂x in existence and uniqueness"
     ∂f∂x::Vector{Matrix{S}}
     "Temporary storage for computing ∂f∂p in existence and uniqueness"
@@ -107,22 +107,17 @@ $(TYPEDSIGNATURES)
 
 Computes the Taylor coefficients at `y` and stores them inplace to `out`.
 """
-function (d::TaylorFunctor!{F, T, S})(out, y) where {F <: Function, T <: Real, S}
-    s = d.s
-    x = d.x
-    p = d.p
+function (d::TaylorFunctor!{F, T, S})(out, x, p) where {F <: Function, T <: Real, S}
+    k = d.k
     nx = d.nx
-    np = d.np
-    copyto!(x, 1, y, 1, nx)
-    copyto!(p, 1, y, nx+1, np)
     for i in 1:nx
         d.xtaylor[i].coeffs[1] = x[i]
         d.xout[i].coeffs[1] = x[i]
         d.xaux[i].coeffs[1] = x[i]
     end
-    jetcoeffs!(d.g!, d.t, d.xtaylor, d.xout, d.xaux, d.taux, s, p)
+    jetcoeffs!(d.g!, d.t, d.xtaylor, d.xout, d.xaux, d.taux, k, p)
     for i in 1:nx
-        copyto!(out, (i - 1)*(s + 1) + 1, d.xtaylor[i].coeffs, 1, s + 1)
+        copyto!(out, (i - 1)*(k + 1) + 1, d.xtaylor[i].coeffs, 1, k + 1)
     end
     nothing
 end
@@ -133,32 +128,32 @@ $(TYPEDSIGNATURES)
 A constructor for `TaylorFunctor` that preallocates storage for computing
 interval extensions of Taylor coefficients.
 """
-function TaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <: Number, Q <: Number}
+function TaylorFunctor!(g!, nx::Int, np::Int, k::Int, t::T, q::Q) where {T <: Number, Q <: Number}
     @assert eltype(t) == Q
     taux = Taylor1{Q}[]
-    for i in 0:(s-1)
+    for i in 0:(k-1)
         push!(taux, Taylor1(zeros(Q, i+1)))
     end
     x0 = zeros(T, nx)
-    t = Taylor1(Q, s)
+    t = Taylor1(Q, k)
     Vⱼ = zeros(T, nx)
-    f̃ₜ = zeros(T, nx*(s+1))
-    f̃ = zeros(T, nx, s+1)
-    Ỹⱼ₀ = zeros(T, nx + np)
-    Ỹⱼ = zeros(T, nx + np)
-    ∂f∂x = fill(zeros(T,nx,nx), s+1)
-    ∂f∂p = fill(zeros(T,nx,np), s+1)
+    f̃ₜ = zeros(T, nx*(k+1))
+    f̃ = zeros(T, nx, k+1)
+    X̃ⱼ₀ = zeros(T, nx)
+    X̃ⱼ = zeros(T, nx)
+    ∂f∂x = fill(zeros(T,nx,nx), k+1)
+    ∂f∂p = fill(zeros(T,nx,np), k+1)
     βⱼⱼ = zeros(T,nx,nx)
     βⱼᵥ = zeros(T, nx)
     βⱼₖ = zeros(T, nx)
     Uⱼ = zeros(T, nx)
-    xtaylor = Taylor1.(x0, s)
-    xout = Taylor1.(x0, s)
-    xaux = Taylor1.(x0, s)
+    xtaylor = Taylor1.(x0, k)
+    xout = Taylor1.(x0, k)
+    xaux = Taylor1.(x0, k)
     x = zeros(T, nx)
     p = zeros(T, np)
     return TaylorFunctor!{typeof(g!), Q, T}(g!, taux, t, nx, np,
-                                            s, Vⱼ, f̃ₜ, f̃, Ỹⱼ₀, Ỹⱼ,
+                                            k, Vⱼ, f̃ₜ, f̃, X̃ⱼ₀, X̃ⱼ,
                                             ∂f∂x, ∂f∂p, βⱼⱼ, βⱼᵥ, βⱼₖ, Uⱼ,
                                             xtaylor, xout, xaux, x, p)
 end
@@ -172,8 +167,8 @@ A utility function for assigning a the vector of Taylor coefficients `a` to a
 `out[1:nx, 1]` contains the Taylor coefficients of the zeroth Taylor
 coefficients of x and so on.
 """
-function coeff_to_matrix!(out::Array{T,2}, a::Vector{T}, nx::Int, s::Int) where {T <: Real}
-    @inbounds for i in 1:nx*(s+1)
+function coeff_to_matrix!(out::Array{T,2}, a::Vector{T}, nx::Int, k::Int) where {T <: Real}
+    @inbounds for i in 1:nx*(k+1)
         out[i] = a[i]
     end
     nothing
@@ -221,17 +216,15 @@ mutable struct JacTaylorFunctor!{F <: Function, T <: Real, S <: Real, D} <: Func
     "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     Δⱼ₊₁::Vector{S}
     "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
-    Yⱼ₊₁::Vector{S}
+    Xⱼ₊₁::Vector{S}
     "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
-    yⱼ₊₁::Vector{T}
+    xⱼ₊₁::Vector{T}
     "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     Rⱼ₊₁::Vector{S}
     "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     mRⱼ₊₁::Vector{T}
     "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     vⱼ₊₁::Vector{T}
-    "P - p"
-    rP::Vector{S}
     "Temporary storage nx-by-1 in Lohner's QR & Hermite-Obreschkoff"
     M1::Vector{S}
     "Temporary storage nx-by-nx in Lohner's QR & Hermite-Obreschkoff"
@@ -281,12 +274,11 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <:
     p = zeros(Dual{Nothing, T, nx+np}, np)
     B = zeros(Q, nx,nx)
     Δⱼ₊₁ = zeros(T, nx)
-    Yⱼ₊₁ = zeros(T, nx)
-    yⱼ₊₁ = zeros(Q, nx)
+    Xⱼ₊₁ = zeros(T, nx)
+    xⱼ₊₁ = zeros(Q, nx)
     Rⱼ₊₁ = zeros(T, nx)
     mRⱼ₊₁ = zeros(Q, nx)
     vⱼ₊₁ = zeros(Q, nx)
-    rP = zeros(T, np)
     M1 = zeros(T, nx)
     M2 = zeros(T, nx, nx)
     M3 = zeros(T, nx, np)
@@ -301,7 +293,7 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <:
     return JacTaylorFunctor!{typeof(g!), Q, T,
                              Dual{Nothing, T, nx+np}}(g!, taux, t,
                              nx, np, s, xtaylor, xout, xaux, out, y, x, p, B,
-                             Δⱼ₊₁, Yⱼ₊₁, yⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, vⱼ₊₁, rP, M1, M2, M3, M2Y,
+                             Δⱼ₊₁, Xⱼ₊₁, xⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, vⱼ₊₁, M1, M2, M3, M2Y,
                              Jxsto, Jpsto, tjac, Jx, Jp, result, cfg)
 end
 
@@ -338,10 +330,11 @@ output inplace to `result`. A JacobianConfig object without tag checking, cfg,
 is required input and is initialized from `cfg = ForwardDiff.JacobianConfig(nothing, out, y)`.
 The JacTaylorFunctor! used for the evaluation is `g` and inputs are `x` and `p`.
 """
-function jacobian_taylor_coeffs!(g::JacTaylorFunctor!, yin::Vector{S}) where {S <: Real}
+function jacobian_taylor_coeffs!(g::JacTaylorFunctor!, X::Vector{S}, P) where {S <: Real}
 
     # copyto! is used to avoid allocations
-    copyto!(g.y, 1, yin, 1, g.nx + g.np)
+    copyto!(g.y, 1, X, 1, g.nx)
+    copyto!(g.y, g.nx + 1, P, 1, g.np)
 
     # other AD schemes may be usable as well but this is a length(g.out) >> nx + np
     # situtation typically
@@ -480,13 +473,13 @@ end
 mutable struct UniquenessResult{S <: Number}
     step::Float64
     confirmed::Bool
-    Y::Vector{S}
+    X::Vector{S}
     fk::Vector{S}
 end
 function UniquenessResult(s::S, nx::Int, np::Int) where S
-    Y = zeros(S, nx + np)
+    X = zeros(S, nx)
     fk = zeros(S, nx)
-    UniquenessResult{S}(0.0, false, Y, fk)
+    UniquenessResult{S}(0.0, false, X, fk)
 end
 
 mutable struct StepResult{S <: Number}
@@ -494,9 +487,9 @@ mutable struct StepResult{S <: Number}
     hj::Float64
     predicted_hj::Float64
     errⱼ::Float64
-    yⱼ::Vector{Float64}
+    xⱼ::Vector{Float64}
     zⱼ::Vector{S}
-    Yⱼ::Vector{S}
+    Xⱼ::Vector{S}
     unique_result::UniquenessResult
     f::Matrix{S}
     ∂f∂x::Vector{Matrix{S}}
@@ -508,14 +501,14 @@ function StepResult(s::S, nx::Int, np::Int, k::Int) where S
     hj = 0.0
     predicted_hj = 0.0
     errⱼ = 0.0
-    yⱼ = zeros(Float64, nx + np)
+    xⱼ = zeros(Float64, nx)
     zⱼ = zeros(S, nx)
-    Yⱼ = zeros(S, nx + np)
+    Xⱼ = zeros(S, nx)
     unique_result = UniquenessResult(s, nx, np)
-    f = zeros(S,nx,k+1)
+    f = zeros(S, nx, k+1)
     ∂f∂x = Matrix{S}[zeros(S,nx,nx) for i in 1:(k+1)]
     ∂f∂p = Matrix{S}[zeros(S,nx,np) for i in 1:(k+1)]
     jacobians_set = true
-    StepResult{S}(status_flag, hj, predicted_hj, errⱼ, yⱼ, zⱼ, Yⱼ,
+    StepResult{S}(status_flag, hj, predicted_hj, errⱼ, xⱼ, zⱼ, Xⱼ,
                   unique_result, f, ∂f∂x, ∂f∂p, jacobians_set)
 end

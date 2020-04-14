@@ -8,17 +8,14 @@ function f!(dx,x,p,t)
     dx[2] = x[2] + p[1]^2
     nothing
 end
-tspan = (0.0,18.0e-5*50)
+tspan = (0.0,18.0e-5*12000)
 pL = [0.2; 0.1]
 pU = 10.0*pL
 
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
 integrator = DiscretizeRelax(prob)
 integrator.p .= 0.5*(pL + pU)
-DynamicBoundspODEsPILMS.relax!(integrator)
+#pstar .= 0.5*(pL + pU)
+#setall!(integrator, ParameterValue(), pstar)
 
-#=
-function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor,
-                      stf!::TaylorFunctor!, A::CircularBuffer{QRDenseStorage},
-                      Yⱼ::Vector{S}, Δ::CircularBuffer{Vector{S}}) where {S <: Real}
-=#
+DynamicBoundspODEsPILMS.relax!(integrator)

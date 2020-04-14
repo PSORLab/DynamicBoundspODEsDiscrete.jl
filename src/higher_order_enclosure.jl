@@ -7,14 +7,14 @@ Nedialko S. Nedialkov. Computing rigorous bounds on the solution of an initial
 value problem for an ordinary differential equation. 1999. Universisty of Toronto,
 PhD Dissertation, Algorithm 5.1, page 73-74).
 """
-function improvement_condition(Ỹⱼ::Vector{Interval{T}}, Ỹⱼ₀::Vector{Interval{T}}, nx::Int) where {T <: Real}
+function improvement_condition(X̃ⱼ::Vector{Interval{T}}, X̃ⱼ₀::Vector{Interval{T}}, nx::Int) where {T <: Real}
     Y0norm = 0.0
     Ynorm = 0.0
     diam1 = 0.0
     diam2 = 0.0
     for i in 1:nx
-        diam1 = diam(Ỹⱼ[i])
-        diam2 = diam(Ỹⱼ₀[i])
+        diam1 = diam(X̃ⱼ[i])
+        diam2 = diam(X̃ⱼ₀[i])
         Ynorm = (diam1 > Ynorm) ? diam1 : Ynorm
         Y0norm = (diam2 > Y0norm) ? diam2 : Y0norm
     end
@@ -24,12 +24,12 @@ end
 """
 $(TYPEDSIGNATURES)
 
-Checks that an interval vector `Ỹⱼ` of length `nx` is contained in `Ỹⱼ₀`.
+Checks that an interval vector `X̃ⱼ` of length `nx` is contained in `X̃ⱼ₀`.
 """
-function contains(Ỹⱼ::Vector{Interval{T}}, Ỹⱼ₀::Vector{Interval{T}}, nx::Int) where {T <: Real}
+function contains(X̃ⱼ::Vector{Interval{T}}, X̃ⱼ₀::Vector{Interval{T}}, nx::Int) where {T <: Real}
     flag = true
     for i in 1:nx
-        if ~(Ỹⱼ[i] ⊆ Ỹⱼ₀[i])
+        if ~(X̃ⱼ[i] ⊆ X̃ⱼ₀[i])
             flag = false
             break
         end
@@ -45,37 +45,33 @@ dissertation (Nedialko S. Nedialkov. Computing rigorous bounds on the solution o
 an initial value problem for an ordinary differential equation. 1999. Universisty
 of Toronto, PhD Dissertation, Algorithm 5.1, page 73-74).
 """
-function existence_uniqueness!(s::StepResult, tf!::TaylorFunctor!, hmin::Float64)
-    existence_uniqueness!(s.unique_result, tf!, s.Yⱼ, s.hj, hmin, s.f, s.∂f∂x, s.∂f∂p)
+function existence_uniqueness!(s::StepResult, tf!::TaylorFunctor!, hmin::Float64, P)
+    existence_uniqueness!(s.unique_result, tf!, s.Xⱼ, s.hj, hmin, s.f, s.∂f∂x, s.∂f∂p, P)
     nothing
 end
-function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Yⱼ::Vector{T},
+function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ::Vector{T},
                                hⱼ::Float64, hmin::Float64, f::Matrix{T},
-                               ∂f∂x_in::Vector{Matrix{T}}, ∂f∂p_in::Vector{Matrix{T}}) where {T <: Real}
+                               ∂f∂x_in::Vector{Matrix{T}}, ∂f∂p_in::Vector{Matrix{T}},
+                               P) where {T <: Real}
 
-    k = tf!.s
+    k = tf!.k
     nx = tf!.nx
     np = tf!.np
     Vⱼ = tf!.Vⱼ
     f̃ₜ = tf!.f̃ₜ
     f̃ = tf!.f̃
-    Ỹⱼ₀ = tf!.Ỹⱼ₀
-    Ỹⱼ = tf!.Ỹⱼ
+    X̃ⱼ₀ = tf!.X̃ⱼ₀
+    X̃ⱼ = tf!.X̃ⱼ
     βⱼⱼ = tf!.βⱼⱼ
     βⱼᵥ = tf!.βⱼᵥ
     βⱼₖ = tf!.βⱼₖ
     Uⱼ = tf!.Uⱼ
 
-    copyto!(Ỹⱼ₀, 1, Yⱼ, 1, nx+np)
-    copyto!(Ỹⱼ, 1, Yⱼ, 1, nx+np)
-
-    println("Ỹⱼ₀ = $(Ỹⱼ₀)")
-    println("Ỹⱼ = $(Ỹⱼ)")
+    copyto!(X̃ⱼ₀, 1, Xⱼ, 1, nx)
+    copyto!(X̃ⱼ, 1, Xⱼ, 1, nx)
 
     ∂f∂x = tf!.∂f∂x
     hIk = Interval{Float64}(0.0, hⱼ^k)
-    println("∂f∂x = $(∂f∂x)")
-    println("hIk = $(hIk)")
 
     inβ = true
     α = 0.8
@@ -106,18 +102,16 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Yⱼ:
 
         #βⱼᵥ = f[k,:] .+ ∂f∂y[k]*Vⱼ
         mul!(βⱼᵥ, ∂f∂x[k], Vⱼ)
-        for j in 1:nx
-            βⱼᵥ[j] += f[j,k]
-        end
+        βⱼᵥ .+= f[:,k]
         mul!(βⱼₖ, βⱼⱼ, βⱼᵥ)
 
         #βⱼₖ .= βⱼₖ + ϵInterval*abs.(βⱼₖ)
         for j in 1:nx
-            Uⱼ[j] = Yⱼ[j] + Vⱼ[j]
-            Ỹⱼ₀[j] = Uⱼ[j] + hIk*(βⱼₖ[j] + ϵInterval*abs(βⱼₖ[j]))
+            Uⱼ[j] = Xⱼ[j] + Vⱼ[j]
+            X̃ⱼ₀[j] = Uⱼ[j] + hIk*(βⱼₖ[j] + ϵInterval*abs(βⱼₖ[j]))
         end
 
-        tf!(f̃ₜ, Ỹⱼ₀)
+        tf!(f̃ₜ, X̃ⱼ₀, P)
         coeff_to_matrix!(f̃, f̃ₜ, nx, k)
         inβ = true
         for j in 1:nx
@@ -128,14 +122,14 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Yⱼ:
         end
         if inβ
             for j in 1:nx
-                Ỹⱼ[j] = Uⱼ[j] + hIk*f̃[j,k]
+                X̃ⱼ[j] = Uⱼ[j] + hIk*f̃[j,k]
             end
             break
         end
         for j in 1:nx
-            Ỹⱼ₀[j] = Uⱼ[j] + hIk*f̃[j,k]
+            X̃ⱼ₀[j] = Uⱼ[j] + hIk*f̃[j,k]
         end
-        tf!(f̃ₜ, Ỹⱼ₀)
+        tf!(f̃ₜ, X̃ⱼ₀, P)
         coeff_to_matrix!(f̃, f̃ₜ, nx, k)
 
         reduced = 0
@@ -149,9 +143,9 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Yⱼ:
                     end
                 end
                 for j in 1:nx
-                    Ỹⱼ[j]  = Uⱼ[j] + hIk*f̃[j,l]
+                    X̃ⱼ[j]  = Uⱼ[j] + hIk*f̃[j,l]
                 end
-                if contains(Ỹⱼ, Ỹⱼ₀, nx)
+                if contains(X̃ⱼ, X̃ⱼ₀, nx)
                     verified = true
                     s = l
                     break
@@ -161,13 +155,13 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Yⱼ:
             if verified
                 improving = true
                 while improving
-                    tf!(f̃ₜ, Ỹⱼ)
+                    tf!(f̃ₜ, X̃ⱼ, P)
                     coeff_to_matrix!(f̃, f̃ₜ, nx, s)
                     for j in 1:nx
-                        Ỹⱼ₀[j]  = Vⱼ[j] + Interval{Float64}(0.0, hⱼ^s)*f̃[j,s]
+                        X̃ⱼ₀[j]  = Vⱼ[j] + Interval{Float64}(0.0, hⱼ^s)*f̃[j,s]
                     end
-                    if improvement_condition(Ỹⱼ, Ỹⱼ₀, nx)
-                        copyto!(Ỹⱼ, 1, Ỹⱼ₀, 1, nx)
+                    if improvement_condition(X̃ⱼ, X̃ⱼ₀, nx)
+                        copyto!(X̃ⱼ, 1, X̃ⱼ₀, 1, nx)
                     else
                         improving = false
                     end
@@ -181,13 +175,13 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Yⱼ:
     end
 
     flag = hⱼ > hmin
-    tf!(f̃ₜ, Ỹⱼ)
+    tf!(f̃ₜ, X̃ⱼ, P)
     coeff_to_matrix!(f̃, f̃ₜ, nx, k)
     out.fk .= f̃[:,k]
     out.fk .*= hⱼ^k
     out.step = hⱼ
     out.confirmed = flag
-    out.Y .= Ỹⱼ
+    out.X .= X̃ⱼ
 
     nothing
 end
