@@ -508,9 +508,9 @@ function StepResult(s::S, nx::Int, np::Int, k::Int) where S
     hj = 0.0
     predicted_hj = 0.0
     errⱼ = 0.0
-    yⱼ = zeros(Float64, nx)
+    yⱼ = zeros(Float64, nx + np)
     zⱼ = zeros(S, nx)
-    Yⱼ = zeros(S, nx)
+    Yⱼ = zeros(S, nx + np)
     unique_result = UniquenessResult(s, nx, np)
     f = zeros(S,nx,k+1)
     ∂f∂x = Matrix{S}[zeros(S,nx,nx) for i in 1:(k+1)]

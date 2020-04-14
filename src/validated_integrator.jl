@@ -148,8 +148,8 @@ function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor
         extract_JxJp!(Jx, Jp, lf.jac_tf!.result, lf.jac_tf!.tjac, nx, np, k)
     end
     existence_uniqueness!(out, stf!, hmin)
-    out.hj = unique_result.step
-    if ~unique_result.confirmed
+    out.hj = out.unique_result.step
+    if ~out.unique_result.confirmed
         out.status_flag = NUMERICAL_ERROR
         return nothing
     end
@@ -220,6 +220,8 @@ function relax!(d::DiscretizeRelax)
 
     # Compute initial condition values
     compute_y0!(d.storage, d.x0f, d.p, d.pL, d.pU, d.nx, d.np)
+    d.step_result.Yⱼ .= d.storage[:, 1]
+    d.step_result.yⱼ .= mid.(d.step_result.Yⱼ)
 
     # Get initial time and integration direction
     t = d.tspan[1]
@@ -245,33 +247,37 @@ function relax!(d::DiscretizeRelax)
 
     # Begin integration loop
     hlast = 0.0
-    hnext = tmax - t
+    d.step_result.hj = tmax - t
     d.step_count = 0
     while sign_tstep*t < sign_tstep*tmax
 
         # max step size is min of predicted, when next support point occurs,
         # or the last time step in the span
-        hnext = min(hnext, next_support - t, tmax - t)
+        d.step_result.hj = min(d.step_result.hj, next_support - t, tmax - t)
 
         # perform step size calculation and update bound information
-        single_step!(d.step_result, d.step_params, d.method_f!,
-                     d.set_tf!, d.A, d.Δ)
+        single_step!(d.step_result, d.step_params, d.method_f!, d.set_tf!, d.A, d.Δ)
 
         # advance step counters
-        t += hlast
+        t += d.step_result.hj
         d.step_count += 1
 
         # throw error if limit exceeded
         if d.step_count > d.step_limit
-            d.error_code = NUMERICAL_ERROR
+            d.error_code = LIMIT_EXCEEDED
             break
-        elseif step_flag !== COMPLETED
-            d.error_code = NUMERICAL_ERROR
+        elseif (d.step_result.status_flag !== RELAXATION_NOT_CALLED)
+            d.error_code = d.step_result.status_flag
             break
         end
 
-        #unpack variables computed in single step
-        # TODO
+        # unpack storage
+        if d.step_count > length(d.storage)
+            resize!(d.storage, 2, d.step_count*2)
+        else
+            d.storage[:, step_count+1] .= d.step_result.Yⱼ
+        end
+
     end
 
     if d.error_code === RELAXATION_NOT_CALLED

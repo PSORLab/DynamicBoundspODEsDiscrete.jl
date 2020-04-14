@@ -46,7 +46,7 @@ an initial value problem for an ordinary differential equation. 1999. Universist
 of Toronto, PhD Dissertation, Algorithm 5.1, page 73-74).
 """
 function existence_uniqueness!(s::StepResult, tf!::TaylorFunctor!, hmin::Float64)
-    existence_uniqueness!(s.unique_result, tf!, s.Yⱼ, s.hj, hmin, f, s.∂f∂x_in, s.∂f∂p_in)
+    existence_uniqueness!(s.unique_result, tf!, s.Yⱼ, s.hj, hmin, s.f, s.∂f∂x, s.∂f∂p)
     nothing
 end
 function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Yⱼ::Vector{T},
@@ -69,8 +69,13 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Yⱼ:
     copyto!(Ỹⱼ₀, 1, Yⱼ, 1, nx+np)
     copyto!(Ỹⱼ, 1, Yⱼ, 1, nx+np)
 
+    println("Ỹⱼ₀ = $(Ỹⱼ₀)")
+    println("Ỹⱼ = $(Ỹⱼ)")
+
     ∂f∂x = tf!.∂f∂x
-    hIk = hIk = Interval{Float64}(0.0, hⱼ^k)
+    hIk = Interval{Float64}(0.0, hⱼ^k)
+    println("∂f∂x = $(∂f∂x)")
+    println("hIk = $(hIk)")
 
     inβ = true
     α = 0.8

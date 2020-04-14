@@ -2,14 +2,14 @@ using Revise
 
 using DynamicBoundsBase, DynamicBoundspODEsPILMS
 
-x0(p) = [34.0; 20.0]
-function f!(du, u, p, t)
-    du[1] = -p[1]*u[1]*u[2] + p[2]*u[1]
-    du[2] = -p[1]*u[1]*u[2] + p[2]*u[2]
-    return
+x0(p) = [0.1; 1.0]
+function f!(dx,x,p,t)
+    dx[1] = x[1]^2 + p[2]
+    dx[2] = x[2] + p[1]^2
+    nothing
 end
 tspan = (0.0,18.0e-5*50)
-pL = [0.1; 0.033]
+pL = [0.2; 0.1]
 pU = 10.0*pL
 
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
