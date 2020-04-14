@@ -47,29 +47,23 @@ end
 function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T} g::Subgradient{Upper}) where {X, T < MC}
     for i in 1:t.np
         @inbounds for j in eachindex(out[i])
-            out[i][j] = t.storage[j].cc_grad[j]
+            out[i][j] = t.storage[j].cc_grad[i]
         end
     end
     return
 end
 
-function getall!(out::Array{Float64,2}, t::DiscretizeRelax, v::Bound{Lower})
-    out .= t.relax_lo
+function getall!(out::Union{Vector{Float64}, Matrix{Float64}}, t::DiscretizeRelax, v::Bound{Lower})
+    @inbounds for j in eachindex(out)
+        out[j] = t.storage[j].Intv.lo
+    end
     return
 end
 
-function getall!(out::Vector{Float64}, t::DiscretizeRelax, v::Bound{Lower})
-    out[:] = t.relax_lo[1,:]
-    return
-end
-
-function getall!(out::Array{Float64,2}, t::DiscretizeRelax, v::Bound{Upper})
-    out .= t.relax_hi
-    return
-end
-
-function getall!(out::Vector{Float64}, t::DiscretizeRelax, v::Bound{Upper})
-    out[:] = t.relax_hi[1,:]
+function getall!(out::Union{Vector{Float64}, Matrix{Float64}},, t::DiscretizeRelax, v::Bound{Upper})
+    @inbounds for j in eachindex(out)
+        out[j] = t.storage[j].Intv.hi
+    end
     return
 end
 
