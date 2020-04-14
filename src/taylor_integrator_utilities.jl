@@ -476,3 +476,32 @@ function reinitialize!(x::CircularBuffer{QRDenseStorage})
     end
     nothing
 end
+
+mutable struct UniquenessResult
+    step::Float64
+    confirmed::Bool
+    Y::Vector{Interval{Float64}}
+    fk::Vector{Interval{Float64}}
+end
+function UniquenessResult(nx::Int, np::Int)
+    Y = zeros(Interval{Float64}, nx + np)
+    fk = zeros(Interval{Float64}, nx)
+    UniquenessResult(0.0, false, Y, fk)
+end
+
+mutable struct StepResult{S <: Real}
+    status_flag::TerminationStatusCode
+    hj::Float64
+    predicted_hj::Float64
+    errⱼ::Float64
+    yⱼ::Vector{Float64}
+    zⱼ::Vector{S}
+    Yⱼ::Vector{S}
+    unique_result::UniquenessResult
+    A::QRDenseStorage
+    Δ::Vector{S}
+    f::Matrix{S}
+    ∂f∂x::Vector{Matrix{S}}
+    ∂f∂p::Vector{Matrix{S}}
+    jacobians_set::Bool
+end

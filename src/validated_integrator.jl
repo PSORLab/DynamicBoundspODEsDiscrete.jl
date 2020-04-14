@@ -1,3 +1,18 @@
+struct StepParams
+    "Error tolerance"
+    tol::Float64
+    "Minimum step size"
+    hmin::Float64
+    "Number of decision variables"
+    nx::Int
+    "LEPUS repetition limit"
+    repeat_limit::Int
+    "Gamma constant"
+    γ::Float64
+    "Order of Taylor series approx"
+    k::Int
+end
+
 """
 $(TYPEDEF)
 
@@ -7,7 +22,9 @@ An elastic array is Y
 
 $(TYPEDFIELDS)
 """
-mutable struct DiscretizeRelax{F,X,T,P,Q,K} <: AbstractODERelaxIntegator
+mutable struct DiscretizeRelax{X,T} <: AbstractODERelaxIntegator
+
+    # Problem description
     "Initial Conditiion for pODEs"
     x0f::X
     "Parameter value for pODEs"
@@ -16,53 +33,36 @@ mutable struct DiscretizeRelax{F,X,T,P,Q,K} <: AbstractODERelaxIntegator
     pL::Vector{Float64}
     "Upper Parameter Bounds for pODEs"
     pU::Vector{Float64}
+    "Number of state variables"
+    nx::Int
+    "Number of decision variables"
+    np::Int
     "Time span to integrate over"
     tspan::Tuple{Float64, Float64}
     "Individual time points to evaluate"
     tsupports::Vector{Float64}
-    "Functor for evaluating Taylor coefficients at real values"
-    real_tf!::TaylorFunctor!
-    "Functor for evaluating Taylor coefficients over a set"
-    set_tf!::TaylorFunctor!
-    "Functor for evaluating Jacobians of Taylor coefficients over a set"
-    jac_tf!::JacTaylorFunctor!
-    "Storage for QR Factorizations"
-    A::QRStack
-    "LEPUS gamma constant for Hermite-Obreschkoff"
-    γHO::Float64
-    "LEPUS gamma constant for parametric linear multistep methods"
-    γPILMS::Float64
-    "Parametric Linear Multistep Method Storage"
-    methodPLMS::PILMS{N,K}
-    "Hermite Obreschkoff Storage"
-    methodHO::HermiteObreschkoff{P,Q}
-    "LEPUS repetition limit"
-    repeat_limit::Int
+
+    # Options and internal storage
     "Maximum number of integration steps"
     step_limit::Int
-    "Error tolerance"
-    tol::Float64
-    "Minimum step size"
-    hmin::Float64
     "Stores solution Y = (X,P) for each time"
     storage::ElasticArray{T,2}
     "Support index to storage dictory"
     support_dict::ImmutableDict{Int,Int}
     "Holds data for numeric error encountered in integration step"
     error_code::TerminationStatusCode
-    "Number of state variables"
-    nx::Int
-    "Number of decision variables"
-    np::Int
+    "Storage for QR Factorizations"
+    A::CircularBuffer{QRDenseStorage}
     "Relaxation Type"
-    type
+    type::T
+
+    # Main functions used in routines
+    "Functor for evaluating Taylor coefficients over a set"
+    set_tf!::TaylorFunctor!
+
 end
-function DiscretizeRelax(d::ODERelaxProb;
-                         typeHO::PILMS = PILMS(1)
-                         typePILMS::HermiteObreschkoff = HermiteObreschkoff(0,0),
-                         repeat_limit = 50, step_limit = 20000,
-                         tol = 1E-3, hmin = 1E-13,
-                         typeHO =:lohner, relax = false)
+function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
+                         tol = 1E-3, hmin = 1E-13, relax = false)
     nx = d.nx
     np = d.np
     p = d.p
@@ -118,52 +118,61 @@ function estimate_excess(hj, k, fk, γ, nx)
     return excess_flag
 end
 
-
 """
 $(TYPEDSIGNATURES)
 
-Performs a single-step of the validated integrator.
+Performs a single-step of the validated integrator. Input stepsize is out.step.
 """
-function single_step!(stf!, rtf!, dtf!, hj_in, A::QRStack, repeat_limit, hmin, nx, Yⱼ,
-                      f, γ, Δ, ∂f∂y_in)
+function single_step!(out::StepResult{S}, params::StepParams, lf::LohnerFunctor,
+                      stf!::TaylorFunctor, A::CircularBuffer{QRDenseStorage},
+                      Yⱼ::Vector{S}, Δ::CircularBuffer{Vector{S}}) where {S <: Real}
 
-    status_flag = COMPLETED
-    hj = hj_in
-    hj1 = 0.0
+    k = params.k
+    tol = params.tol
+    γ = params.γ
+    nx = params.nx
+    hmin = params.hmin
+    repeat_limit = params.repeat_limit
 
     # validate existence & uniqueness
-    hⱼ, Ỹⱼ, f̃, step_flag = existence_uniqueness(stf!, Yⱼ, hⱼ, hmin, f, ∂f∂y_in)
-    if ~step_flag
-        status_flag = NUMERICAL_ERROR
-        return status_flag, hj, hj1
+    if ~out.jacobians_set
+        jacobian_taylor_coeffs!(lf.jac_tf!, Yⱼ)
+        extract_JxJp!(Jx, Jp, lf.jac_tf!.result, lf.jac_tf!.tjac, nx, np, k)
+    end
+    existence_uniqueness!(out, stf!, hmin)
+    out.hj = unique_result.step
+    if ~unique_result.confirmed
+        out.status_flag = NUMERICAL_ERROR
+        return nothing
     end
 
     # repeat until desired tolerance is otained or repetition limit is hit
     count = 1
-    while (hj > hmin) && (count < repeat_limit)
+    while (out.hj > hmin) && (count < repeat_limit)
 
-        yⱼ₊₁, Yⱼ₊₁ = parametric_lohners!(stf!, rtf!, dtf!, hⱼ, Ỹⱼ, Yⱼ, yⱼ, A, Δ)
-        zⱼ₊₁ .= real_tf!.f̃
-        Yⱼ₊₁ = jac_tf!.Yⱼ₊₁
+        out.f_jac_set = lf(out.hj, out.unique_result.Y, out.Yⱼ, out.yⱼ, out.A, out.Δ)
 
         # Lepus error control scheme
-        errⱼ = estimate_excess(hj, k, f̃[k], γ, nx)
-        if errⱼ <= hj*tol
-            hj1 = 0.9*hj*(0.5*hj*tol/errⱼ)^(1/(k-1))
+        out.errⱼ = estimate_excess(out.hj, k, f̃[k], γ, nx)
+        if out.errⱼ <= out.hj*params.tol
+            out.predicted_hj = 0.9*out.hj*(0.5*out.hj/out.errⱼ)^(1/(k-1))
             break
         else
-            hj1 = hj*(hj*tol/errⱼ)^(1/(k-1))
-            zjp1_temp = zjp1*(hj1/hj)^k
-            hj = hj1
-            zjp1 .= zjp1_temp
+            out.predicted_hj = out.hj*(out.hj*tol/out.errⱼ)^(1/(k-1))
+            zjp1_temp = zjp1*(out.predicted_hj/out.hj)^k
+            out.hj = out.predicted_hj
+            zjp1 = zjp1_temp
         end
         count += 1
     end
 
-    # updates Aj for next step
-    advance!(A)
+    # updates shifts Aj+1 -> Aj and so on
+    pushfirst!(A, last(A))
+    pushfirst!(Δ, get_Δ(lf))
 
-    return status_flag, hj, hj1, yⱼ₊₁, zⱼ₊₁, Yⱼ₊₁
+    set_y!(out.yⱼ, lf)
+    set_Y!(out.Yⱼ, lf)
+    nothing
 end
 
 function set_p!(jac_tf!::JacTaylorFunctor!{F,T,MC{N,NS},D}, p, pL, pU) where {F <: Function, T <: Real, N, D}

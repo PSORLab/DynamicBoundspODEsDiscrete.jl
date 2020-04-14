@@ -1,4 +1,19 @@
 """
+$(TYPEDEF)
+"""
+struct LohnersFunctor!{F <: Function, T <: Real, S <: Real}
+    set_tf!::TaylorFunctor!{F,T,S}
+    real_tf!::TaylorFunctor!{F,T,T}
+    jac_tf!::JacTaylorFunctor!{F,T,S}
+end
+function LohnersFunctor!(f!::F, nx::Int, np::Int, k::Int, s::S, t::T) where {F, S <: Real, T <: Real}
+    set_tf! = TaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
+    real_tf! = TaylorFunctor!(f!, nx, np, k, zero(T), zero(T))
+    jac_tf! = JacTaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
+    LohnersFunctor!{F,T,S}(set_tf!, real_tf!, jac_tf!)
+end
+
+"""
 $(TYPEDSIGNATURES)
 
 An implementation of the parametric Lohner's method described in the paper in (1)
@@ -12,14 +27,14 @@ ordinary initial and boundary value problems, in: J.R. Cash, I. Gladwell (Eds.),
 Computational Ordinary Differential Equations, vol. 1, Clarendon Press, 1992,
 pp. 425–436.](http://www.goldsztejn.com/old-papers/Lohner-1992.pdf)
 """
-function parametric_lohners!(set_tf!::TaylorFunctor!{F,S,T},
-                             real_tf!::TaylorFunctor!{F,S,S},
-                             jac_tf!::JacTaylorFunctor!{F,S,D}, hⱼ, Ỹⱼ, Yⱼ,
-                             A::CircularBuffer{QRDenseStorage},
-                             yⱼ, Δⱼ) where {F <: Function, T <: Real,
-                                            S <: Real, D <: Real}
+function (x::LohnersFunctor{F,S,T})(hⱼ, Ỹⱼ, Yⱼ, A::CircularBuffer{QRDenseStorage},
+                                    yⱼ, Δⱼ) where {F <: Function, S <: Real, T <: Real}
 
-    # abbreviate feild access
+
+    # abbreviate field access
+    set_tf! = x.set_tf!
+    real_tf! = x.real_tf!
+    jac_tf! = x.jac_tf!
     nx = set_tf!.nx; np = set_tf!.np; k = set_tf!.s
     sf̃ₜ = set_tf!.f̃ₜ; sf̃ = set_tf!.f̃; sỸⱼ₀ = set_tf!.Ỹⱼ₀; sỸⱼ = set_tf!.Ỹⱼ
     rf̃ₜ = real_tf!.f̃ₜ; rf̃ = real_tf!.f̃; rỸⱼ₀ = real_tf!.Ỹⱼ₀;  rỸⱼ = real_tf!.Ỹⱼ
@@ -96,5 +111,15 @@ function parametric_lohners!(set_tf!::TaylorFunctor!{F,S,T},
     mul!(M1, jac_tf!.Jpsto, rP);
     jac_tf!.Yⱼ₊₁ .+= M1
 
+    true
+end
+
+get_Δ(lf) = lf.jac_tf!.Δⱼ₊₁
+function set_y!(out::Vector{Float64}, lf::LohnersFunctor)
+    out .= lf.jac_tf!.yⱼ₊₁
+    nothing
+end
+function set_Y!(out::Vector{S}, lf::LohnersFunctor) where S
+    out .= lf.jac_tf!.Yⱼ₊₁
     nothing
 end

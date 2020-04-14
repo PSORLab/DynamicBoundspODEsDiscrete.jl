@@ -37,18 +37,6 @@ function contains(Ỹⱼ::Vector{Interval{T}}, Ỹⱼ₀::Vector{Interval{T}}, n
     flag
 end
 
-mutable struct UniquenessResult
-    step::Float64
-    confirmed::Bool
-    Y::Vector{Interval{Float64}}
-    fk::Vector{Interval{Float64}}
-end
-function UniquenessResult(nx::Int, np::Int)
-    Y = zeros(Interval{Float64}, nx + np)
-    fk = zeros(Interval{Float64}, nx)
-    UniquenessResult(0.0, false, Y, fk)
-end
-
 """
 $(TYPEDSIGNATURES)
 
@@ -57,6 +45,10 @@ dissertation (Nedialko S. Nedialkov. Computing rigorous bounds on the solution o
 an initial value problem for an ordinary differential equation. 1999. Universisty
 of Toronto, PhD Dissertation, Algorithm 5.1, page 73-74).
 """
+function existence_uniqueness!(s::StepResult, tf!::TaylorFunctor!, hmin::Float64)
+    existence_uniqueness!(s.unique_result, tf!, s.Yⱼ, s.hⱼ, hmin, f, s.∂f∂x_in, s.∂f∂p_in)
+    nothing
+end
 function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Yⱼ::Vector{T}, hⱼ::Float64,
                               hmin::Float64, f::Matrix{T}, ∂f∂x_in, ∂f∂p_in) where {T <: Real}
 
