@@ -27,9 +27,7 @@ ordinary initial and boundary value problems, in: J.R. Cash, I. Gladwell (Eds.),
 Computational Ordinary Differential Equations, vol. 1, Clarendon Press, 1992,
 pp. 425–436.](http://www.goldsztejn.com/old-papers/Lohner-1992.pdf)
 """
-function (x::LohnersFunctor{F,S,T})(hⱼ, Ỹⱼ, Yⱼ, A::CircularBuffer{QRDenseStorage},
-                                    yⱼ, Δⱼ) where {F <: Function, S <: Real, T <: Real}
-
+function (x::LohnersFunctor{F,S,T})(hⱼ::Float64, Ỹⱼ, Yⱼ, yⱼ, A, Δⱼ) where {F <: Function, S <: Real, T <: Real}
 
     # abbreviate field access
     set_tf! = x.set_tf!
@@ -80,6 +78,9 @@ function (x::LohnersFunctor{F,S,T})(hⱼ, Ỹⱼ, Yⱼ, A::CircularBuffer{QRDens
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
     Aⱼ₊₁ = A[1]
     Aⱼ = A[2]
+    println(" ")
+    println("Aⱼ₊₁: $(Aⱼ₊₁)")
+    println("Aⱼ: $(Aⱼ)")
     M2Y .= jac_tf!.Jxsto*Aⱼ.Q
     jac_tf!.B .= mid.(M2Y)
     calculateQ!(Aⱼ₊₁, jac_tf!.B, nx)
@@ -95,23 +96,41 @@ function (x::LohnersFunctor{F,S,T})(hⱼ, Ỹⱼ, Yⱼ, A::CircularBuffer{QRDens
 
     #jac_tf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Y)*Δⱼ
     mul!(M2, Aⱼ₊₁.inv, M2Y);
-    mul!(M1, M2, Δⱼ);
+
+    println("M1: $M1")
+    println("M2: $M2")
+    println("Δⱼ: $(Δⱼ)")
+
+    mul!(M1, M2, Δⱼ[1][1:nx]);
+
+    println("next 1")
     jac_tf!.Δⱼ₊₁ .+= M1
 
+    println("next 2")
     #jac_tf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Jpsto)*rP
     mul!(M3, Aⱼ₊₁.inv, jac_tf!.Jpsto);
-    mul!(M1, M3, rP);
-    jac_tf!.Δⱼ₊₁ .+= M1
 
+    println("M1: $M1")
+    println("M3: $M3")
+    println("rP: $rP")
+    mul!(M1, M3, rP);
+     println("next b")
+    jac_tf!.Δⱼ₊₁ .+= M1
+    println("next a")
     #jac_tf!.Yⱼ₊₁ .+= Y*Δⱼ
-    mul!(M1, M2Y, Δⱼ);
+    println("M1: $(M1)")
+    println("M2Y: $(M2Y)")
+    mul!(M1, M2Y,  Δⱼ[1][1:nx]); println("next 3")
     jac_tf!.Yⱼ₊₁ .= M1
+    println("next 4")
 
     # jac_tf!.Yⱼ₊₁ .+= Jpsto*rP
-    mul!(M1, jac_tf!.Jpsto, rP);
-    jac_tf!.Yⱼ₊₁ .+= M1
+    mul!(M1, jac_tf!.Jpsto, rP); println("next 5")
+    jac_tf!.Yⱼ₊₁ .+= M1; println("next 6")
 
-    true
+    pushfirst!(Δⱼ,jac_tf!.Δⱼ₊₁)
+
+    RELAXATION_NOT_CALLED
 end
 
 get_Δ(lf) = lf.jac_tf!.Δⱼ₊₁

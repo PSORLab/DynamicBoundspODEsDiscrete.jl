@@ -96,6 +96,7 @@ function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
     sizehint!(storage, nx+np, 10000)   # suggest 1000*(nx+np) steps likely
     A = qr_stack(nx, method_steps)
     Δ = CircularBuffer{Vector{T}}(method_steps)
+    fill!(Δ, zeros(T, nx+np))
 
     set_tf! = TaylorFunctor!(f, nx, np, k, style, zero(Float64))
     method_f! = LohnersFunctor(f, nx, np, k, style, zero(Float64))
@@ -132,8 +133,12 @@ $(TYPEDSIGNATURES)
 Performs a single-step of the validated integrator. Input stepsize is out.step.
 """
 function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor,
-                      stf!::TaylorFunctor!, A::CircularBuffer{QRDenseStorage},
-                      Δ::CircularBuffer{Vector{S}}) where {S <: Real}
+                      stf!::TaylorFunctor!, Δ::CircularBuffer{Vector{S}},
+                      A::CircularBuffer{QRDenseStorage}) where {S <: Real}
+
+    println(" ")
+    println("single A: $(A)")
+    println("single Δ: $(Δ)")
 
     k = params.k
     tol = params.tol
@@ -158,10 +163,11 @@ function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor
     count = 1
     while (out.hj > hmin) && (count < repeat_limit)
 
-        out.f_jac_set = lf(out.hj, out.unique_result.Y, out.Yⱼ, out.yⱼ, out.A, out.Δ)
+        out.status_flag = lf(out.hj, out.unique_result.Y, out.Yⱼ, out.yⱼ, A, Δ)
 
         # Lepus error control scheme
-        out.errⱼ = estimate_excess(out.hj, k, f̃[k], γ, nx)
+        f̃k =
+        out.errⱼ = estimate_excess(out.hj, k, f̃k, γ, nx)
         if out.errⱼ <= out.hj*params.tol
             out.predicted_hj = 0.9*out.hj*(0.5*out.hj/out.errⱼ)^(1/(k-1))
             break
@@ -242,6 +248,8 @@ function relax!(d::DiscretizeRelax)
     end
 
     # initialize QR type storage
+    println("d.A: $(d.A)")
+    println("d.Δ: $(d.Δ)")
     set_Δ!(d.Δ, d.storage)
     reinitialize!(d.A)
 
@@ -256,7 +264,7 @@ function relax!(d::DiscretizeRelax)
         d.step_result.hj = min(d.step_result.hj, next_support - t, tmax - t)
 
         # perform step size calculation and update bound information
-        single_step!(d.step_result, d.step_params, d.method_f!, d.set_tf!, d.A, d.Δ)
+        single_step!(d.step_result, d.step_params, d.method_f!, d.set_tf!, d.Δ, d.A)
 
         # advance step counters
         t += d.step_result.hj
