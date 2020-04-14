@@ -1,16 +1,16 @@
 """
 $(TYPEDEF)
 """
-struct LohnersFunctor!{F <: Function, T <: Real, S <: Real}
+struct LohnersFunctor{F <: Function, T <: Real, S <: Real}
     set_tf!::TaylorFunctor!{F,T,S}
     real_tf!::TaylorFunctor!{F,T,T}
     jac_tf!::JacTaylorFunctor!{F,T,S}
 end
-function LohnersFunctor!(f!::F, nx::Int, np::Int, k::Int, s::S, t::T) where {F, S <: Real, T <: Real}
+function LohnersFunctor(f!::F, nx::Int, np::Int, k::Int, s::S, t::T) where {F, S <: Real, T <: Real}
     set_tf! = TaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
     real_tf! = TaylorFunctor!(f!, nx, np, k, zero(T), zero(T))
     jac_tf! = JacTaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
-    LohnersFunctor!{F,T,S}(set_tf!, real_tf!, jac_tf!)
+    LohnersFunctor{F,T,S}(set_tf!, real_tf!, jac_tf!)
 end
 
 """
@@ -121,5 +121,17 @@ function set_y!(out::Vector{Float64}, lf::LohnersFunctor)
 end
 function set_Y!(out::Vector{S}, lf::LohnersFunctor) where S
     out .= lf.jac_tf!.Yⱼ₊₁
+    nothing
+end
+
+function set_p!(f::LohnersFunctor{F,Float64,MC{N,NS}}, p, pL, pU) where {F, N}
+    for i in 1:length(p)
+        f.jac_tf!.rP[i] = MC{N,NS}.(p[i], Interval(pL[i],pU[i]), i) - p
+        nothing
+    end
+end
+
+function set_p!(f::LohnersFunctor{F,Float64,Interval{Float64}}, p, pL, pU) where {F}
+    @__dot__ f.jac_tf!.rP = Interval(pL, pU) - p
     nothing
 end

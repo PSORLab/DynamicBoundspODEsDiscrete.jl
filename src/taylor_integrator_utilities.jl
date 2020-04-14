@@ -477,19 +477,19 @@ function reinitialize!(x::CircularBuffer{QRDenseStorage})
     nothing
 end
 
-mutable struct UniquenessResult
+mutable struct UniquenessResult{S <: Number}
     step::Float64
     confirmed::Bool
-    Y::Vector{Interval{Float64}}
-    fk::Vector{Interval{Float64}}
+    Y::Vector{S}
+    fk::Vector{S}
 end
-function UniquenessResult(nx::Int, np::Int)
-    Y = zeros(Interval{Float64}, nx + np)
-    fk = zeros(Interval{Float64}, nx)
-    UniquenessResult(0.0, false, Y, fk)
+function UniquenessResult(s::S, nx::Int, np::Int) where S
+    Y = zeros(S, nx + np)
+    fk = zeros(S, nx)
+    UniquenessResult{S}(0.0, false, Y, fk)
 end
 
-mutable struct StepResult{S <: Real}
+mutable struct StepResult{S <: Number}
     status_flag::TerminationStatusCode
     hj::Float64
     predicted_hj::Float64
@@ -498,10 +498,24 @@ mutable struct StepResult{S <: Real}
     zⱼ::Vector{S}
     Yⱼ::Vector{S}
     unique_result::UniquenessResult
-    A::QRDenseStorage
-    Δ::Vector{S}
     f::Matrix{S}
     ∂f∂x::Vector{Matrix{S}}
     ∂f∂p::Vector{Matrix{S}}
     jacobians_set::Bool
+end
+function StepResult(s::S, nx::Int, np::Int, k::Int) where S
+    status_flag = RELAXATION_NOT_CALLED
+    hj = 0.0
+    predicted_hj = 0.0
+    errⱼ = 0.0
+    yⱼ = zeros(Float64, nx)
+    zⱼ = zeros(S, nx)
+    Yⱼ = zeros(S, nx)
+    unique_result = UniquenessResult(s, nx, np)
+    f = zeros(S,nx,k+1)
+    ∂f∂x = Matrix{S}[zeros(S,nx,nx) for i in 1:(k+1)]
+    ∂f∂p = Matrix{S}[zeros(S,nx,np) for i in 1:(k+1)]
+    jacobians_set = true
+    StepResult{S}(status_flag, hj, predicted_hj, errⱼ, yⱼ, zⱼ, Yⱼ,
+                  unique_result, f, ∂f∂x, ∂f∂p, jacobians_set)
 end

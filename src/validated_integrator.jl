@@ -45,60 +45,68 @@ mutable struct DiscretizeRelax{X,T} <: AbstractODERelaxIntegator
     # Options and internal storage
     "Maximum number of integration steps"
     step_limit::Int
+    "Steps taken"
+    step_count::Int
     "Stores solution Y = (X,P) for each time"
     storage::ElasticArray{T,2}
     "Support index to storage dictory"
-    support_dict::ImmutableDict{Int,Int}
+    support_dict::Dict{Int,Int}
     "Holds data for numeric error encountered in integration step"
     error_code::TerminationStatusCode
     "Storage for QR Factorizations"
     A::CircularBuffer{QRDenseStorage}
+    "Storage for Δ"
+    Δ::CircularBuffer{Vector{T}}
     "Relaxation Type"
-    type::T
+    style::T
 
     # Main functions used in routines
     "Functor for evaluating Taylor coefficients over a set"
     set_tf!::TaylorFunctor!
+    method_f!::LohnersFunctor
+
+    step_result::StepResult{T}
+    step_params::StepParams
 
 end
 function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
-                         tol = 1E-3, hmin = 1E-13, relax = false)
+                         tol = 1E-5, hmin = 1E-13, relax = false, k = 4,
+                         method_steps = 2, γ = 1.0)
     nx = d.nx
     np = d.np
     p = d.p
     pL = d.pL
     pU = d.pU
-    f! = d.f!
+    f = d.f
 
-    # build functors for evaluating Taylor coefficients
-    if relax == true
-        set_tf! = TaylorFunctor!(f!, nx, np, k, zero(MC{np,NS}), zero(Float64))
-        jac_tf! = JacTaylorFunctor!(f!, nx, np, k, zero(MC{np,NS}), zero(Float64))
+    tsupports = d.tsupports
+    if ~isempty(tsupports)
+        if (tsupports[1] == 0.0)
+            support_dict = Dict{Int,Int}(d.support_dict, 1 => 1)
+        end
     else
-        set_tf! = TaylorFunctor!(f!, nx, np, k, zero(Interval{Float64}), zero(Float64))
-        jac_tf! = JacTaylorFunctor!(f!, nx, np, k, zero(Interval{Float64}), zero(Float64))
-    end
-    real_tf! = TaylorFunctor!(f!, nx, np, k, zero(Float64), zero(Float64))
-
-    γHO = ### typeHO
-    γPILMS = ### typePILMS
-
-    A = QRStack(nx)
-    storage = ElasticArray()
-    sizehint!(storage, nx+np, 1000)   # suggest 1000*(nx+np) steps likely
-
-    if (tsupports[1] == 0.0)
-        # first support is at time index 1
-        support_dict = ImmutableDict(d.support_dict, 1 => 1)
-    else
-        # meaningless placeholder
-        support_dict = ImmutableDict(d.support_dict, -1 => -1)
+        support_dict = Dict{Int,Int}()
     end
     error_code = RELAXATION_NOT_CALLED
 
-    return DiscretizeRelax{F,X,T}(d.x0, p, pL, pU, d.tspan, d.tsupports, real_tf!,
-                                  set_tf!, real_tf!, A, γHO, γPILMS, repeat_limit,
-                                  step_limit, tol, hmin, storage, nx, np, type)
+    T = relax ? MC{np,NS} : Interval{Float64}
+    style = zero(T)
+    storage = ElasticArray(zeros(T, nx+np, 1000))
+
+    sizehint!(storage, nx+np, 10000)   # suggest 1000*(nx+np) steps likely
+    A = qr_stack(nx, method_steps)
+    Δ = CircularBuffer{Vector{T}}(method_steps)
+
+    set_tf! = TaylorFunctor!(f, nx, np, k, style, zero(Float64))
+    method_f! = LohnersFunctor(f, nx, np, k, style, zero(Float64))
+
+    step_result = StepResult(style, nx, np, k)
+    step_params = StepParams(tol, hmin, nx, repeat_limit, γ, k)
+
+    return DiscretizeRelax{typeof(d.x0),T}(d.x0, p, pL, pU, nx, np, d.tspan,
+                                           d.tsupports, step_limit, 0, storage, support_dict,
+                                           error_code, A, Δ, style, set_tf!,
+                                           method_f!, step_result, step_params)
 end
 
 
@@ -123,9 +131,9 @@ $(TYPEDSIGNATURES)
 
 Performs a single-step of the validated integrator. Input stepsize is out.step.
 """
-function single_step!(out::StepResult{S}, params::StepParams, lf::LohnerFunctor,
-                      stf!::TaylorFunctor, A::CircularBuffer{QRDenseStorage},
-                      Yⱼ::Vector{S}, Δ::CircularBuffer{Vector{S}}) where {S <: Real}
+function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor,
+                      stf!::TaylorFunctor!, A::CircularBuffer{QRDenseStorage},
+                      Δ::CircularBuffer{Vector{S}}) where {S <: Real}
 
     k = params.k
     tol = params.tol
@@ -136,7 +144,7 @@ function single_step!(out::StepResult{S}, params::StepParams, lf::LohnerFunctor,
 
     # validate existence & uniqueness
     if ~out.jacobians_set
-        jacobian_taylor_coeffs!(lf.jac_tf!, Yⱼ)
+        jacobian_taylor_coeffs!(lf.jac_tf!, out.Yⱼ)
         extract_JxJp!(Jx, Jp, lf.jac_tf!.result, lf.jac_tf!.tjac, nx, np, k)
     end
     existence_uniqueness!(out, stf!, hmin)
@@ -175,57 +183,60 @@ function single_step!(out::StepResult{S}, params::StepParams, lf::LohnerFunctor,
     nothing
 end
 
-function set_p!(jac_tf!::JacTaylorFunctor!{F,T,MC{N,NS},D}, p, pL, pU) where {F <: Function, T <: Real, N, D}
-    for i in 1:length(p)
-        jac_tf!.rP[i] = MC{N,NS}.(p[i], Interval(pL[i],pU[i]), i) - p
-        nothing
-    end
-end
-
-function set_p!(jac_tf!::JacTaylorFunctor!{F,T,Interval{Float64},D}, p, pL, pU) where {F <: Function, T <: Real, D}
-    @__dot__ jac_tf!.rP = Interval(pL, pU) - p
-    nothing
-end
+set_p!(d::DiscretizeRelax, p, pL, pU) = set_p!(d.method_f!, p, pL, pU)
 
 function compute_y0!(out::ElasticArray{Interval{Float64},2}, x0, p, pL, pU, nx, np)
-    @__dot__ P = Interval(pL, pU)
+    P = Interval.(pL, pU)
     Xout = x0(P)
-    copyto!(view(out, 1:nx, 1), 1, Xout, 1, nx)
-    copyto!(view(out, (nx):(nx+np), 1), nx+1, P, 1, np)
+    out[1:nx, 1] .= Xout
+    out[(nx+1):(nx+np), 1] .= P
     nothing
 end
 
 function compute_y0!(out::ElasticArray{MC{N,NS},2}, x0, p, pL, pU, nx, np) where N
-    @__dot__ P = MC{N,NS}(p, Interval(pL, pU), 1:np)
+    P = MC{N,NS}.(p, Interval.(pL, pU), 1:np)
     Xout = x0(P)
     copyto!(view(out, 1:nx, 1), 1, Xout, 1, nx)
-    copyto!(view(out, (nx):(nx+np), 1), nx+1, P, 1, np)
+    copyto!(view(out, (nx+1):(nx+np), 1), nx+1, P, 1, np)
     nothing
 end
 
-set_Δ!(Δ::Vector{Vector{Interval{Float64}}}, out::ElasticArray{Interval{Float64},2})
-set_Δ!(Δ::Vector{Vector{MC{N,NS}}}, out::ElasticArray{MC{N,NS},2})
+function set_Δ!(Δ::CircularBuffer{Vector{T}}, out::ElasticArray{T,2}) where T
+    for i in 1:length(Δ)
+        if i == 1
+            Δ[1] .= out[:,1]
+        else
+            fill!(Δ[i], zero(T))
+        end
+    end
+    nothing
+end
+
 
 function relax!(d::DiscretizeRelax)
 
     # Functor set P and P - p values for calculations
-    set_p!(d.jac_tf!, p, pL, pU)
+    set_p!(d.method_f!, d.p, d.pL, d.pU)
 
     # Compute initial condition values
-    compute_y0!(d.storage, d.x0f, p, pL, pU, nx, np)
+    compute_y0!(d.storage, d.x0f, d.p, d.pL, d.pU, d.nx, d.np)
 
     # Get initial time and integration direction
     t = d.tspan[1]
-    tmax = d.tspan[1]
+    tmax = d.tspan[2]
     sign_tstep = copysign(1, tmax-t)
 
     # Computes maximum step size to take (either hit support or max time)
     support_indx = 1
-    if (tsupports[1] == 0.0)
-        next_support = tsupports[2]
-        support_indx += 1
-    else
-        next_support = tsupports[1]
+    next_support = Inf
+    tsupports = d.tsupports
+    if ~isempty(tsupports)
+        if (tsupports[1] == 0.0)
+            next_support = tsupports[2]
+            support_indx += 1
+        else
+            next_support = tsupports[1]
+        end
     end
 
     # initialize QR type storage
@@ -235,7 +246,7 @@ function relax!(d::DiscretizeRelax)
     # Begin integration loop
     hlast = 0.0
     hnext = tmax - t
-    nsteps = 1
+    d.step_count = 0
     while sign_tstep*t < sign_tstep*tmax
 
         # max step size is min of predicted, when next support point occurs,
@@ -243,15 +254,15 @@ function relax!(d::DiscretizeRelax)
         hnext = min(hnext, next_support - t, tmax - t)
 
         # perform step size calculation and update bound information
-        step_flag, hlast, hnext = single_step!(d.set_tf!, d.real_tf!, d.jac_tf!, hnext,
-                                               d.A, d.repeat_limit, d.hmin, d.nx)
+        single_step!(d.step_result, d.step_params, d.method_f!,
+                     d.set_tf!, d.A, d.Δ)
 
         # advance step counters
         t += hlast
-        nsteps += 1
+        d.step_count += 1
 
         # throw error if limit exceeded
-        if nsteps > d.step_limit
+        if d.step_count > d.step_limit
             d.error_code = NUMERICAL_ERROR
             break
         elseif step_flag !== COMPLETED
@@ -263,7 +274,7 @@ function relax!(d::DiscretizeRelax)
         # TODO
     end
 
-    if d.error_code === EMPTY
+    if d.error_code === RELAXATION_NOT_CALLED
         d.error_code = COMPLETED
     end
 

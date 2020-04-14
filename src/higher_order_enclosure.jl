@@ -46,11 +46,12 @@ an initial value problem for an ordinary differential equation. 1999. Universist
 of Toronto, PhD Dissertation, Algorithm 5.1, page 73-74).
 """
 function existence_uniqueness!(s::StepResult, tf!::TaylorFunctor!, hmin::Float64)
-    existence_uniqueness!(s.unique_result, tf!, s.Yⱼ, s.hⱼ, hmin, f, s.∂f∂x_in, s.∂f∂p_in)
+    existence_uniqueness!(s.unique_result, tf!, s.Yⱼ, s.hj, hmin, f, s.∂f∂x_in, s.∂f∂p_in)
     nothing
 end
-function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Yⱼ::Vector{T}, hⱼ::Float64,
-                              hmin::Float64, f::Matrix{T}, ∂f∂x_in, ∂f∂p_in) where {T <: Real}
+function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Yⱼ::Vector{T},
+                               hⱼ::Float64, hmin::Float64, f::Matrix{T},
+                               ∂f∂x_in::Vector{Matrix{T}}, ∂f∂p_in::Vector{Matrix{T}}) where {T <: Real}
 
     k = tf!.s
     nx = tf!.nx
