@@ -1,6 +1,6 @@
 
 ## Setting problem attributes
-function setall!(t::DiscretizeRelax, v::ParameterBound{Lower}, value::Vector{Float64})
+function setall!(t::DiscretizeRelax, v::ParameterBound{Lower}, ::Vector{Float64})
     t.new_decision_box = true
     @inbounds for i in 1:t.np
         t.pL[i] = value[i]
@@ -8,7 +8,7 @@ function setall!(t::DiscretizeRelax, v::ParameterBound{Lower}, value::Vector{Flo
     return
 end
 
-function setall!(t::DiscretizeRelax, v::ParameterBound{Upper}, value::Vector{Float64})
+function setall!(t::DiscretizeRelax, v::ParameterBound{Upper}, ::Vector{Float64})
     t.new_decision_box = true
     @inbounds for i in 1:t.np
         t.pU[i] = value[i]
@@ -16,7 +16,7 @@ function setall!(t::DiscretizeRelax, v::ParameterBound{Upper}, value::Vector{Flo
     return
 end
 
-function setall!(t::DiscretizeRelax, v::ParameterValue, value::Vector{Float64})
+function setall!(t::DiscretizeRelax, v::ParameterValue, ::Vector{Float64})
     t.new_decision_pnt = true
     @inbounds for i in 1:t.np
         t.p[i] = value[i]
@@ -26,13 +26,13 @@ end
 
 
 ## Inplace integrator acccess functions
-function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, g::Subgradient{Lower}) where {X, T <: AbstractInterval}
+function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Subgradient{Lower}) where {X, T <: AbstractInterval}
     for i in 1:t.np
         fill!(out[i], 0.0)
     end
     return
 end
-function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, g::Subgradient{Lower}) where {X, T <: MC}
+function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Subgradient{Lower}) where {X, T <: MC}
     for i in 1:t.np
         @inbounds for j in eachindex(out[i])
             out[i][j] = t.storage[j].cv_grad[j]
@@ -41,14 +41,14 @@ function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, g::Subg
     return
 end
 
-function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, g::Subgradient{Upper}) where {X, T <: AbstractInterval}
+function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Subgradient{Upper}) where {X, T <: AbstractInterval}
     for i in 1:t.np
         fill!(out[i], 0.0)
     end
     return
 end
 
-function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T} g::Subgradient{Upper}) where {X, T <: MC}
+function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Subgradient{Upper}) where {X, T <: MC}
     for i in 1:t.np
         @inbounds for j in eachindex(out[i])
             out[i][j] = t.storage[j].cc_grad[i]
@@ -57,28 +57,28 @@ function getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T} g::Subgr
     return
 end
 
-function getall!(out::Union{Vector{Float64}, Matrix{Float64}}, t::DiscretizeRelax, v::Bound{Lower})
+function getall!(out::Union{Vector{Float64}, Matrix{Float64}}, t::DiscretizeRelax, ::Bound{Lower})
     @inbounds for j in eachindex(out)
         out[j] = t.storage[j].Intv.lo
     end
     return
 end
 
-function getall!(out::Union{Vector{Float64}, Matrix{Float64}}, t::DiscretizeRelax, v::Bound{Upper})
+function getall!(out::Union{Vector{Float64}, Matrix{Float64}}, t::DiscretizeRelax, ::Bound{Upper})
     @inbounds for j in eachindex(out)
         out[j] = t.storage[j].Intv.hi
     end
     return
 end
 
-function getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, v::Relaxation{Lower}) where {X, T <: AbstractInterval}
+function getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Relaxation{Lower}) where {X, T <: AbstractInterval}
     @inbounds for i in eachindex(out)
         out[i] = t.storage[i].Intv.lo
     end
     return
 end
 
-function getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, v::Relaxation{Lower}) where {X, T <: MC}
+function getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Relaxation{Lower}) where {X, T <: MC}
     @inbounds for i in eachindex(out)
         out[i] = t.storage[i].cv
     end
@@ -86,13 +86,13 @@ function getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRel
 end
 
 
-function getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, v::Relaxation{Upper}) where {X, T <: AbstractInterval}
+function getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Relaxation{Upper}) where {X, T <: AbstractInterval}
     @inbounds for i in eachindex(out)
         out[i] = t.storage[i].Intv.hi
     end
     return
 end
-function getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, v::Relaxation{Upper}) where {X, T <: MC}
+function getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Relaxation{Upper}) where {X, T <: MC}
     @inbounds for i in eachindex(out)
         out[i] = t.storage[i].cc
     end
@@ -100,7 +100,7 @@ function getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRel
 end
 
 ## Out of place integrator acccess functions
-function getall(t::DiscretizeRelax{X,T}, g::Subgradient{Lower}) where {X, T <: AbstractInterval}
+function getall(t::DiscretizeRelax{X,T}, ::Subgradient{Lower}) where {X, T <: AbstractInterval}
     dim1, dim2 = size(t.storage)
     out = zeros(t.np, zeros(Float64, dim1, dim2))
     for i in 1:t.np
@@ -108,7 +108,7 @@ function getall(t::DiscretizeRelax{X,T}, g::Subgradient{Lower}) where {X, T <: A
     end
     out
 end
-function getall(t::DiscretizeRelax{X,T}, g::Subgradient{Lower}) where {X, T <: MC}
+function getall(t::DiscretizeRelax{X,T}, ::Subgradient{Lower}) where {X, T <: MC}
     dim1, dim2 = size(t.storage)
     out = zeros(t.np, zeros(Float64, dim1, dim2))
     for i in 1:t.np
@@ -119,7 +119,7 @@ function getall(t::DiscretizeRelax{X,T}, g::Subgradient{Lower}) where {X, T <: M
     out
 end
 
-function getall(t::DiscretizeRelax{X,T}, g::Subgradient{Upper}) where {X, T <: AbstractInterval}
+function getall(t::DiscretizeRelax{X,T}, ::Subgradient{Upper}) where {X, T <: AbstractInterval}
     dim1, dim2 = size(t.storage)
     out = zeros(t.np, zeros(Float64, dim1, dim2))
     for i in 1:t.np
@@ -128,7 +128,7 @@ function getall(t::DiscretizeRelax{X,T}, g::Subgradient{Upper}) where {X, T <: A
     out
 end
 
-function getall(t::DiscretizeRelax{X,T} g::Subgradient{Upper}) where {X, T <: MC}
+function getall(t::DiscretizeRelax{X,T}, ::Subgradient{Upper}) where {X, T <: MC}
     dim1, dim2 = size(t.storage)
     out = zeros(t.np, zeros(Float64, dim1, dim2))
     for i in 1:t.np
@@ -139,7 +139,7 @@ function getall(t::DiscretizeRelax{X,T} g::Subgradient{Upper}) where {X, T <: MC
     out
 end
 
-function getall(t::DiscretizeRelax, v::Bound{Lower})
+function getall(t::DiscretizeRelax, ::Bound{Lower})
     dim1, dim2 = size(t.storage)
     out = zeros(Float64, dim1, dim2)
     @inbounds for j in eachindex(out)
@@ -148,7 +148,7 @@ function getall(t::DiscretizeRelax, v::Bound{Lower})
     out
 end
 
-function getall(t::DiscretizeRelax, v::Bound{Upper})
+function getall(t::DiscretizeRelax, ::Bound{Upper})
     dim1, dim2 = size(t.storage)
     out = zeros(Float64, dim1, dim2)
     @inbounds for j in eachindex(out)
@@ -157,7 +157,7 @@ function getall(t::DiscretizeRelax, v::Bound{Upper})
     out
 end
 
-function getall(t::DiscretizeRelax{X,T}, v::Relaxation{Lower}) where {X, T <: AbstractInterval}
+function getall(t::DiscretizeRelax{X,T}, ::Relaxation{Lower}) where {X, T <: AbstractInterval}
     dim1, dim2 = size(t.storage)
     out = zeros(Float64, dim1, dim2)
     @inbounds for i in eachindex(out)
@@ -166,7 +166,7 @@ function getall(t::DiscretizeRelax{X,T}, v::Relaxation{Lower}) where {X, T <: Ab
     out
 end
 
-function getall(t::DiscretizeRelax{X,T}, v::Relaxation{Lower}) where {X, T <: MC}
+function getall(t::DiscretizeRelax{X,T}, ::Relaxation{Lower}) where {X, T <: MC}
     dim1, dim2 = size(t.storage)
     out = zeros(Float64, dim1, dim2)
     @inbounds for i in eachindex(out)
@@ -176,7 +176,7 @@ function getall(t::DiscretizeRelax{X,T}, v::Relaxation{Lower}) where {X, T <: MC
 end
 
 
-function getall(t::DiscretizeRelax{X,T}, v::Relaxation{Upper}) where {X, T <: AbstractInterval}
+function getall(t::DiscretizeRelax{X,T}, ::Relaxation{Upper}) where {X, T <: AbstractInterval}
     dim1, dim2 = size(t.storage)
     out = zeros(Float64, dim1, dim2)
     @inbounds for i in eachindex(out)
@@ -184,7 +184,7 @@ function getall(t::DiscretizeRelax{X,T}, v::Relaxation{Upper}) where {X, T <: Ab
     end
     out
 end
-function getall(t::DiscretizeRelax{X,T}, v::Relaxation{Upper}) where {X, T <: MC}
+function getall(t::DiscretizeRelax{X,T}, ::Relaxation{Upper}) where {X, T <: MC}
     dim1, dim2 = size(t.storage)
     out = zeros(Float64, dim1, dim2)
     @inbounds for i in eachindex(out)
