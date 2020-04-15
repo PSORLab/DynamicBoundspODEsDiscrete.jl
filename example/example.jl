@@ -3,13 +3,13 @@ using Revise
 using DynamicBoundsBase, DynamicBoundspODEsPILMS, Plots
 pyplot()
 
-x0(p) = [0.1; 1.0]
+x0(p) = [2.9; 1.0]
 function f!(dx,x,p,t)
-    dx[1] = x[1]^2 + p[2]
-    dx[2] = x[2] + p[1]^2
+    dx[1] = -x[1]
+    dx[2] = x[2]
     nothing
 end
-tspan = (0.0,18.0e-5*7770)
+tspan = (0.0,18.0e-5*12000)
 pL = [0.2; 0.1]
 pU = 10.0*pL
 
@@ -18,7 +18,7 @@ integrator = DiscretizeRelax(prob)
 ratio = rand(2)
 pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
 setall!(integrator, ParameterValue(), pstar)
-DynamicBoundspODEsPILMS.relax!(integrator)
+DynamicBoundsBase.relax!(integrator)
 
 t_vec = integrator.time
 lo_vec = getfield.(integrator.storage[1,:], :lo)
@@ -29,6 +29,9 @@ plot!(plt, t_vec , hi_vec, label="", linecolor = :darkblue, linestyle = :dash, l
 ylabel!("x[1] (M)")
 xlabel!("Time (seconds)")
 display(plt)
+
+status_code = get(integrator, TerminationStatus())
+println("status code: $(status_code)")
 
 #=
 ratio = rand(6)

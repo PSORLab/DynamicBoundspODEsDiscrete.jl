@@ -13,6 +13,7 @@ using ForwardDiff: Chunk, Dual, Partials, construct_seeds, single_seed,
 #using DiffEqBase: remake, AbstractODEProblem, AbstractContinuousCallback, solve
 using DiffResults: JacobianResult, MutableDiffResult
 
+import DynamicBoundsBase: relax!, set, setall!, get, getall!, getall, relax!, supports
 import Base: setindex!, getindex, copyto!
 
 #import DynamicBoundsBase: relax!, integrate!
@@ -20,13 +21,15 @@ import Base: setindex!, getindex, copyto!
 
 export DiscretizeRelax, AdamsMoulton, BDF
 
-include("taylor_integrator_utilities.jl")
-include("higher_order_enclosure.jl")
-include("lohners_qr.jl")
-include("validated_pilms.jl")
-include("hermite_obreschkoff.jl")
-include("validated_integrator.jl")
-include("access_functions.jl")
+const DBB = DynamicBoundsBase
+
+include("DiscretizeRelax/taylor_integrator_utilities.jl")
+include("DiscretizeRelax/higher_order_enclosure.jl")
+include("DiscretizeRelax/lohners_qr.jl")
+include("DiscretizeRelax/validated_pilms.jl")
+include("DiscretizeRelax/hermite_obreschkoff.jl")
+include("DiscretizeRelax/validated_integrator.jl")
+include("DiscretizeRelax/access_functions.jl")
 
 #include("local_integration_problem.jl")
 #include("interval_contractor.jl")

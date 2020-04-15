@@ -228,7 +228,7 @@ function set_Δ!(Δ::CircularBuffer{Vector{T}}, out::ElasticArray{T,2}) where T
     nothing
 end
 
-function relax!(d::DiscretizeRelax)
+function DBB.relax!(d::DiscretizeRelax)
 
     set_P!(d)          # Functor set P and P - p values for calculations
     compute_X0!(d)     # Compute initial condition values
