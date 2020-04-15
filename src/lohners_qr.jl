@@ -124,3 +124,7 @@ function set_X!(out::Vector{S}, lf::LohnersFunctor) where S
     out .= lf.jac_tf!.Xⱼ₊₁
     nothing
 end
+
+
+#μⱼ(xⱼ, x̂ⱼ, η) = x̂ⱼ + η*(xⱼ - x̂ⱼ)
+#ρ(p) = p̂ + η*(p - p̂)

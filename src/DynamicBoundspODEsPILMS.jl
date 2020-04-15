@@ -26,6 +26,7 @@ include("lohners_qr.jl")
 include("validated_pilms.jl")
 include("hermite_obreschkoff.jl")
 include("validated_integrator.jl")
+include("access_functions.jl")
 
 #include("local_integration_problem.jl")
 #include("interval_contractor.jl")

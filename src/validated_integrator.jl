@@ -47,8 +47,10 @@ mutable struct DiscretizeRelax{X,T} <: AbstractODERelaxIntegator
     step_limit::Int
     "Steps taken"
     step_count::Int
-    "Stores solution Y = (X,P) for each time"
+    "Stores solution X for each time"
     storage::ElasticArray{T,2}
+    "Stores each time t"
+    time::Vector{Float64}
     "Support index to storage dictory"
     support_dict::Dict{Int,Int}
     "Holds data for numeric error encountered in integration step"
@@ -99,10 +101,12 @@ function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
     T = relax ? MC{np,NS} : Interval{Float64}
     style = zero(T)
     storage = ElasticArray(zeros(T, nx, 1))
+    time = zeros(Float64,1)
     P = zeros(T,np)
     rP = zeros(T,np)
 
     sizehint!(storage, nx, 100000)
+    sizehint!(time, 100000)
     A = qr_stack(nx, method_steps)
     Δ = CircularBuffer{Vector{T}}(method_steps)
     fill!(Δ, zeros(T, nx))
@@ -114,8 +118,8 @@ function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
     step_params = StepParams(tol, hmin, nx, repeat_limit, γ, k)
 
     return DiscretizeRelax{typeof(d.x0),T}(d.x0, p, pL, pU, nx, np, d.tspan,
-                                           d.tsupports, step_limit, 0, storage, support_dict,
-                                           error_code, A, Δ, P, rP, style, set_tf!,
+                                           d.tsupports, step_limit, 0, storage, time,
+                                           support_dict, error_code, A, Δ, P, rP, style, set_tf!,
                                            method_f!, step_result, step_params, true, true)
 end
 
@@ -233,6 +237,7 @@ function relax!(d::DiscretizeRelax)
     t = d.tspan[1]
     tmax = d.tspan[2]
     sign_tstep = copysign(1, tmax-t)
+    d.time[1] = t
 
     # Computes maximum step size to take (either hit support or max time)
     support_indx = 1
@@ -283,6 +288,7 @@ function relax!(d::DiscretizeRelax)
         else
             d.storage[:, d.step_count+1] .= d.step_result.Yⱼ
         end
+        d.time[d.step_count+1] = t
     end
 
     if d.error_code === RELAXATION_NOT_CALLED

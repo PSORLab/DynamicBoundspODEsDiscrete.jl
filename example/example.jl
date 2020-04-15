@@ -1,6 +1,7 @@
 using Revise
 
-using DynamicBoundsBase, DynamicBoundspODEsPILMS
+using DynamicBoundsBase, DynamicBoundspODEsPILMS, Plots
+pyplot()
 
 x0(p) = [0.1; 1.0]
 function f!(dx,x,p,t)
@@ -14,8 +15,26 @@ pU = 10.0*pL
 
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
 integrator = DiscretizeRelax(prob)
-integrator.p .= 0.5*(pL + pU)
-#pstar .= 0.5*(pL + pU)
-#setall!(integrator, ParameterValue(), pstar)
-
+ratio = rand(6)
+pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
+setall!(integrator, ParameterValue(), pstar)
 DynamicBoundspODEsPILMS.relax!(integrator)
+
+t_vec = integrator.time
+lo_vec = getfield(getfield(integrator.storage.[1,:], :Intv), :lo)
+hi_vec = getfield(getfield(integrator.storage.[1,:], :Intv), :hi)
+plt = plot(t_vec , lo_vec, label="Interval Bounds", linecolor = :darkblue, linestyle = :dash,
+           lw=1.5, legend=:bottomleft)
+plot!(plt, t_vec , hi_vec, label="", linecolor = :darkblue, linestyle = :dash, lw=1.5)
+ylabel!("x[1] (M)")
+xlabel!("Time (seconds)")
+
+#=
+ratio = rand(6)
+pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
+setall!(integrator, ParameterValue(), pstar)
+integrate!(integrator)
+plot!(plt, integrator.local_problem_storage.integrator_t,
+integrator.local_problem_storage.pode_x[1,:], label="Trajectories", linecolor = :green,
+markershape = :+, markercolor = :green, linestyle = :dash, markersize = 2, lw=0.75)
+=#
