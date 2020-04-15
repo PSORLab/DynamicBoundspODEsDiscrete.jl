@@ -283,14 +283,16 @@ function relax!(d::DiscretizeRelax)
         end
 
         # unpack storage
-        if d.step_count > length(d.storage)
+        if d.step_count > length(d.time)-1
             resize!(d.storage, 2, d.step_count*2)
-        else
-            d.storage[:, d.step_count+1] .= d.step_result.Yⱼ
+            resize!(d.time, d.step_count*2)
         end
+        d.storage[:, d.step_count+1] = d.step_result.Xⱼ
         d.time[d.step_count+1] = t
     end
 
+    resize!(d.storage, 2, d.step_count)
+    resize!(d.time, d.step_count)
     if d.error_code === RELAXATION_NOT_CALLED
         d.error_code = COMPLETED
     end
