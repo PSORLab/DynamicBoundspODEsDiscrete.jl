@@ -80,13 +80,7 @@ mutable struct DiscretizeRelax{X,T} <: AbstractODERelaxIntegator
 end
 function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
                          tol = 1E-5, hmin = 1E-13, relax = false, k = 4,
-                         method_steps = 2, γ = 1.0)
-    nx = d.nx
-    np = d.np
-    p = d.p
-    pL = d.pL
-    pU = d.pU
-    f = d.f
+                         method_steps = 2, γ = 1.0, h = 0.0)
 
     tsupports = d.tsupports
     if ~isempty(tsupports)
@@ -98,26 +92,26 @@ function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
     end
     error_code = RELAXATION_NOT_CALLED
 
-    T = relax ? MC{np,NS} : Interval{Float64}
+    T = relax ? MC{d.np,NS} : Interval{Float64}
     style = zero(T)
-    storage = ElasticArray(zeros(T, nx, 1))
+    storage = ElasticArray(zeros(T, d.nx, 1))
     time = zeros(Float64,1)
-    P = zeros(T,np)
-    rP = zeros(T,np)
+    P = zeros(T, d.np)
+    rP = zeros(T, d.np)
 
-    sizehint!(storage, nx, 100000)
+    sizehint!(storage, d.nx, 100000)
     sizehint!(time, 100000)
-    A = qr_stack(nx, method_steps)
+    A = qr_stack(d.nx, method_steps)
     Δ = CircularBuffer{Vector{T}}(method_steps)
-    fill!(Δ, zeros(T, nx))
+    fill!(Δ, zeros(T, d.nx))
 
-    set_tf! = TaylorFunctor!(f, nx, np, k, style, zero(Float64))
-    method_f! = LohnersFunctor(f, nx, np, k, style, zero(Float64))
+    set_tf! = TaylorFunctor!(d.f, d.nx, d.np, k, style, zero(Float64))
+    method_f! = LohnersFunctor(d.f, d.nx, d.np, k, style, zero(Float64))
 
-    step_result = StepResult(style, nx, np, k)
-    step_params = StepParams(tol, hmin, nx, repeat_limit, γ, k)
+    step_result = StepResult(style, d.nx, d.np, k, h)
+    step_params = StepParams(tol, hmin, d.nx, repeat_limit, γ, k)
 
-    return DiscretizeRelax{typeof(d.x0),T}(d.x0, p, pL, pU, nx, np, d.tspan,
+    return DiscretizeRelax{typeof(d.x0),T}(d.x0, d.p, d.pL, d.pU, d.nx, d.np, d.tspan,
                                            d.tsupports, step_limit, 0, storage, time,
                                            support_dict, error_code, A, Δ, P, rP, style, set_tf!,
                                            method_f!, step_result, step_params, true, true)
@@ -140,6 +134,25 @@ function estimate_excess(hj, k, fk, γ, nx)
     return γ*(hj^k)*errⱼ
 end
 
+
+function lepus_step_size!(out::StepResult{S}, params::StepParams,
+                          k::Int, nx::Int) where {S <: Real}
+    flag = true
+    γ = params.γ
+    f̃k = out.f[k]
+    out.errⱼ = estimate_excess(out.hj, k, f̃k, γ, nx)
+    if out.errⱼ <= out.hj*params.tol
+        out.predicted_hj = 0.9*out.hj*(0.5*out.hj/out.errⱼ)^(1/(k-1))
+    else
+        out.predicted_hj = out.hj*(out.hj*params.tol/out.errⱼ)^(1/(k-1))
+        zjp1_temp = zjp1*(out.predicted_hj/out.hj)^k
+        out.hj = out.predicted_hj
+        zjp1 = zjp1_temp
+        flag = false
+    end
+    flag
+end
+
 """
 $(TYPEDSIGNATURES)
 
@@ -150,18 +163,13 @@ function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor
                       A::CircularBuffer{QRDenseStorage}, P, rP) where {S <: Real}
 
     k = params.k
-    tol = params.tol
-    γ = params.γ
-    nx = params.nx
-    hmin = params.hmin
-    repeat_limit = params.repeat_limit
 
     # validate existence & uniqueness
     if ~out.jacobians_set
         jacobian_taylor_coeffs!(lf.jac_tf!, out.Xⱼ, P)
-        extract_JxJp!(Jx, Jp, lf.jac_tf!.result, lf.jac_tf!.tjac, nx, np, k)
+        extract_JxJp!(Jx, Jp, lf.jac_tf!.result, lf.jac_tf!.tjac, params.nx, np, k)
     end
-    existence_uniqueness!(out, stf!, hmin, P)
+    existence_uniqueness!(out, stf!, params.hmin, P)
     out.hj = out.unique_result.step
     if ~out.unique_result.confirmed
         out.status_flag = NUMERICAL_ERROR
@@ -170,21 +178,18 @@ function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor
 
     # repeat until desired tolerance is otained or repetition limit is hit
     count = 1
-    while (out.hj > hmin) && (count < repeat_limit)
+    while (out.hj > params.hmin) && (count < params.repeat_limit)
 
+        # perform corrector step
         out.status_flag = lf(out.hj, out.unique_result.X, out.Xⱼ, out.xⱼ, A, Δ, P, rP)
 
-        # Lepus error control scheme
-        f̃k = out.f[k]
-        out.errⱼ = estimate_excess(out.hj, k, f̃k, γ, nx)
-        if out.errⱼ <= out.hj*params.tol
-            out.predicted_hj = 0.9*out.hj*(0.5*out.hj/out.errⱼ)^(1/(k-1))
-            break
+        # Perform Lepus error control scheme if step size not set
+        if out.h > 0.0
+            lepus_step_size!(out, params, k, params.nx) && break
         else
-            out.predicted_hj = out.hj*(out.hj*tol/out.errⱼ)^(1/(k-1))
-            zjp1_temp = zjp1*(out.predicted_hj/out.hj)^k
-            out.hj = out.predicted_hj
-            zjp1 = zjp1_temp
+            out.hj = out.h
+            out.predicted_hj = out.h
+            break
         end
         count += 1
     end
@@ -218,12 +223,11 @@ function compute_X0!(d::DiscretizeRelax{X,T}) where {X, T <: Number}
 end
 
 function set_Δ!(Δ::CircularBuffer{Vector{T}}, out::ElasticArray{T,2}) where T
-    for i in 1:length(Δ)
-        if i == 1
-            Δ[1] .= out[:,1]
-        else
-            fill!(Δ[i], zero(T))
-        end
+    println("length(Δ): $(length(Δ))")
+    println("out[:,1]: $(out[:,1])")
+    Δ[1] = out[:,1]
+    for i in 2:length(Δ)
+        fill!(Δ[i], zero(T))
     end
     nothing
 end
@@ -253,7 +257,10 @@ function DBB.relax!(d::DiscretizeRelax)
     end
 
     # initialize QR type storage
+    println(" ")
+    println("d.Δ: $(d.Δ)")
     set_Δ!(d.Δ, d.storage)
+    println("d.Δ: $(d.Δ)")
     reinitialize!(d.A)
 
     # Begin integration loop
@@ -284,14 +291,23 @@ function DBB.relax!(d::DiscretizeRelax)
 
         # unpack storage
         if d.step_count > length(d.time)-1
-            resize!(d.storage, 2, d.step_count*2)
+            if d.nx == 1
+                resize!(d.storage, 1, d.step_count*2)
+            else
+                resize!(d.storage, 2, d.step_count*2)
+            end
             resize!(d.time, d.step_count*2)
         end
         d.storage[:, d.step_count+1] = d.step_result.Xⱼ
         d.time[d.step_count+1] = t
     end
 
-    resize!(d.storage, 2, d.step_count)
+    # cut out any unnecessary array elements
+    if d.nx == 1
+        resize!(d.storage, 1, d.step_count)
+    else
+        resize!(d.storage, 2, d.step_count)
+    end
     resize!(d.time, d.step_count)
     if d.error_code === RELAXATION_NOT_CALLED
         d.error_code = COMPLETED

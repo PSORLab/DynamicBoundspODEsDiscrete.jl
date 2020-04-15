@@ -484,6 +484,8 @@ end
 
 mutable struct StepResult{S <: Number}
     status_flag::TerminationStatusCode
+    "User-specified step size (if h > 0.0)"
+    h::Float64
     hj::Float64
     predicted_hj::Float64
     errⱼ::Float64
@@ -496,7 +498,7 @@ mutable struct StepResult{S <: Number}
     ∂f∂p::Vector{Matrix{S}}
     jacobians_set::Bool
 end
-function StepResult(s::S, nx::Int, np::Int, k::Int) where S
+function StepResult(s::S, nx::Int, np::Int, k::Int, h::Float64) where S
     status_flag = RELAXATION_NOT_CALLED
     hj = 0.0
     predicted_hj = 0.0
@@ -509,6 +511,6 @@ function StepResult(s::S, nx::Int, np::Int, k::Int) where S
     ∂f∂x = Matrix{S}[zeros(S,nx,nx) for i in 1:(k+1)]
     ∂f∂p = Matrix{S}[zeros(S,nx,np) for i in 1:(k+1)]
     jacobians_set = true
-    StepResult{S}(status_flag, hj, predicted_hj, errⱼ, xⱼ, zⱼ, Xⱼ,
+    StepResult{S}(status_flag, h, hj, predicted_hj, errⱼ, xⱼ, zⱼ, Xⱼ,
                   unique_result, f, ∂f∂x, ∂f∂p, jacobians_set)
 end

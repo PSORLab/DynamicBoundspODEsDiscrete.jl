@@ -23,6 +23,16 @@ export DiscretizeRelax, AdamsMoulton, BDF
 
 const DBB = DynamicBoundsBase
 
+mutable struct PrintCount
+      n::Int
+end
+PrintCount() = PrintCount(0)
+function (x::PrintCount)(s::String)
+      x.n += 1
+      println("Sig #$(x.n): "*s)
+      nothing
+end
+
 include("DiscretizeRelax/taylor_integrator_utilities.jl")
 include("DiscretizeRelax/higher_order_enclosure.jl")
 include("DiscretizeRelax/lohners_qr.jl")

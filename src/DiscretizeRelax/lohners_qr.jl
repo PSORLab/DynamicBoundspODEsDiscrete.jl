@@ -29,6 +29,8 @@ pp. 425–436.](http://www.goldsztejn.com/old-papers/Lohner-1992.pdf)
 """
 function (x::LohnersFunctor{F,S,T})(hⱼ::Float64, X̃ⱼ, Xⱼ, xⱼ, A, Δⱼ, P, rP) where {F <: Function, S <: Real, T <: Real}
 
+    printstruct = PrintCount()
+    printstruct("Δⱼ[1] = $(Δⱼ[1])")
     # abbreviate field access
     set_tf! = x.set_tf!
     real_tf! = x.real_tf!
@@ -44,13 +46,20 @@ function (x::LohnersFunctor{F,S,T})(hⱼ::Float64, X̃ⱼ, Xⱼ, xⱼ, A, Δⱼ,
     copyto!(rX̃ⱼ₀, 1, xⱼ, 1, nx)
     copyto!(rX̃ⱼ, 1, xⱼ, 1, nx)
 
+    printstruct("sX̃ⱼ: $(sX̃ⱼ)")
+    printstruct("P: $(P)")
+
     set_tf!(sf̃ₜ, sX̃ⱼ, P)
+    printstruct("sf̃ₜ: $(sf̃ₜ)")
     coeff_to_matrix!(sf̃, sf̃ₜ, nx, k)
+    printstruct("sf̃: $(sf̃)")
     hjk = (hⱼ^k)
     for i in 1:nx
         jac_tf!.Rⱼ₊₁[i] = hjk*sf̃[i,k]
         jac_tf!.mRⱼ₊₁[i] = mid(jac_tf!.Rⱼ₊₁[i])
     end
+    printstruct("jac_tf!.Rⱼ₊₁ = $(jac_tf!.Rⱼ₊₁)")
+    printstruct("jac_tf!.mRⱼ₊₁ = $(jac_tf!.mRⱼ₊₁)")
 
     real_tf!(rf̃ₜ , rX̃ⱼ₀, mid.(P))
     coeff_to_matrix!(rf̃, rf̃ₜ, nx, k)
@@ -93,22 +102,32 @@ function (x::LohnersFunctor{F,S,T})(hⱼ::Float64, X̃ⱼ, Xⱼ, xⱼ, A, Δⱼ,
     jac_tf!.Δⱼ₊₁ .= M1
 
     #jac_tf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Y)*Δⱼ
-    mul!(M2, Aⱼ₊₁.inv, M2Y);
-    mul!(M1, M2, Δⱼ[1]);
+    mul!(M2, Aⱼ₊₁.inv, M2Y)
+    printstruct("M2 = $(M2)")
+    printstruct("Δⱼ[1] = $(Δⱼ[1])")
+    mul!(M1, M2, Δⱼ[1])
+    printstruct("M1 = $(M1)")
     jac_tf!.Δⱼ₊₁ .+= M1
+    printstruct("jac_tf!.Δⱼ₊₁ = $(jac_tf!.Δⱼ₊₁)")
 
     #jac_tf!.Δⱼ₊₁ .+= (Aⱼ₊₁.inverse*Jpsto)*rP
-    mul!(M3, Aⱼ₊₁.inv, jac_tf!.Jpsto);
+    mul!(M3, Aⱼ₊₁.inv, jac_tf!.Jpsto)
+    printstruct("M3 = $(M3)")
     mul!(M1, M3, rP)
+    printstruct("M1 = $(M1)")
     jac_tf!.Δⱼ₊₁ .+= M1
+    printstruct("jac_tf!.Δⱼ₊₁ = $(jac_tf!.Δⱼ₊₁)")
 
     #jac_tf!.Xⱼ₊₁ .+= Y*Δⱼ
     mul!(M1, M2Y,  Δⱼ[1])
+    printstruct("M1 = $(M1)")
     jac_tf!.Xⱼ₊₁ .= M1
+    printstruct("jac_tf!.Xⱼ₊₁ = $(jac_tf!.Xⱼ₊₁)")
 
     # jac_tf!.Xⱼ₊₁ .+= Jpsto*rP
     mul!(M1, jac_tf!.Jpsto, rP)
     jac_tf!.Xⱼ₊₁ .+= M1
+    printstruct("jac_tf!.Xⱼ₊₁ = $(jac_tf!.Xⱼ₊₁)")
 
     pushfirst!(Δⱼ,jac_tf!.Δⱼ₊₁)
 
@@ -117,10 +136,12 @@ end
 
 get_Δ(lf) = lf.jac_tf!.Δⱼ₊₁
 function set_x!(out::Vector{Float64}, lf::LohnersFunctor)
+    println("x out: $(lf.jac_tf!.xⱼ₊₁)")
     out .= lf.jac_tf!.xⱼ₊₁
     nothing
 end
 function set_X!(out::Vector{S}, lf::LohnersFunctor) where S
+    println("X out: $(lf.jac_tf!.Xⱼ₊₁)")
     out .= lf.jac_tf!.Xⱼ₊₁
     nothing
 end
