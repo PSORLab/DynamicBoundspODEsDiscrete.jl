@@ -18,6 +18,7 @@ function improvement_condition(X̃ⱼ::Vector{Interval{T}}, X̃ⱼ₀::Vector{In
         Ynorm = (diam1 > Ynorm) ? diam1 : Ynorm
         Y0norm = (diam2 > Y0norm) ? diam2 : Y0norm
     end
+    println("improvement ratio: $(Ynorm/Y0norm)")
     return (Ynorm/Y0norm) > 1.01
 end
 
@@ -27,6 +28,9 @@ $(TYPEDSIGNATURES)
 Checks that an interval vector `X̃ⱼ` of length `nx` is contained in `X̃ⱼ₀`.
 """
 function contains(X̃ⱼ::Vector{Interval{T}}, X̃ⱼ₀::Vector{Interval{T}}, nx::Int) where {T <: Real}
+    println("start contains:")
+    println("Interval vector 1: $(X̃ⱼ)")
+    println("Interval vector 2: $(X̃ⱼ₀)")
     flag = true
     for i in 1:nx
         if ~(X̃ⱼ[i] ⊆ X̃ⱼ₀[i])
@@ -54,6 +58,9 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ:
                                ∂f∂x_in::Vector{Matrix{T}}, ∂f∂p_in::Vector{Matrix{T}},
                                P) where {T <: Real}
 
+    println("start existence and uniqueness kernel")
+    println("start of Xⱼ: $(Xⱼ)")
+
     k = tf!.k
     nx = tf!.nx
     np = tf!.np
@@ -73,6 +80,9 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ:
     ∂f∂x = tf!.∂f∂x
     hIk = Interval{Float64}(0.0, hⱼ^k)
 
+    println("∂f∂x: $(∂f∂x)")
+    println("hIk: $(hIk)")
+
     inβ = true
     α = 0.8
     ϵ = 1.0
@@ -81,9 +91,13 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ:
             ∂f∂x[i][j] = Interval{Float64}(∂f∂x_in[i][j])
         end
     end
+
+    println("after load ∂f∂x: $(∂f∂x)")
     ϵInterval = Interval(-ϵ,ϵ)
     verified  = false
 
+
+    println("ϵInterval: $(ϵInterval)")
     while ((hⱼ >= hmin) && ~verified) #&& (max_iters > iters)
         #iters += 1
         fill!(Vⱼ, Interval{Float64}(0.0))
@@ -92,6 +106,7 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ:
                 Vⱼ[i] += Interval{Float64}(0.0, hⱼ^j)*f[i,j]
             end
         end
+        println("Vⱼ: $(Vⱼ)")
 
         #βⱼⱼ .= (I + Interval{Float64}(0.0, hⱼ^k).*∂f∂y[k])
         βⱼⱼ .= ∂f∂x[k]
@@ -104,15 +119,19 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ:
         mul!(βⱼᵥ, ∂f∂x[k], Vⱼ)
         βⱼᵥ .+= f[:,k]
         mul!(βⱼₖ, βⱼⱼ, βⱼᵥ)
+        println("βⱼₖ: $(βⱼₖ)")
 
         #βⱼₖ .= βⱼₖ + ϵInterval*abs.(βⱼₖ)
         for j in 1:nx
             Uⱼ[j] = Xⱼ[j] + Vⱼ[j]
             X̃ⱼ₀[j] = Uⱼ[j] + hIk*(βⱼₖ[j] + ϵInterval*abs(βⱼₖ[j]))
         end
+        println("Uⱼ: $(Uⱼ)")
+        println("X̃ⱼ₀: $(X̃ⱼ₀)")
 
         tf!(f̃ₜ, X̃ⱼ₀, P)
         coeff_to_matrix!(f̃, f̃ₜ, nx, k)
+        println("f̃: $(f̃)")
         inβ = true
         for j in 1:nx
             if ~(f̃[j,k] ⊆ βⱼₖ[j])
@@ -131,6 +150,7 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ:
         end
         tf!(f̃ₜ, X̃ⱼ₀, P)
         coeff_to_matrix!(f̃, f̃ₜ, nx, k)
+        println("next f̃: $(f̃)")
 
         reduced = 0
         while ~verified && reduced < 2
@@ -157,6 +177,7 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ:
                 while improving
                     tf!(f̃ₜ, X̃ⱼ, P)
                     coeff_to_matrix!(f̃, f̃ₜ, nx, s)
+                    println("next B f̃: $(f̃)")
                     for j in 1:nx
                         X̃ⱼ₀[j]  = Vⱼ[j] + Interval{Float64}(0.0, hⱼ^s)*f̃[j,s]
                     end
@@ -177,6 +198,8 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ:
     flag = hⱼ > hmin
     tf!(f̃ₜ, X̃ⱼ, P)
     coeff_to_matrix!(f̃, f̃ₜ, nx, k)
+    println("next C f̃: $(f̃)")
+    println("next C f̃ₜ: $(f̃ₜ)")
     out.fk .= f̃[:,k]
     out.fk .*= hⱼ^k
     out.step = hⱼ

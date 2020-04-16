@@ -492,6 +492,7 @@ mutable struct StepResult{S <: Number}
     xⱼ::Vector{Float64}
     zⱼ::Vector{S}
     Xⱼ::Vector{S}
+    Xapriori::Vector{S}
     unique_result::UniquenessResult
     f::Matrix{S}
     ∂f∂x::Vector{Matrix{S}}
@@ -506,11 +507,12 @@ function StepResult(s::S, nx::Int, np::Int, k::Int, h::Float64) where S
     xⱼ = zeros(Float64, nx)
     zⱼ = zeros(S, nx)
     Xⱼ = zeros(S, nx)
+    Xapriori = zeros(S, nx)
     unique_result = UniquenessResult(s, nx, np)
     f = zeros(S, nx, k+1)
     ∂f∂x = Matrix{S}[zeros(S,nx,nx) for i in 1:(k+1)]
     ∂f∂p = Matrix{S}[zeros(S,nx,np) for i in 1:(k+1)]
     jacobians_set = true
-    StepResult{S}(status_flag, h, hj, predicted_hj, errⱼ, xⱼ, zⱼ, Xⱼ,
+    StepResult{S}(status_flag, h, hj, predicted_hj, errⱼ, xⱼ, zⱼ, Xⱼ, Xapriori,
                   unique_result, f, ∂f∂x, ∂f∂p, jacobians_set)
 end

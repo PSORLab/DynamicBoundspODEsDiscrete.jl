@@ -47,8 +47,10 @@ mutable struct DiscretizeRelax{X,T} <: AbstractODERelaxIntegator
     step_limit::Int
     "Steps taken"
     step_count::Int
-    "Stores solution X for each time"
+    "Stores solution X (from step 2) for each time"
     storage::ElasticArray{T,2}
+    "Stores solution X (from step 1) for each time"
+    storage_apriori::ElasticArray{T,2}
     "Stores each time t"
     time::Vector{Float64}
     "Support index to storage dictory"
@@ -95,11 +97,13 @@ function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
     T = relax ? MC{d.np,NS} : Interval{Float64}
     style = zero(T)
     storage = ElasticArray(zeros(T, d.nx, 1))
+    storage_apriori = ElasticArray(zeros(T, d.nx, 1))
     time = zeros(Float64,1)
     P = zeros(T, d.np)
     rP = zeros(T, d.np)
 
     sizehint!(storage, d.nx, 100000)
+    sizehint!(storage_apriori, d.nx, 100000)
     sizehint!(time, 100000)
     A = qr_stack(d.nx, method_steps)
     Δ = CircularBuffer{Vector{T}}(method_steps)
@@ -112,9 +116,10 @@ function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
     step_params = StepParams(tol, hmin, d.nx, repeat_limit, γ, k)
 
     return DiscretizeRelax{typeof(d.x0),T}(d.x0, d.p, d.pL, d.pU, d.nx, d.np, d.tspan,
-                                           d.tsupports, step_limit, 0, storage, time,
-                                           support_dict, error_code, A, Δ, P, rP, style, set_tf!,
-                                           method_f!, step_result, step_params, true, true)
+                                           d.tsupports, step_limit, 0, storage, storage_apriori,
+                                           time, support_dict, error_code, A, Δ, P, rP,
+                                           style, set_tf!, method_f!, step_result,
+                                           step_params, true, true)
 end
 
 
@@ -162,6 +167,12 @@ function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor
                       stf!::TaylorFunctor!, Δ::CircularBuffer{Vector{S}},
                       A::CircularBuffer{QRDenseStorage}, P, rP) where {S <: Real}
 
+    println("                                  ")
+    println("                                  ")
+    println("      START STEP                  ")
+    println("                                  ")
+    println("                                  ")
+
     k = params.k
 
     # validate existence & uniqueness
@@ -170,6 +181,7 @@ function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor
         extract_JxJp!(Jx, Jp, lf.jac_tf!.result, lf.jac_tf!.tjac, params.nx, np, k)
     end
     existence_uniqueness!(out, stf!, params.hmin, P)
+    out.Xapriori .= out.unique_result.X
     out.hj = out.unique_result.step
     if ~out.unique_result.confirmed
         out.status_flag = NUMERICAL_ERROR
@@ -293,20 +305,25 @@ function DBB.relax!(d::DiscretizeRelax)
         if d.step_count > length(d.time)-1
             if d.nx == 1
                 resize!(d.storage, 1, d.step_count*2)
+                resize!(d.storage_apriori, 1, d.step_count*2)
             else
                 resize!(d.storage, 2, d.step_count*2)
+                resize!(d.storage_apriori, 2, d.step_count*2)
             end
             resize!(d.time, d.step_count*2)
         end
         d.storage[:, d.step_count+1] = d.step_result.Xⱼ
+        d.storage_apriori[:, d.step_count+1] = d.step_result.Xapriori
         d.time[d.step_count+1] = t
     end
 
     # cut out any unnecessary array elements
     if d.nx == 1
         resize!(d.storage, 1, d.step_count)
+        resize!(d.storage_apriori, 1, d.step_count)
     else
         resize!(d.storage, 2, d.step_count)
+        resize!(d.storage_apriori, 2, d.step_count)
     end
     resize!(d.time, d.step_count)
     if d.error_code === RELAXATION_NOT_CALLED

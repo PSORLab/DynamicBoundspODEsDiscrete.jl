@@ -7,6 +7,10 @@ println(" ------------------------------------------------------------ ")
 println(" ------------------------------------------------------------ ")
 println(" ------------------------------------------------------------ ")
 
+# TODO: Get multiple fixed step sizes working?
+# TODO: Why is uniqueness test failing?
+# TODO: Get McCormick operator version working.
+
 x0(p) = [9.0]
 function f!(dx,x,p,t)
     dx[1] = -x[1] + p[1]
@@ -20,7 +24,7 @@ pL = [-1.0]
 pU = [1.0]
 
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
-integrator = DiscretizeRelax(prob) #, h = 0.01)
+integrator = DiscretizeRelax(prob, h = 0.01)
 ratio = rand(1)
 pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
 setall!(integrator, ParameterValue(), pstar)
