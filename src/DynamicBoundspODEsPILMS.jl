@@ -29,7 +29,7 @@ end
 PrintCount() = PrintCount(0)
 function (x::PrintCount)(s::String)
       x.n += 1
-      println("Sig #$(x.n): "*s)
+     # println("Sig #$(x.n): "*s)
       nothing
 end
 

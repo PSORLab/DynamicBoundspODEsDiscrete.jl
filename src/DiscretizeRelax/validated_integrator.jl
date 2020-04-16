@@ -11,6 +11,8 @@ struct StepParams
     γ::Float64
     "Order of Taylor series approx"
     k::Int
+    "Should the second stage be skipped?"
+    skip_step2::Bool
 end
 
 """
@@ -67,6 +69,8 @@ mutable struct DiscretizeRelax{X,T} <: AbstractODERelaxIntegator
     rP::Vector{T}
     "Relaxation Type"
     style::T
+    "Flag indicating that only apriori bounds should be computed"
+    skip_step2::Bool
 
     # Main functions used in routines
     "Functor for evaluating Taylor coefficients over a set"
@@ -82,7 +86,7 @@ mutable struct DiscretizeRelax{X,T} <: AbstractODERelaxIntegator
 end
 function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
                          tol = 1E-5, hmin = 1E-13, relax = false, k = 4,
-                         method_steps = 2, γ = 1.0, h = 0.0)
+                         method_steps = 2, γ = 1.0, h = 0.0, skip_step2 = false)
 
     tsupports = d.tsupports
     if ~isempty(tsupports)
@@ -113,11 +117,11 @@ function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
     method_f! = LohnersFunctor(d.f, d.nx, d.np, k, style, zero(Float64))
 
     step_result = StepResult(style, d.nx, d.np, k, h)
-    step_params = StepParams(tol, hmin, d.nx, repeat_limit, γ, k)
+    step_params = StepParams(tol, hmin, d.nx, repeat_limit, γ, k, skip_step2)
 
     return DiscretizeRelax{typeof(d.x0),T}(d.x0, d.p, d.pL, d.pU, d.nx, d.np, d.tspan,
                                            d.tsupports, step_limit, 0, storage, storage_apriori,
-                                           time, support_dict, error_code, A, Δ, P, rP,
+                                           time, support_dict, error_code, A, Δ, P, rP, skip_step2,
                                            style, set_tf!, method_f!, step_result,
                                            step_params, true, true)
 end
@@ -139,23 +143,20 @@ function estimate_excess(hj, k, fk, γ, nx)
     return γ*(hj^k)*errⱼ
 end
 
-
-function lepus_step_size!(out::StepResult{S}, params::StepParams,
-                          k::Int, nx::Int) where {S <: Real}
-    flag = true
-    γ = params.γ
-    f̃k = out.f[k]
-    out.errⱼ = estimate_excess(out.hj, k, f̃k, γ, nx)
+# TODO: fix setting... zjp1?
+function lepus_step_size!(out::StepResult{S}, params::StepParams, k::Int, nx::Int) where {S <: Real}
+    out.errⱼ = estimate_excess(out.hj, k, out.f[k], params.γ, nx)
     if out.errⱼ <= out.hj*params.tol
         out.predicted_hj = 0.9*out.hj*(0.5*out.hj/out.errⱼ)^(1/(k-1))
     else
         out.predicted_hj = out.hj*(out.hj*params.tol/out.errⱼ)^(1/(k-1))
-        zjp1_temp = zjp1*(out.predicted_hj/out.hj)^k
+        println("size(out.f): $(size(out.f[:,k]))")
+        println("out.f[k]: $(out.f[k])")
+        out.f[:,k] = out.f[:,k]*(out.predicted_hj/out.hj)^k
         out.hj = out.predicted_hj
-        zjp1 = zjp1_temp
-        flag = false
+        return false
     end
-    flag
+    true
 end
 
 """
@@ -189,29 +190,36 @@ function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor
     end
 
     # repeat until desired tolerance is otained or repetition limit is hit
-    count = 1
-    while (out.hj > params.hmin) && (count < params.repeat_limit)
+    if ~params.skip_step2
+        count = 1
+        while (out.hj > params.hmin) && (count < params.repeat_limit)
 
-        # perform corrector step
-        out.status_flag = lf(out.hj, out.unique_result.X, out.Xⱼ, out.xⱼ, A, Δ, P, rP)
+            # perform corrector step
+            out.status_flag = lf(out.hj, out.unique_result.X, out.Xⱼ, out.xⱼ, A, Δ, P, rP)
 
-        # Perform Lepus error control scheme if step size not set
-        if out.h > 0.0
-            lepus_step_size!(out, params, k, params.nx) && break
-        else
-            out.hj = out.h
-            out.predicted_hj = out.h
-            break
+            # Perform Lepus error control scheme if step size not set
+            if out.h <= 0.0
+                lepus_step_size!(out, params, k, params.nx) && break
+            else
+                out.hj = out.h
+                out.predicted_hj = out.h
+                break
+            end
+            count += 1
         end
-        count += 1
+
+        # updates shifts Aj+1 -> Aj and so on
+        pushfirst!(A, last(A))
+        pushfirst!(Δ, get_Δ(lf))
+
+        set_x!(out.xⱼ, lf)
+        set_X!(out.Xⱼ, lf)
+    else
+        out.hj = out.h
+        out.xⱼ .= mid.(out.Xapriori)
+        out.Xⱼ .= out.Xapriori
     end
 
-    # updates shifts Aj+1 -> Aj and so on
-    pushfirst!(A, last(A))
-    pushfirst!(Δ, get_Δ(lf))
-
-    set_x!(out.xⱼ, lf)
-    set_X!(out.Xⱼ, lf)
     nothing
 end
 
@@ -229,14 +237,13 @@ end
 
 function compute_X0!(d::DiscretizeRelax{X,T}) where {X, T <: Number}
     d.storage[:, 1] .= d.x0f(d.P)
+    d.storage_apriori[:, 1] .= d.storage[:, 1]
     d.step_result.Xⱼ .= d.storage[:, 1]
     d.step_result.xⱼ .= mid.(d.step_result.Xⱼ)
     nothing
 end
 
 function set_Δ!(Δ::CircularBuffer{Vector{T}}, out::ElasticArray{T,2}) where T
-    println("length(Δ): $(length(Δ))")
-    println("out[:,1]: $(out[:,1])")
     Δ[1] = out[:,1]
     for i in 2:length(Δ)
         fill!(Δ[i], zero(T))
@@ -277,7 +284,7 @@ function DBB.relax!(d::DiscretizeRelax)
 
     # Begin integration loop
     hlast = 0.0
-    d.step_result.hj = tmax - t
+    d.step_result.hj = d.step_result.h > 0.0 ? d.step_result.h : (tmax - t)
     d.step_count = 0
     while sign_tstep*t < sign_tstep*tmax
 

@@ -50,13 +50,13 @@ an initial value problem for an ordinary differential equation. 1999. Universist
 of Toronto, PhD Dissertation, Algorithm 5.1, page 73-74).
 """
 function existence_uniqueness!(s::StepResult, tf!::TaylorFunctor!, hmin::Float64, P)
-    existence_uniqueness!(s.unique_result, tf!, s.Xⱼ, s.hj, hmin, s.f, s.∂f∂x, s.∂f∂p, P)
+    existence_uniqueness!(s.unique_result, tf!, s.Xⱼ, s.hj, hmin, s.f, s.∂f∂x, s.∂f∂p, P, s.h)
     nothing
 end
 function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ::Vector{T},
                                hⱼ::Float64, hmin::Float64, f::Matrix{T},
                                ∂f∂x_in::Vector{Matrix{T}}, ∂f∂p_in::Vector{Matrix{T}},
-                               P) where {T <: Real}
+                               P, hfixed) where {T <: Real}
 
     println("start existence and uniqueness kernel")
     println("start of Xⱼ: $(Xⱼ)")
@@ -80,6 +80,7 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ:
     ∂f∂x = tf!.∂f∂x
     hIk = Interval{Float64}(0.0, hⱼ^k)
 
+    println("f: $(f)")
     println("∂f∂x: $(∂f∂x)")
     println("hIk: $(hIk)")
 
@@ -98,99 +99,103 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ:
 
 
     println("ϵInterval: $(ϵInterval)")
-    while ((hⱼ >= hmin) && ~verified) #&& (max_iters > iters)
-        #iters += 1
-        fill!(Vⱼ, Interval{Float64}(0.0))
-        for i in 1:nx
-            for j in 1:(k-1)
-                Vⱼ[i] += Interval{Float64}(0.0, hⱼ^j)*f[i,j]
+    if hfixed <= 0.0
+        while ((hⱼ >= hmin) && ~verified) #&& (max_iters > iters)
+            #iters += 1
+            tf!(f̃ₜ, X̃ⱼ, P)
+            coeff_to_matrix!(f, f̃ₜ, nx, k)
+            fill!(Vⱼ, Interval{Float64}(0.0))
+            for i in 1:nx
+                for j in 1:(k-1)
+                    Vⱼ[i] += Interval{Float64}(0.0, hⱼ^j)*f[i,j]
+                end
             end
-        end
-        println("Vⱼ: $(Vⱼ)")
+            println("Vⱼ: $(Vⱼ)")
 
-        #βⱼⱼ .= (I + Interval{Float64}(0.0, hⱼ^k).*∂f∂y[k])
-        βⱼⱼ .= ∂f∂x[k]
-        βⱼⱼ .*= hIk
-        for i in 1:nx
-            βⱼⱼ[i,i] += one(Interval{Float64})
-        end
-
-        #βⱼᵥ = f[k,:] .+ ∂f∂y[k]*Vⱼ
-        mul!(βⱼᵥ, ∂f∂x[k], Vⱼ)
-        βⱼᵥ .+= f[:,k]
-        mul!(βⱼₖ, βⱼⱼ, βⱼᵥ)
-        println("βⱼₖ: $(βⱼₖ)")
-
-        #βⱼₖ .= βⱼₖ + ϵInterval*abs.(βⱼₖ)
-        for j in 1:nx
-            Uⱼ[j] = Xⱼ[j] + Vⱼ[j]
-            X̃ⱼ₀[j] = Uⱼ[j] + hIk*(βⱼₖ[j] + ϵInterval*abs(βⱼₖ[j]))
-        end
-        println("Uⱼ: $(Uⱼ)")
-        println("X̃ⱼ₀: $(X̃ⱼ₀)")
-
-        tf!(f̃ₜ, X̃ⱼ₀, P)
-        coeff_to_matrix!(f̃, f̃ₜ, nx, k)
-        println("f̃: $(f̃)")
-        inβ = true
-        for j in 1:nx
-            if ~(f̃[j,k] ⊆ βⱼₖ[j])
-                inβ = false
-                break
+            #βⱼⱼ .= (I + Interval{Float64}(0.0, hⱼ^k).*∂f∂y[k])
+            βⱼⱼ .= ∂f∂x[k]
+            βⱼⱼ .*= hIk
+            for i in 1:nx
+                βⱼⱼ[i,i] += one(Interval{Float64})
             end
-        end
-        if inβ
+
+            #βⱼᵥ = f[k,:] .+ ∂f∂y[k]*Vⱼ
+            mul!(βⱼᵥ, ∂f∂x[k], Vⱼ)
+            βⱼᵥ .+= f[:,k]
+            mul!(βⱼₖ, βⱼⱼ, βⱼᵥ)
+            println("βⱼₖ: $(βⱼₖ)")
+
+            #βⱼₖ .= βⱼₖ + ϵInterval*abs.(βⱼₖ)
             for j in 1:nx
-                X̃ⱼ[j] = Uⱼ[j] + hIk*f̃[j,k]
+                Uⱼ[j] = Xⱼ[j] + Vⱼ[j]
+                X̃ⱼ₀[j] = Uⱼ[j] + hIk*(βⱼₖ[j] + ϵInterval*abs(βⱼₖ[j]))
             end
-            break
-        end
-        for j in 1:nx
-            X̃ⱼ₀[j] = Uⱼ[j] + hIk*f̃[j,k]
-        end
-        tf!(f̃ₜ, X̃ⱼ₀, P)
-        coeff_to_matrix!(f̃, f̃ₜ, nx, k)
-        println("next f̃: $(f̃)")
+            println("Uⱼ: $(Uⱼ)")
+            println("X̃ⱼ₀: $(X̃ⱼ₀)")
 
-        reduced = 0
-        while ~verified && reduced < 2
-            s = 0
-            for l = 1:k
-                fill!(Vⱼ, Interval{Float64}(0.0))
-                for j in 1:nx
-                    for i in 1:l
-                        Vⱼ[j] += Interval{Float64}(0.0, hⱼ^i)*f[j,i]
-                    end
-                end
-                for j in 1:nx
-                    X̃ⱼ[j]  = Uⱼ[j] + hIk*f̃[j,l]
-                end
-                if contains(X̃ⱼ, X̃ⱼ₀, nx)
-                    verified = true
-                    s = l
+            tf!(f̃ₜ, X̃ⱼ₀, P)
+            coeff_to_matrix!(f̃, f̃ₜ, nx, k)
+            println("f̃: $(f̃)")
+            inβ = true
+            for j in 1:nx
+                if ~(f̃[j,k] ⊆ βⱼₖ[j])
+                    inβ = false
                     break
                 end
             end
+            if inβ
+                for j in 1:nx
+                    X̃ⱼ[j] = Uⱼ[j] + hIk*f̃[j,k]
+                end
+                break
+            end
+            for j in 1:nx
+                X̃ⱼ₀[j] = Uⱼ[j] + hIk*f̃[j,k]
+            end
+            tf!(f̃ₜ, X̃ⱼ₀, P)
+            coeff_to_matrix!(f̃, f̃ₜ, nx, k)
+            println("next f̃: $(f̃)")
 
-            if verified
-                improving = true
-                while improving
-                    tf!(f̃ₜ, X̃ⱼ, P)
-                    coeff_to_matrix!(f̃, f̃ₜ, nx, s)
-                    println("next B f̃: $(f̃)")
+            reduced = 0
+            while ~verified && reduced < 2
+                s = 0
+                for l = 1:k
+                    fill!(Vⱼ, Interval{Float64}(0.0))
                     for j in 1:nx
-                        X̃ⱼ₀[j]  = Vⱼ[j] + Interval{Float64}(0.0, hⱼ^s)*f̃[j,s]
+                        for i in 1:l
+                            Vⱼ[j] += Interval{Float64}(0.0, hⱼ^i)*f[j,i]
+                        end
                     end
-                    if improvement_condition(X̃ⱼ, X̃ⱼ₀, nx)
-                        copyto!(X̃ⱼ, 1, X̃ⱼ₀, 1, nx)
-                    else
-                        improving = false
+                    for j in 1:nx
+                        X̃ⱼ[j]  = Uⱼ[j] + hIk*f̃[j,l]
+                    end
+                    if contains(X̃ⱼ, X̃ⱼ₀, nx)
+                        verified = true
+                        s = l
+                        break
                     end
                 end
-            else
-                hⱼ *= α
-                hIk = Interval{Float64}(0.0, hⱼ^k)
-                reduced += 1
+
+                if verified
+                    improving = true
+                    while improving
+                        tf!(f̃ₜ, X̃ⱼ, P)
+                        coeff_to_matrix!(f̃, f̃ₜ, nx, s)
+                        println("next B f̃: $(f̃)")
+                        for j in 1:nx
+                            X̃ⱼ₀[j]  = Vⱼ[j] + Interval{Float64}(0.0, hⱼ^s)*f̃[j,s]
+                        end
+                        if improvement_condition(X̃ⱼ, X̃ⱼ₀, nx)
+                            copyto!(X̃ⱼ, 1, X̃ⱼ₀, 1, nx)
+                        else
+                            improving = false
+                        end
+                    end
+                else
+                    hⱼ *= α
+                    hIk = Interval{Float64}(0.0, hⱼ^k)
+                    reduced += 1
+                end
             end
         end
     end
@@ -199,7 +204,7 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ:
     tf!(f̃ₜ, X̃ⱼ, P)
     coeff_to_matrix!(f̃, f̃ₜ, nx, k)
     println("next C f̃: $(f̃)")
-    println("next C f̃ₜ: $(f̃ₜ)")
+
     out.fk .= f̃[:,k]
     out.fk .*= hⱼ^k
     out.step = hⱼ
