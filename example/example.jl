@@ -16,14 +16,14 @@ function f!(dx,x,p,t)
 #    dx[2] = x[2]
     nothing
 end
-tspan = (0.0,0.1)
+tspan = (0.0,0.2)
 #pL = [0.2; 0.1]
 #pU = 10.0*pL
 pL = [-1.0]
 pU = [1.0]
 
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
-integrator = DiscretizeRelax(prob, h = 0.01, skip_step2 = true)
+integrator = DiscretizeRelax(prob, h = 0.01, skip_step2 = true, k = 20)
 ratio = rand(1)
 pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
 setall!(integrator, ParameterValue(), pstar)
@@ -37,6 +37,11 @@ hi_vec = getfield.(integrator.storage[:], :hi)
 plt = plot(t_vec , lo_vec, label="Interval Bounds", linecolor = :darkblue, linestyle = :dash,
            lw=1.5, legend=:bottomleft)
 plot!(plt, t_vec , hi_vec, label="", linecolor = :darkblue, linestyle = :dash, lw=1.5)
+
+prob = ODEProblem(f!, [9.0], tspan, pstar)
+sol = solve(prob, Tsit5(), reltol=1e-8, abstol=1e-8)
+plot!(plt, sol.t , sol[1,:], label="", linecolor = :red, linestyle = :solid, lw=1.5)
+
 ylabel!("x[1] (M)")
 xlabel!("Time (seconds)")
 display(plt)

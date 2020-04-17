@@ -297,7 +297,6 @@ function DBB.relax!(d::DiscretizeRelax)
 
         # advance step counters
         t += d.step_result.hj
-        d.step_count += 1
 
         # throw error if limit exceeded
         if d.step_count > d.step_limit
@@ -307,6 +306,8 @@ function DBB.relax!(d::DiscretizeRelax)
             d.error_code = d.step_result.status_flag
             break
         end
+        d.step_count += 1
+
 
         # unpack storage
         if d.step_count > length(d.time)-1
@@ -322,17 +323,18 @@ function DBB.relax!(d::DiscretizeRelax)
         d.storage[:, d.step_count+1] = d.step_result.Xⱼ
         d.storage_apriori[:, d.step_count+1] = d.step_result.Xapriori
         d.time[d.step_count+1] = t
+
     end
 
     # cut out any unnecessary array elements
     if d.nx == 1
-        resize!(d.storage, 1, d.step_count)
-        resize!(d.storage_apriori, 1, d.step_count)
+        resize!(d.storage, 1, d.step_count+1)
+        resize!(d.storage_apriori, 1, d.step_count+1)
     else
-        resize!(d.storage, 2, d.step_count)
-        resize!(d.storage_apriori, 2, d.step_count)
+        resize!(d.storage, 2, d.step_count+1)
+        resize!(d.storage_apriori, 2, d.step_count+1)
     end
-    resize!(d.time, d.step_count)
+    resize!(d.time, d.step_count+1)
     if d.error_code === RELAXATION_NOT_CALLED
         d.error_code = COMPLETED
     end
