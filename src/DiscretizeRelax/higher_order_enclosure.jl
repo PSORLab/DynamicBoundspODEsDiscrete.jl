@@ -28,9 +28,6 @@ $(TYPEDSIGNATURES)
 Checks that an interval vector `X̃ⱼ` of length `nx` is contained in `X̃ⱼ₀`.
 """
 function contains(X̃ⱼ::Vector{Interval{T}}, X̃ⱼ₀::Vector{Interval{T}}, nx::Int) where {T <: Real}
-    println("start contains:")
-    println("Interval vector 1: $(X̃ⱼ)")
-    println("Interval vector 2: $(X̃ⱼ₀)")
     flag = true
     for i in 1:nx
         if ~(X̃ⱼ[i] ⊆ X̃ⱼ₀[i])
@@ -49,17 +46,17 @@ dissertation (Nedialko S. Nedialkov. Computing rigorous bounds on the solution o
 an initial value problem for an ordinary differential equation. 1999. Universisty
 of Toronto, PhD Dissertation, Algorithm 5.1, page 73-74).
 """
-function existence_uniqueness!(s::StepResult, tf!::TaylorFunctor!, hmin::Float64, P)
+function existence_uniqueness!(s::StepResult, tf!::TaylorFunctor!{F,S,T}, hmin::Float64, P) where {F, S, T <: Real}
     existence_uniqueness!(s.unique_result, tf!, s.Xⱼ, s.hj, hmin, s.f, s.∂f∂x, s.∂f∂p, P, s.h)
     nothing
 end
-function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ::Vector{T},
+function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!{F,S,T}, Xⱼ::Vector{T},
                                hⱼ::Float64, hmin::Float64, f::Matrix{T},
                                ∂f∂x_in::Vector{Matrix{T}}, ∂f∂p_in::Vector{Matrix{T}},
-                               P, hfixed) where {T <: Real}
+                               P, hfixed) where {F, S, T <: Real}
 
-    println("start existence and uniqueness kernel")
-    println("start of Xⱼ: $(Xⱼ)")
+    #println("start existence and uniqueness kernel")
+    #println("start of Xⱼ: $(Xⱼ)")
 
     np = tf!.np
     Vⱼ = tf!.Vⱼ
@@ -81,8 +78,6 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ:
     end
     hIk = Interval{Float64}(0.0, hⱼ^tf!.k)
 
-    inβ = true
-    α = 0.8
     for i in 1:(tf!.k+1)
         for j in eachindex(∂f∂x_in[i])
             ∂f∂x[i][j] = Interval{Float64}(∂f∂x_in[i][j])
@@ -100,7 +95,7 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ:
             coeff_to_matrix!(f, f̃ₜ, tf!.nx, tf!.k)
             fill!(Vⱼ, Interval{Float64}(0.0))
             for i in 1:tf!.nx
-                Vⱼ[j] = X̃ⱼ[j]
+                Vⱼ[i] = X̃ⱼ[i]
                 for j in 2:(tf!.k-1)
                     Vⱼ[i] += Interval{Float64}(0.0, hⱼ^(j-1))*f[i,j]
                 end
@@ -117,24 +112,17 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ:
             mul!(βⱼᵥ, ∂f∂x[tf!.k], Vⱼ)
             βⱼᵥ .+= f[:,tf!.k]
             mul!(βⱼₖ, βⱼⱼ, βⱼᵥ)
-            println("βⱼₖ: $(βⱼₖ)")
+            #println("βⱼₖ: $(βⱼₖ)")
 
             #βⱼₖ .= βⱼₖ + ϵInterval*abs.(βⱼₖ)
-            for j in 1:nx
+            for j in 1:tf!.nx
                 Uⱼ[j] = Xⱼ[j] + Vⱼ[j]
                 X̃ⱼ₀[j] = Uⱼ[j] + hIk*(βⱼₖ[j] + ϵInterval*abs(βⱼₖ[j]))
             end
 
             tf!(f̃ₜ, X̃ⱼ₀, P)
             coeff_to_matrix!(f̃, f̃ₜ, tf!.nx, tf!.k)
-            inβ = true
-            for j in 1:tf!.nx
-                if ~(f̃[j,tf!.k] ⊆ βⱼₖ[j])
-                    inβ = false
-                    break
-                end
-            end
-            if inβ
+            if contains(f̃[:,tf!.k], βⱼₖ, tf!.nx)
                 for j in 1:tf!.nx
                     X̃ⱼ[j] = Uⱼ[j] + hIk*f̃[j, tf!.k]
                 end
@@ -171,20 +159,20 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!, Xⱼ:
                     improving = true
                     while improving
                         tf!(f̃ₜ, X̃ⱼ, P)
-                        coeff_to_matrix!(f̃, f̃ₜ, nx, s)
-                        println("next B f̃: $(f̃)")
-                            for j in 2:nx
+                        coeff_to_matrix!(f̃, f̃ₜ, tf!.nx, s)
+                        #println("next B f̃: $(f̃)")
+                        for j in 2:tf!.nx
                             X̃ⱼ₀[j]  = Vⱼ[j] + Interval{Float64}(0.0, hⱼ^(s-1))*f̃[j,s]
                         end
-                        if improvement_condition(X̃ⱼ, X̃ⱼ₀, nx)
-                            copyto!(X̃ⱼ, 1, X̃ⱼ₀, 1, nx)
+                        if improvement_condition(X̃ⱼ, X̃ⱼ₀, tf!.nx)
+                            copyto!(X̃ⱼ, 1, X̃ⱼ₀, 1, tf!.nx)
                         else
                             improving = false
                         end
                     end
                 else
                     hⱼ *= 0.8                              # times alpha value
-                    hIk = Interval{Float64}(0.0, hⱼ^k)
+                    hIk = Interval{Float64}(0.0, hⱼ^tf!.k)
                     reduced += 1
                 end
             end

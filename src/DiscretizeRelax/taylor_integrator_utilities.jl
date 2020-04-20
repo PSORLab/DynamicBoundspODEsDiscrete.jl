@@ -288,8 +288,12 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, s::Int, t::T, q::Q) where {T <:
     tjac = zeros(T, np + nx, nx*(s+1))
     cfg = JacobianConfig(nothing, out, zeros(T, nx + np))
     result = JacobianResult(out, zeros(T, nx + np))
-    Jx = fill(zeros(T,nx,nx), s+1)
-    Jp = fill(zeros(T,nx,np), s+1)
+    Jx = Matrix{T}[]
+    Jp = Matrix{T}[]
+    for i in 1:(s+1)
+        push!(Jx, zeros(T,nx,nx))
+        push!(Jp, zeros(T,nx,np))
+    end
     return JacTaylorFunctor!{typeof(g!), Q, T,
                              Dual{Nothing, T, nx+np}}(g!, taux, t,
                              nx, np, s, xtaylor, xout, xaux, out, y, x, p, B,
@@ -355,20 +359,18 @@ the Taylor series is `s`, the dimensionality of x is `nx`, the dimensionality of
 p is `np`, and `tjac` is preallocated storage for the transpose of the Jacobian
 w.r.t. y = (x,p).
 """
-function extract_JxJp!(Jx::Vector{Matrix{T}}, Jp::Vector{Matrix{T}},
-                       result::MutableDiffResult{1,Vector{T},Tuple{Matrix{T}}},
-                       tjac::Matrix{T}, nx::Int, np::Int, s::Int) where {T <: Real}
+function set_JxJp!(g::JacTaylorFunctor!, X::Vector{S}, P) where {S <: Real}
 
-    jac = result.derivs[1]
-    transpose!(tjac, jac)
+    jacobian_taylor_coeffs!(g, X, P)
+    jac = g.result.derivs[1]
 
-    for i in 1:(s+1)
-        for q in 1:nx
-            for z in 1:nx
-                Jx[i][q,z] = tjac[z, q + nx*(i-1)]
+    for i in 1:(g.s+1)
+        for q in 1:g.nx
+            for z in 1:g.nx
+                g.Jx[i][z, q] = jac[q + g.nx*(i-1), z]
             end
-            for z in 1:np
-                Jp[i][q,z] = tjac[z + nx, q + nx*(i-1)]
+            for z in 1:g.np
+                g.Jp[i][z, q] = jac[q + g.nx*(i-1), g.nx + z]
             end
         end
     end
