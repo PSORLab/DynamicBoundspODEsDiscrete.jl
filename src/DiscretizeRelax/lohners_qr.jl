@@ -1,16 +1,16 @@
 """
 $(TYPEDEF)
 """
-mutable struct LohnersFunctor{F <: Function, K, T <: Real, S <: Real, D}
+mutable struct LohnersFunctor{F <: Function, K, T <: Real, S <: Real, NY}
     set_tf!::TaylorFunctor!{F, K, T, S}
     real_tf!::TaylorFunctor!{F, K, T, T}
-    jac_tf!::JacTaylorFunctor!{F, K, T, S, D}
+    jac_tf!::JacTaylorFunctor!{F, K, T, S, NY}
 end
 function LohnersFunctor(f!::F, nx::Int, np::Int, k::Val{K}, s::S, t::T) where {F, K, S <: Number, T <: Number}
     set_tf! = TaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
     real_tf! = TaylorFunctor!(f!, nx, np, k, zero(T), zero(T))
     jac_tf! = JacTaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
-    LohnersFunctor{F, K+1, T, S, Dual{Nothing, S, nx+np}}(set_tf!, real_tf!, jac_tf!)
+    LohnersFunctor{F, K+1, T, S, nx+np}(set_tf!, real_tf!, jac_tf!)
 end
 
 """
@@ -27,7 +27,7 @@ ordinary initial and boundary value problems, in: J.R. Cash, I. Gladwell (Eds.),
 Computational Ordinary Differential Equations, vol. 1, Clarendon Press, 1992,
 pp. 425–436.](http://www.goldsztejn.com/old-papers/Lohner-1992.pdf)
 """
-function (x::LohnersFunctor{F,K,S,T,D})(hⱼ::Float64, X̃ⱼ, Xⱼ, xⱼ, A, Δⱼ, P, rP, p, t) where {F <: Function, K, S <: Real, T <: Real, D}
+function (x::LohnersFunctor{F,K,S,T,NY})(hⱼ::Float64, X̃ⱼ, Xⱼ, xⱼ, A, Δⱼ, P, rP, p, t) where {F <: Function, K, S <: Real, T <: Real, NY}
 
 
     #rP = P .- p
@@ -65,27 +65,30 @@ function (x::LohnersFunctor{F,K,S,T,D})(hⱼ::Float64, X̃ⱼ, Xⱼ, xⱼ, A, Δ
     end
 
     for i=2:k
+        hji = hⱼ^(i-1)
         for j in eachindex(jac_tf!.xⱼ₊₁)
-            jac_tf!.xⱼ₊₁[j] += (hⱼ^(i-1))*rf̃[i][j]
+            jac_tf!.xⱼ₊₁[j] += hji*rf̃[i][j]
         end
     end
     # compute extensions of taylor cofficients for rhs
     set_JxJp!(jac_tf!, Xⱼ, P, t)
-    #=
-    jac_tf!.Jxsto[diagind(jac_tf!.Jxsto)] .= one(S)
-    for i in 2:k
-        for j in eachindex(jac_tf!.Jxsto)
-            jac_tf!.Jxsto[j] += hⱼ^(i-1)*jac_tf!.Jx[i][j]
-        end
-    end
-    for i in 1:k
-        for j in eachindex(jac_tf!.Jpsto)
-            jac_tf!.Jpsto[j] += hⱼ^(i-1)*jac_tf!.Jp[i][j]
-        end
-    end
-    =#
 
-    #=
+    for i=1:nx
+        jac_tf!.Jxsto[i,i] = one(S)
+    end
+    for i=2:k
+        hji = hⱼ^(i-1)
+        for j in eachindex(jac_tf!.Jxsto)
+            jac_tf!.Jxsto[j] += hji*jac_tf!.Jx[i][j]
+        end
+    end
+    for i=2:k
+        hji = hⱼ^(i-1)
+        for j in eachindex(jac_tf!.Jpsto)
+            jac_tf!.Jpsto[j] += hji*jac_tf!.Jp[i][j]
+        end
+    end
+
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
     Aⱼ₊₁ = A[1]
     jac_tf!.B .= mid.(jac_tf!.Jxsto*A[2].Q)
@@ -95,7 +98,7 @@ function (x::LohnersFunctor{F,K,S,T,D})(hⱼ::Float64, X̃ⱼ, Xⱼ, xⱼ, A, Δ
     # update X and Delta
     #term1 = jac_tf!.Jxsto*A[2].Q)*Δⱼ[1]
     #copyto!(jac_tf!.M1, 1, term1, 1, nx)
-    term1 = jac_tf!.Jxsto*A[2].Q)*Δⱼ[1]
+    term1 = (jac_tf!.Jxsto*A[2].Q)*Δⱼ[1]
     #copy!(jac_tf!.M1, jac_tf!.Jxsto*A[2].Q)*Δⱼ[1])
     term2 = jac_tf!.Jpsto*rP
     @__dot__ jac_tf!.Xⱼ₊₁ = jac_tf!.xⱼ₊₁ + term1 + term2 + jac_tf!.Rⱼ₊₁ - jac_tf!.mRⱼ₊₁
@@ -105,7 +108,6 @@ function (x::LohnersFunctor{F,K,S,T,D})(hⱼ::Float64, X̃ⱼ, Xⱼ, xⱼ, A, Δ
     @__dot__ jac_tf!.Δⱼ₊₁ = term3 + term4 + term5
 
     pushfirst!(Δⱼ,jac_tf!.Δⱼ₊₁)
-    =#
 
     RELAXATION_NOT_CALLED
 end

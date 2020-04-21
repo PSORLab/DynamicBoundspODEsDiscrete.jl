@@ -24,7 +24,7 @@ An elastic array is Y
 
 $(TYPEDFIELDS)
 """
-mutable struct DiscretizeRelax{F,K,X,T,S,D} <: AbstractODERelaxIntegator
+mutable struct DiscretizeRelax{F,K,X,T,S,NY} <: AbstractODERelaxIntegator
 
     # Problem description
     "Initial Conditiion for pODEs"
@@ -75,14 +75,13 @@ mutable struct DiscretizeRelax{F,K,X,T,S,D} <: AbstractODERelaxIntegator
     # Main functions used in routines
     "Functor for evaluating Taylor coefficients over a set"
     set_tf!::TaylorFunctor!{F,K,S,T}
-    method_f!::LohnersFunctor{F,K,S,T,D}
+    method_f!::LohnersFunctor{F,K,S,T,NY}
 
     step_result::StepResult{T}
     step_params::StepParams
 
     new_decision_pnt::Bool
     new_decision_box::Bool
-
 end
 function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
                          tol = 1E-5, hmin = 1E-13, relax = false, k = 4,
@@ -103,7 +102,7 @@ function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
     time = zeros(Float64,1000)
     storage = Vector{T}[]
     storage_apriori = Vector{T}[]
-    for i in 1:1000
+    for i=1:1000
         push!(storage, zeros(T, d.nx))
         push!(storage_apriori, zeros(T, d.nx))
     end
@@ -120,12 +119,11 @@ function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
     step_result = StepResult(style, d.nx, d.np, k, h)
     step_params = StepParams(tol, hmin, d.nx, repeat_limit, γ, k, skip_step2)
 
-    return DiscretizeRelax{typeof(d.f), k+1, typeof(d.x0), T, Float64,
-                          Dual{Nothing, T, d.nx+d.np}}(d.x0, d.p, d.pL, d.pU, d.nx, d.np, d.tspan,
-                                                   d.tsupports, step_limit, 0, storage, storage_apriori,
-                                                   time, support_dict, error_code, A, Δ, P, rP, skip_step2,
-                                                   style, set_tf!, method_f!, step_result,
-                                                   step_params, true, true)
+    return DiscretizeRelax{typeof(d.f), k+1, typeof(d.x0), T, Float64, d.nx+d.np}(d.x0,
+                           d.p, d.pL, d.pU, d.nx, d.np, d.tspan, d.tsupports, step_limit,
+                           0, storage, storage_apriori, time, support_dict, error_code, A,
+                           Δ, P, rP, skip_step2, style, set_tf!, method_f!, step_result,
+                           step_params, true, true)
 end
 
 
@@ -138,7 +136,7 @@ kth Taylor cofficient of the prior step.
 function estimate_excess(hj, k, fk, γ, nx)
     errⱼ = 0.0
     dₜ = 0.0
-    for i in 1:nx
+    for i=1:nx
         @inbounds dₜ = diam(fk[i])
         errⱼ = (dₜ > errⱼ) ? dₜ : errⱼ
     end
@@ -164,9 +162,9 @@ $(TYPEDSIGNATURES)
 
 Performs a single-step of the validated integrator. Input stepsize is out.step.
 """
-function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor{F,K,T,S,D},
+function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor{F,K,T,S,NY},
                       stf!::TaylorFunctor!, Δ::CircularBuffer{Vector{S}},
-                      A::CircularBuffer{QRDenseStorage}, P, rP, p, t) where {F,K,S,T,D}
+                      A::CircularBuffer{QRDenseStorage}, P, rP, p, t) where {F,K,S,T,NY}
 
     k = params.k
 
@@ -216,13 +214,13 @@ function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor
     nothing
 end
 
-function set_P!(d::DiscretizeRelax{F, K, X, IntervalArithmetic.Interval{Float64}, S, D}) where {F, K, X, S, D}
+function set_P!(d::DiscretizeRelax{F, K, X, IntervalArithmetic.Interval{Float64}, S, NY}) where {F, K, X, S, NY}
     @__dot__ d.P = Interval(d.pL, d.pU)
     @__dot__ d.rP = d.P - d.p
     nothing
 end
 
-function set_P!(d::DiscretizeRelax{F, K, X, MC{N,T}, S, D}) where {F, K, X, N, T<:RelaxTag, S, D}
+function set_P!(d::DiscretizeRelax{F, K, X, MC{N,T}, S, NY}) where {F, K, X, N, T<:RelaxTag, S, NY}
     @__dot__ d.P = MC{N,NS}.(d.p, Interval(d.pL, d.pU), 1:np)
     @__dot__ d.rP = d.P - d.p
     nothing
@@ -244,7 +242,7 @@ function set_Δ!(Δ::CircularBuffer{Vector{T}}, out::Vector{Vector{T}}) where T
     nothing
 end
 
-function DBB.relax!(d::DiscretizeRelax{F,K,X,T,S,D}) where {F, K, X, T <: Number, S, D}
+function DBB.relax!(d::DiscretizeRelax{F,K,X,T,S,NY}) where {F, K, X, T <: Number, S, NY}
 
     set_P!(d) ::Nothing         # Functor set P and P - p values for calculations
     compute_X0!(d)::Nothing     # Compute initial condition values

@@ -1,5 +1,5 @@
 #using Revise
-using IntervalArithmetic
+using IntervalArithmetic, TaylorSeries
 #setrounding(Interval, :none)
 
 using DynamicBoundsBase, DynamicBoundspODEsPILMS #Plots, DifferentialEquations#, Cthulhu
@@ -64,9 +64,11 @@ pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
 setall!(integrator, ParameterValue(), [1.0])
 DynamicBoundsBase.relax!(integrator)
 
+#=
 t_vec = integrator.time
 lo_vec = getfield.(getindex.(integrator.storage[:],1), :lo)
 hi_vec = getfield.(getindex.(integrator.storage[:],1), :hi)
+=#
 #plot!(plt, t_vec , lo_vec, label="Interval Bounds 1.0", linecolor = :green, linestyle = :dash,
 #           lw=1.5, legend=:bottomleft)
 #plot!(plt, t_vec , hi_vec, label="", linecolor = :green, linestyle = :dash, lw=1.5)
@@ -87,20 +89,23 @@ status_code = get(integrator, TerminationStatus())
 println("status code: $(status_code)")
 d = integrator
 t = 2.3
+
 @code_warntype DynamicBoundspODEsPILMS.single_step!(d.step_result, d.step_params, d.method_f!, d.set_tf!, d.Δ, d.A, d.P, d.rP, d.p, t)
 @btime DynamicBoundspODEsPILMS.single_step!($(d.step_result), $(d.step_params), $(d.method_f!),
                     $(d.set_tf!), $(d.Δ), $(d.A), $(d.P), $(d.rP), $(d.p), $t)
-#=
+
+
 println("INTERNAL TESTS 1!")
 @code_warntype DynamicBoundspODEsPILMS.existence_uniqueness!(integrator.step_result,
                                                              integrator.set_tf!,
                                                              integrator.step_params.hmin,
                                                              integrator.P,
                                                              t)
-=#
+
 println("INTERNAL TESTS 2!")
 out = d.step_result
 lf = integrator.method_f!
+
 @code_warntype lf(out.hj, out.unique_result.X, out.Xⱼ, out.xⱼ, d.A, d.Δ,
                   d.P, d.rP, d.p, t)
 @btime ($lf)($(out.hj), $(out.unique_result.X), $(out.Xⱼ), $(out.xⱼ),
@@ -108,12 +113,41 @@ lf = integrator.method_f!
 
 println("INTERNAL TESTS 3!")
 jacfunc = lf.jac_tf!
-@code_warntype DynamicBoundspODEsPILMS.set_JxJp!(jacfunc, out.Xⱼ, d.P, t)
-@btime DynamicBoundspODEsPILMS.set_JxJp!($jacfunc, $(out.Xⱼ), $(d.P), $t)
+#@code_warntype DynamicBoundspODEsPILMS.set_JxJp!(jacfunc, out.Xⱼ, d.P, t)
+#@btime DynamicBoundspODEsPILMS.set_JxJp!($jacfunc, $(out.Xⱼ), $(d.P), $t)
 
-@code_warntype DynamicBoundspODEsPILMS.jacobian_taylor_coeffs!(jacfunc, out.Xⱼ, d.P, t)
-@btime DynamicBoundspODEsPILMS.jacobian_taylor_coeffs!($jacfunc, $(out.Xⱼ), $(d.P), $t)
+#@code_warntype DynamicBoundspODEsPILMS.jacobian_taylor_coeffs!(jacfunc, out.Xⱼ, d.P, t)
+#@btime DynamicBoundspODEsPILMS.jacobian_taylor_coeffs!($jacfunc, $(out.Xⱼ), $(d.P), $t)
 
+r = jacfunc.result
+aot = jacfunc.out
+yot = jacfunc.y
+cfg = jacfunc.cfg
+
+println(" ")
+println(" ")
+println("jacobian stuff")
+#@code_warntype ForwardDiff.jacobian!(r, jacfunc, aot, yot, compare_config)
+#@btime ForwardDiff.jacobian!($r, $jacfunc, $aot, $yot, $compare_config)
+
+println(" ")
+println(" ")
+println("jacobian functor stuff")
+outy = [integrator.method_f!.jac_tf!.x[1] for i in 1:21]
+iny = [integrator.method_f!.jac_tf!.x[1], integrator.method_f!.jac_tf!.p[1]]
+#@code_warntype jacfunc(outy, iny)
+#@btime ($jacfunc)($outy, $iny)
+
+order = 20
+val = Val(21-1)
+xtaylor = [STaylor1(integrator.method_f!.jac_tf!.x[1], val)]
+xaux = deepcopy(xtaylor)
+dx = deepcopy(xtaylor)
+eqdiffs = jacfunc.g!
+P = integrator.method_f!.jac_tf!.p[1]
+println("jetcoeffs stuff")
+#@code_warntype DynamicBoundspODEsPILMS.jetcoeffs!(eqdiffs, t, xtaylor, xaux, dx, order, P)
+#@btime DynamicBoundspODEsPILMS.jetcoeffs!($eqdiffs, $t, $xtaylor, $xaux, $dx, $order, $P)
 #=
 s = integrator.step_result
 @code_warntype DynamicBoundspODEsPILMS.existence_uniqueness!(s.unique_result, integrator.set_tf!, s.Xⱼ, s.hj,
@@ -129,3 +163,6 @@ plot!(plt, integrator.local_problem_storage.integrator_t,
 integrator.local_problem_storage.pode_x[1,:], label="Trajectories", linecolor = :green,
 markershape = :+, markercolor = :green, linestyle = :dash, markersize = 2, lw=0.75)
 =#
+
+
+# seed!(xdual, x, cfg.seeds)

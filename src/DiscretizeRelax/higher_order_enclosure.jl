@@ -76,7 +76,7 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
     end
     hIk = Interval{Float64}(0.0, hⱼ^tf!.k)
 
-    for i in 1:(tf!.k+1)
+    for i=1:(tf!.k+1)
         for j in eachindex(∂f∂x_in[i])
             ∂f∂x[i][j] = Interval{Float64}(∂f∂x_in[i][j])
         end
@@ -167,7 +167,7 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
         # set X to sum of Taylor cofficients
         fill!(Vⱼ, Interval{Float64}(0.0))
         copy!(Vⱼ, X̃ⱼ)
-        for i in 2:tf!.k
+        for i=2:tf!.k
             for j in eachindex(f̃[1])
                 Vⱼ[j] += f̃[i][j]*Interval{Float64}(0.0, hⱼ^(i-1))
             end

@@ -204,7 +204,7 @@ pODEs (Lohner's QR, Hermite-Obreschkoff, etc.)
 
 $(TYPEDFIELDS)
 """
-mutable struct JacTaylorFunctor!{F <: Function, N, T <: Real, S <: Real, D} <: Function
+mutable struct JacTaylorFunctor!{F <: Function, N, T <: Real, S <: Real, NY}
     "Right-hand side function for pODE which operates in place as g!(dx,x,p,t)"
     g!::F
     "Dimensionality of x"
@@ -218,9 +218,9 @@ mutable struct JacTaylorFunctor!{F <: Function, N, T <: Real, S <: Real, D} <: F
     "Variables y = (x,p)"
     y::Vector{S}
     "State variables x"
-    x::Vector{D}
+    x::Vector{Dual{Nothing,S,NY}}
     "Decision variables p"
-    p::Vector{D}
+    p::Vector{Dual{Nothing,S,NY}}
     "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     B::Matrix{T}
     "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
@@ -256,13 +256,13 @@ mutable struct JacTaylorFunctor!{F <: Function, N, T <: Real, S <: Real, D} <: F
     "Jacobian Result from DiffResults"
     result::MutableDiffResult{1, Vector{S}, Tuple{Matrix{S}}}
     "Jacobian Configuration for ForwardDiff"
-    cfg
+    cfg::JacobianConfig{Nothing,S,NY,Tuple{Vector{Dual{Nothing,S,NY}},Vector{Dual{Nothing,S,NY}}}}
     "Store temporary STaylor1 vector for calculations"
-    xtaylor::Vector{STaylor1{N,D}}
+    xtaylor::Vector{STaylor1{N,Dual{Nothing,S,NY}}}
     "Store temporary STaylor1 vector for calculations"
-    xaux::Vector{STaylor1{N,D}}
+    xaux::Vector{STaylor1{N,Dual{Nothing,S,NY}}}
     "Store temporary STaylor1 vector for calculations"
-    dx::Vector{STaylor1{N,D}}
+    dx::Vector{STaylor1{N,Dual{Nothing,S,NY}}}
     taux::Vector{STaylor1{N,T}}
     t::Float64
 end
@@ -282,7 +282,7 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K
     y = zeros(T, nx + np)
     x = zeros(Dual{Nothing, T, nx+np}, nx)
     p = zeros(Dual{Nothing, T, nx+np}, np)
-    B = zeros(Q, nx,nx)
+    B = zeros(Q, nx, nx)
     Δⱼ₊₁ = zeros(T, nx)
     Xⱼ₊₁ = zeros(T, nx)
     xⱼ₊₁ = zeros(Q, nx)
@@ -311,12 +311,10 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K
         push!(Jp, zeros(T,nx,np))
     end
     t = 0.0
-    return JacTaylorFunctor!{typeof(g!), K+1, Q, T,
-                             Dual{Nothing, T, nx+np}}(g!,
-                             nx, np, K, out, y, x, p, B,
-                             Δⱼ₊₁, Xⱼ₊₁, xⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, vⱼ₊₁, M1, M2, M3, M2Y,
-                             Jxsto, Jpsto, tjac, Jx, Jp, result, cfg, xtaylor,
-                             xaux, dx, taux, t)
+    return JacTaylorFunctor!{typeof(g!), K+1, Q, T, nx+np}(g!, nx, np, K, out,
+                             y, x, p, B, Δⱼ₊₁, Xⱼ₊₁, xⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, vⱼ₊₁,
+                             M1, M2, M3, M2Y, Jxsto, Jpsto, tjac, Jx, Jp,
+                             result, cfg, xtaylor, xaux, dx, taux, t)
 end
 
 """
@@ -325,14 +323,17 @@ $(TYPEDSIGNATURES)
 Defines the call to `JacTaylorFunctor!` that preallocates storage to `Taylor1`
 objects as necessary.
 """
-function (d::JacTaylorFunctor!{F, K, T, S, D})(out, y) where {F <: Function, K, T <: Real, S, D}
+function (d::JacTaylorFunctor!{F,K,T,S,NY})(out::AbstractVector{Dual{Nothing,S,NY}},
+                                            y::AbstractVector{Dual{Nothing,S,NY}}) where {F <: Function,
+                                                                                          K, T <: Real, S, NY}
     copyto!(d.x, 1, y, 1, d.nx)
     copyto!(d.p, 1, y, d.nx+1, d.np)
-    val = Val(K-1)
+
+    val = Val{K-1}()
     for i in eachindex(d.xtaylor)
         d.xtaylor[i] = STaylor1(d.x[i], val)
     end
-    jetcoeffs!(d.g!, d.t, d.xtaylor, d.xaux, d.dx, K-1, d.p)::Nothing
+    jetcoeffs!(d.g!, d.t, d.xtaylor, d.xaux, d.dx, K-1, d.p)
     for q in 1:K
         for i in eachindex(d.xtaylor)
             indx = d.nx*(q-1) + i
@@ -350,7 +351,7 @@ output inplace to `result`. A JacobianConfig object without tag checking, cfg,
 is required input and is initialized from `cfg = ForwardDiff.JacobianConfig(nothing, out, y)`.
 The JacTaylorFunctor! used for the evaluation is `g` and inputs are `x` and `p`.
 """
-function jacobian_taylor_coeffs!(g::JacTaylorFunctor!, X::Vector{S}, P, t) where {S <: Real}
+function jacobian_taylor_coeffs!(g::JacTaylorFunctor!{F,K,T,S,NY}, X::Vector{S}, P, t::T) where {F,K,T,S,NY}
 
     # copyto! is used to avoid allocations
     copyto!(g.y, 1, X, 1, g.nx)
@@ -362,8 +363,8 @@ function jacobian_taylor_coeffs!(g::JacTaylorFunctor!, X::Vector{S}, P, t) where
     jacobian!(g.result, g, g.out, g.y, g.cfg)
 
     # reset sum of Jacobian storage
-    #fill!(g.Jxsto, zero(S))
-    #fill!(g.Jpsto, zero(S))
+    fill!(g.Jxsto, zero(S))
+    fill!(g.Jpsto, zero(S))
     nothing
 end
 
@@ -376,11 +377,10 @@ the Taylor series is `s`, the dimensionality of x is `nx`, the dimensionality of
 p is `np`, and `tjac` is preallocated storage for the transpose of the Jacobian
 w.r.t. y = (x,p).
 """
-function set_JxJp!(g::JacTaylorFunctor!, X::Vector{S}, P, t) where {S <: Real}
+function set_JxJp!(g::JacTaylorFunctor!{F,K,T,S,NY}, X::Vector{S}, P, t) where {F,K,T,S,NY}
 
     jacobian_taylor_coeffs!(g, X, P, t)
-    #jac = g.result.derivs[1]
-    #=
+    jac = g.result.derivs[1]
     for i in 1:(g.s+1)
         for q in 1:g.nx
             for z in 1:g.nx
@@ -391,7 +391,6 @@ function set_JxJp!(g::JacTaylorFunctor!, X::Vector{S}, P, t) where {S <: Real}
             end
         end
     end
-    =#
     nothing
 end
 
