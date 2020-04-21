@@ -1,16 +1,16 @@
 """
 $(TYPEDEF)
 """
-mutable struct LohnersFunctor{F <: Function, T <: Real, S <: Real}
-    set_tf!::TaylorFunctor!{F,T,S}
-    real_tf!::TaylorFunctor!{F,T,T}
-    jac_tf!::JacTaylorFunctor!{F,T,S}
+mutable struct LohnersFunctor{F <: Function, K, T <: Real, S <: Real, D}
+    set_tf!::TaylorFunctor!{F, K, T, S}
+    real_tf!::TaylorFunctor!{F, K, T, T}
+    jac_tf!::JacTaylorFunctor!{F, K, T, S, D}
 end
-function LohnersFunctor(f!::F, nx::Int, np::Int, k::Int, s::S, t::T) where {F, S <: Real, T <: Real}
+function LohnersFunctor(f!::F, nx::Int, np::Int, k::Val{K}, s::S, t::T) where {F, K, S <: Number, T <: Number}
     set_tf! = TaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
     real_tf! = TaylorFunctor!(f!, nx, np, k, zero(T), zero(T))
     jac_tf! = JacTaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
-    LohnersFunctor{F,T,S}(set_tf!, real_tf!, jac_tf!)
+    LohnersFunctor{F, K+1, T, S, Dual{Nothing, S, nx+np}}(set_tf!, real_tf!, jac_tf!)
 end
 
 """
@@ -27,7 +27,7 @@ ordinary initial and boundary value problems, in: J.R. Cash, I. Gladwell (Eds.),
 Computational Ordinary Differential Equations, vol. 1, Clarendon Press, 1992,
 pp. 425–436.](http://www.goldsztejn.com/old-papers/Lohner-1992.pdf)
 """
-function (x::LohnersFunctor{F,S,T})(hⱼ::Float64, X̃ⱼ, Xⱼ, xⱼ, A, Δⱼ, P, rP, p) where {F <: Function, S <: Real, T <: Real}
+function (x::LohnersFunctor{F,K,S,T,D})(hⱼ::Float64, X̃ⱼ, Xⱼ, xⱼ, A, Δⱼ, P, rP, p, t) where {F <: Function, K, S <: Real, T <: Real, D}
 
 
     #rP = P .- p
@@ -36,10 +36,18 @@ function (x::LohnersFunctor{F,S,T})(hⱼ::Float64, X̃ⱼ, Xⱼ, xⱼ, A, Δⱼ,
     set_tf! = x.set_tf!
     real_tf! = x.real_tf!
     jac_tf! = x.jac_tf!
-    nx = set_tf!.nx; np = set_tf!.np; k = set_tf!.k
-    sf̃ₜ = set_tf!.f̃ₜ; sf̃ = set_tf!.f̃; sX̃ⱼ₀ = set_tf!.X̃ⱼ₀; sX̃ⱼ = set_tf!.X̃ⱼ
-    rf̃ₜ = real_tf!.f̃ₜ; rf̃ = real_tf!.f̃; rX̃ⱼ₀ = real_tf!.X̃ⱼ₀;  rX̃ⱼ = real_tf!.X̃ⱼ
-    M1 = jac_tf!.M1;    M2 = jac_tf!.M2;  M3 = jac_tf!.M3
+    nx = set_tf!.nx;
+    np = set_tf!.np;
+    k = set_tf!.k
+    sf̃ = set_tf!.f̃;
+    sX̃ⱼ₀ = set_tf!.X̃ⱼ₀;
+    sX̃ⱼ = set_tf!.X̃ⱼ
+    rf̃ = real_tf!.f̃;
+    rX̃ⱼ₀ = real_tf!.X̃ⱼ₀;
+    rX̃ⱼ = real_tf!.X̃ⱼ
+    M1 = jac_tf!.M1;
+    M2 = jac_tf!.M2;
+    M3 = jac_tf!.M3
     M2Y = jac_tf!.M2Y
 
     copyto!(sX̃ⱼ₀, 1, Xⱼ, 1, nx)
@@ -47,30 +55,37 @@ function (x::LohnersFunctor{F,S,T})(hⱼ::Float64, X̃ⱼ, Xⱼ, xⱼ, A, Δⱼ,
     copyto!(rX̃ⱼ₀, 1, xⱼ, 1, nx)
     copyto!(rX̃ⱼ, 1, xⱼ, 1, nx)
 
-    set_tf!(sf̃ₜ, sX̃ⱼ, P)
+    set_tf!(sf̃, sX̃ⱼ, P, t)
+    real_tf!(rf̃, rX̃ⱼ₀, p, t)
+    hjk = hⱼ^k
+    for i in eachindex(jac_tf!.Rⱼ₊₁)
+        jac_tf!.Rⱼ₊₁[i] = hjk*sf̃[k+1][i]
+        jac_tf!.mRⱼ₊₁[i] = mid.(jac_tf!.Rⱼ₊₁[i])
+        jac_tf!.xⱼ₊₁[i] = xⱼ[i] + jac_tf!.mRⱼ₊₁[i]
+    end
+
+    for i=2:k
+        for j in eachindex(jac_tf!.xⱼ₊₁)
+            jac_tf!.xⱼ₊₁[j] += (hⱼ^(i-1))*rf̃[i][j]
+        end
+    end
+    # compute extensions of taylor cofficients for rhs
+    set_JxJp!(jac_tf!, Xⱼ, P, t)
     #=
-    coeff_to_matrix!(sf̃, sf̃ₜ, nx, k)
-    @__dot__  jac_tf!.Rⱼ₊₁ = (hⱼ^k)*sf̃[:,k+1]
-    @__dot__  jac_tf!.mRⱼ₊₁ = mid(jac_tf!.Rⱼ₊₁)
+    jac_tf!.Jxsto[diagind(jac_tf!.Jxsto)] .= one(S)
+    for i in 2:k
+        for j in eachindex(jac_tf!.Jxsto)
+            jac_tf!.Jxsto[j] += hⱼ^(i-1)*jac_tf!.Jx[i][j]
+        end
+    end
+    for i in 1:k
+        for j in eachindex(jac_tf!.Jpsto)
+            jac_tf!.Jpsto[j] += hⱼ^(i-1)*jac_tf!.Jp[i][j]
+        end
+    end
     =#
 
     #=
-    real_tf!(rf̃ₜ , rX̃ⱼ₀, p)
-    coeff_to_matrix!(rf̃, rf̃ₜ, nx, k)
-    @__dot__ jac_tf!.xⱼ₊₁ = xⱼ + jac_tf!.mRⱼ₊₁
-    for i=2:k
-        @__dot__ jac_tf!.xⱼ₊₁ += (hⱼ^(i-1))*rf̃[:,i]
-    end
-
-    # compute extensions of taylor cofficients for rhs
-    set_JxJp!(jac_tf!, Xⱼ, P)
-    fill!(jac_tf!.Jxsto, zero(S))
-    jac_tf!.Jxsto[diagind(jac_tf!.Jxsto)] .= one(S)
-    for i in 2:k
-        jac_tf!.Jxsto .+= hⱼ^(i-1)*jac_tf!.Jx[i]
-        jac_tf!.Jpsto .+= hⱼ^(i-1)*jac_tf!.Jp[i]
-    end
-
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
     Aⱼ₊₁ = A[1]
     jac_tf!.B .= mid.(jac_tf!.Jxsto*A[2].Q)

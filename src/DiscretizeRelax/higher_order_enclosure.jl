@@ -46,21 +46,19 @@ dissertation (Nedialko S. Nedialkov. Computing rigorous bounds on the solution o
 an initial value problem for an ordinary differential equation. 1999. Universisty
 of Toronto, PhD Dissertation, Algorithm 5.1, page 73-74).
 """
-function existence_uniqueness!(s::StepResult, tf!::TaylorFunctor!{F,S,T}, hmin::Float64, P) where {F, S, T <: Real}
-    existence_uniqueness!(s.unique_result, tf!, s.Xⱼ, s.hj, hmin, s.f, s.∂f∂x, s.∂f∂p, P, s.h)
+function existence_uniqueness!(s::StepResult{T}, tf!::TaylorFunctor!{F,K,S,T}, hmin::Float64, P, t) where {F, K, S, T <: Number}
+    existence_uniqueness!(s.unique_result, tf!, s.Xⱼ, s.hj, hmin, s.f, s.∂f∂x, s.∂f∂p, P, s.h, t)
     nothing
 end
-function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!{F,S,T}, Xⱼ::Vector{T},
+function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K,S,T}, Xⱼ::Vector{T},
                                hⱼ::Float64, hmin::Float64, f::Matrix{T},
                                ∂f∂x_in::Vector{Matrix{T}}, ∂f∂p_in::Vector{Matrix{T}},
-                               P, hfixed) where {F, S, T <: Real}
+                               P::Vector{T}, hfixed::Float64, t::Float64) where {F, K, S, T <: Real}
 
     #println("start existence and uniqueness kernel")
     #println("start of Xⱼ: $(Xⱼ)")
-
     np = tf!.np
     Vⱼ = tf!.Vⱼ
-    f̃ₜ = tf!.f̃ₜ
     f̃ = tf!.f̃
     X̃ⱼ₀ = tf!.X̃ⱼ₀
     X̃ⱼ = tf!.X̃ⱼ
@@ -87,18 +85,15 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!{F,S,T}
     ϵInterval = Interval(-1.0, 1.0)
     verified  = false
 
-
     if hfixed <= 0.0
+        #=
         while ((hⱼ >= hmin) && ~verified) #&& (max_iters > iters)
             #iters += 1
-            tf!(f̃ₜ, X̃ⱼ, P)
-            coeff_to_matrix!(f, f̃ₜ, tf!.nx, tf!.k)
+            tf!(f, X̃ⱼ, P, t)
             fill!(Vⱼ, Interval{Float64}(0.0))
-            for i in 1:tf!.nx
-                Vⱼ[i] = X̃ⱼ[i]
-                for j in 2:(tf!.k-1)
-                    Vⱼ[i] += Interval{Float64}(0.0, hⱼ^(j-1))*f[i,j]
-                end
+            @__dot__ Vⱼ = X̃ⱼ
+            for j in 2:(tf!.k)
+                @__dot__ Vⱼ += Interval{Float64}(0.0, hⱼ^(j-1))*f[j]
             end
 
             #βⱼⱼ .= (I + Interval{Float64}(0.0, hⱼ^k).*∂f∂y[k])
@@ -110,44 +105,32 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!{F,S,T}
 
             #βⱼᵥ = f[k,:] .+ ∂f∂y[k]*Vⱼ
             mul!(βⱼᵥ, ∂f∂x[tf!.k], Vⱼ)
-            βⱼᵥ .+= f[:,tf!.k]
+            βⱼᵥ .+= f[tf!.k]
             mul!(βⱼₖ, βⱼⱼ, βⱼᵥ)
             #println("βⱼₖ: $(βⱼₖ)")
 
             #βⱼₖ .= βⱼₖ + ϵInterval*abs.(βⱼₖ)
-            for j in 1:tf!.nx
-                Uⱼ[j] = Xⱼ[j] + Vⱼ[j]
-                X̃ⱼ₀[j] = Uⱼ[j] + hIk*(βⱼₖ[j] + ϵInterval*abs(βⱼₖ[j]))
-            end
+            @__dot__ Uⱼ = Xⱼ + Vⱼ
+            @__dot__ X̃ⱼ₀ = Uⱼ + hIk*(βⱼₖ + ϵInterval*abs(βⱼₖ))
 
-            tf!(f̃ₜ, X̃ⱼ₀, P)
-            coeff_to_matrix!(f̃, f̃ₜ, tf!.nx, tf!.k)
-            if contains(f̃[:,tf!.k], βⱼₖ, tf!.nx)
-                for j in 1:tf!.nx
-                    X̃ⱼ[j] = Uⱼ[j] + hIk*f̃[j, tf!.k]
-                end
+            tf!(f̃, X̃ⱼ₀, P, t)
+            if contains(f̃[tf!.k], βⱼₖ, tf!.nx)
+                @__dot__ X̃ⱼ = Uⱼ + hIk*f̃[tf!.k]
                 break
             end
-            for j in 1:tf!.nx
-                X̃ⱼ₀[j] = Uⱼ[j] + hIk*f̃[j, tf!.k]
-            end
-            tf!(f̃ₜ, X̃ⱼ₀, P)
-            coeff_to_matrix!(f̃, f̃ₜ, tf!.nx, tf!.k)
+            @__dot__ X̃ⱼ₀ = Uⱼ + hIk*f̃[tf!.k]
+            tf!(f̃, X̃ⱼ₀, P, t)
 
             reduced = 0
             while ~verified && reduced < 2
                 s = 0
                 for l = 1:tf!.k
                     fill!(Vⱼ, Interval{Float64}(0.0))
-                    for j in 1:tf!.nx
-                        Vⱼ[j] = X̃ⱼ₀[j]
-                        for i in 1:l
-                            Vⱼ[j] += Interval{Float64}(0.0, hⱼ^(i-1))*f[j,i]
-                        end
+                    @__dot__ Vⱼ = X̃ⱼ₀
+                    for i in 2:l
+                        @__dot__ Vⱼ += Interval{Float64}(0.0, hⱼ^(i-1))*f[i]
                     end
-                    for j in 1:tf!.nx
-                        X̃ⱼ[j]  = Uⱼ[j] + hIk*f̃[j,l]
-                    end
+                    @__dot__ X̃ⱼ  = Uⱼ + hIk*f̃[l]
                     if contains(X̃ⱼ, X̃ⱼ₀, tf!.nx)
                         verified = true
                         s = l
@@ -158,11 +141,10 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!{F,S,T}
                 if verified
                     improving = true
                     while improving
-                        tf!(f̃ₜ, X̃ⱼ, P)
-                        coeff_to_matrix!(f̃, f̃ₜ, tf!.nx, s)
+                        tf!(f̃, X̃ⱼ, P, t)
                         #println("next B f̃: $(f̃)")
-                        for j in 2:tf!.nx
-                            X̃ⱼ₀[j]  = Vⱼ[j] + Interval{Float64}(0.0, hⱼ^(s-1))*f̃[j,s]
+                        for j in 2:tf!.k
+                            X̃ⱼ₀  = Vⱼ + Interval{Float64}(0.0, hⱼ^(s-1))*f̃[j]
                         end
                         if improvement_condition(X̃ⱼ, X̃ⱼ₀, tf!.nx)
                             copyto!(X̃ⱼ, 1, X̃ⱼ₀, 1, tf!.nx)
@@ -177,28 +159,26 @@ function existence_uniqueness!(out::UniquenessResult, tf!::TaylorFunctor!{F,S,T}
                 end
             end
         end
+        =#
     else
         # compute taylor coefficients
-        tf!(f̃ₜ, X̃ⱼ, P)
-        coeff_to_matrix!(f̃, f̃ₜ, tf!.nx, tf!.k)
+        tf!(f̃, X̃ⱼ, P, t)
 
         # set X to sum of Taylor cofficients
         fill!(Vⱼ, Interval{Float64}(0.0))
-        for j in 1:tf!.nx
-            Vⱼ[j] = X̃ⱼ[j]
-            for i in 2:tf!.k
-                Vⱼ[j] += f̃[j,i]*Interval{Float64}(0.0, hⱼ^(i-1))
+        copy!(Vⱼ, X̃ⱼ)
+        for i in 2:tf!.k
+            for j in eachindex(f̃[1])
+                Vⱼ[j] += f̃[i][j]*Interval{Float64}(0.0, hⱼ^(i-1))
             end
         end
-        X̃ⱼ .= Vⱼ
+        copy!(X̃ⱼ, Vⱼ)
     end
-
     flag = hⱼ > hmin
-    out.fk .= f̃[:,tf!.k]
+    out.fk .= f̃[tf!.k]
     out.fk .*= hⱼ^tf!.k
     out.step = hⱼ
     out.confirmed = flag
     out.X .= X̃ⱼ
-
     nothing
 end

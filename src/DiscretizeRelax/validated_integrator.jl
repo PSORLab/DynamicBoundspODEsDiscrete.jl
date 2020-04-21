@@ -24,7 +24,7 @@ An elastic array is Y
 
 $(TYPEDFIELDS)
 """
-mutable struct DiscretizeRelax{F,X,T,S} <: AbstractODERelaxIntegator
+mutable struct DiscretizeRelax{F,K,X,T,S,D} <: AbstractODERelaxIntegator
 
     # Problem description
     "Initial Conditiion for pODEs"
@@ -74,8 +74,8 @@ mutable struct DiscretizeRelax{F,X,T,S} <: AbstractODERelaxIntegator
 
     # Main functions used in routines
     "Functor for evaluating Taylor coefficients over a set"
-    set_tf!::TaylorFunctor!{F,S,T}
-    method_f!::LohnersFunctor{F,S,T}
+    set_tf!::TaylorFunctor!{F,K,S,T}
+    method_f!::LohnersFunctor{F,K,S,T,D}
 
     step_result::StepResult{T}
     step_params::StepParams
@@ -114,17 +114,18 @@ function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
     Δ = CircularBuffer{Vector{T}}(method_steps)
     fill!(Δ, zeros(T, d.nx))
 
-    set_tf! = TaylorFunctor!(d.f, d.nx, d.np, k, style, zero(Float64))
-    method_f! = LohnersFunctor(d.f, d.nx, d.np, k, style, zero(Float64))
+    set_tf! = TaylorFunctor!(d.f, d.nx, d.np, Val(k), style, zero(Float64))
+    method_f! = LohnersFunctor(d.f, d.nx, d.np, Val(k), style, zero(Float64))
 
     step_result = StepResult(style, d.nx, d.np, k, h)
     step_params = StepParams(tol, hmin, d.nx, repeat_limit, γ, k, skip_step2)
 
-    return DiscretizeRelax{typeof(d.f), typeof(d.x0), T, Float64}(d.x0, d.p, d.pL, d.pU, d.nx, d.np, d.tspan,
-                                                                  d.tsupports, step_limit, 0, storage, storage_apriori,
-                                                                  time, support_dict, error_code, A, Δ, P, rP, skip_step2,
-                                                                  style, set_tf!, method_f!, step_result,
-                                                                  step_params, true, true)
+    return DiscretizeRelax{typeof(d.f), k+1, typeof(d.x0), T, Float64,
+                          Dual{Nothing, T, d.nx+d.np}}(d.x0, d.p, d.pL, d.pU, d.nx, d.np, d.tspan,
+                                                   d.tsupports, step_limit, 0, storage, storage_apriori,
+                                                   time, support_dict, error_code, A, Δ, P, rP, skip_step2,
+                                                   style, set_tf!, method_f!, step_result,
+                                                   step_params, true, true)
 end
 
 
@@ -163,17 +164,17 @@ $(TYPEDSIGNATURES)
 
 Performs a single-step of the validated integrator. Input stepsize is out.step.
 """
-function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor,
+function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor{F,K,T,S,D},
                       stf!::TaylorFunctor!, Δ::CircularBuffer{Vector{S}},
-                      A::CircularBuffer{QRDenseStorage}, P, rP, p) where {S <: Real}
+                      A::CircularBuffer{QRDenseStorage}, P, rP, p, t) where {F,K,S,T,D}
 
     k = params.k
 
     # validate existence & uniqueness
     if ~out.jacobians_set
-        set_JxJp!(lf.jac_tf!, out.Xⱼ, P)
+        set_JxJp!(lf.jac_tf!, out.Xⱼ, P, t)
     end
-    existence_uniqueness!(out, stf!, params.hmin, P)
+    existence_uniqueness!(out, stf!, params.hmin, P, t)
     out.Xapriori .= out.unique_result.X
     out.hj = out.unique_result.step
     if ~out.unique_result.confirmed
@@ -187,7 +188,7 @@ function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor
         while (out.hj > params.hmin) && (count < params.repeat_limit)
 
             # perform corrector step
-            out.status_flag = lf(out.hj, out.unique_result.X, out.Xⱼ, out.xⱼ, A, Δ, P, rP, p)
+            out.status_flag = lf(out.hj, out.unique_result.X, out.Xⱼ, out.xⱼ, A, Δ, P, rP, p, t)
 
             # Perform Lepus error control scheme if step size not set
             if out.h <= 0.0
@@ -204,8 +205,8 @@ function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor
         pushfirst!(A, last(A))
         pushfirst!(Δ, get_Δ(lf))
 
-        set_x!(out.xⱼ, lf)
-        set_X!(out.Xⱼ, lf)
+        set_x!(out.xⱼ, lf)::Nothing
+        set_X!(out.Xⱼ, lf)::Nothing
     else
         out.hj = out.h
         out.xⱼ .= mid.(out.Xapriori)
@@ -215,13 +216,13 @@ function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor
     nothing
 end
 
-function set_P!(d::DiscretizeRelax{F, X, IntervalArithmetic.Interval{Float64}, S}) where {F, X, S}
+function set_P!(d::DiscretizeRelax{F, K, X, IntervalArithmetic.Interval{Float64}, S, D}) where {F, K, X, S, D}
     @__dot__ d.P = Interval(d.pL, d.pU)
     @__dot__ d.rP = d.P - d.p
     nothing
 end
 
-function set_P!(d::DiscretizeRelax{F, X, MC{N,T}, S}) where {F, X, N, T<:RelaxTag, S}
+function set_P!(d::DiscretizeRelax{F, K, X, MC{N,T}, S, D}) where {F, K, X, N, T<:RelaxTag, S, D}
     @__dot__ d.P = MC{N,NS}.(d.p, Interval(d.pL, d.pU), 1:np)
     @__dot__ d.rP = d.P - d.p
     nothing
@@ -243,10 +244,10 @@ function set_Δ!(Δ::CircularBuffer{Vector{T}}, out::Vector{Vector{T}}) where T
     nothing
 end
 
-function DBB.relax!(d::DiscretizeRelax{F,X,T,S}) where {F, X, T <: Number, S}
+function DBB.relax!(d::DiscretizeRelax{F,K,X,T,S,D}) where {F, K, X, T <: Number, S, D}
 
-    set_P!(d)          # Functor set P and P - p values for calculations
-    compute_X0!(d)     # Compute initial condition values
+    set_P!(d) ::Nothing         # Functor set P and P - p values for calculations
+    compute_X0!(d)::Nothing     # Compute initial condition values
 
     # Get initial time and integration direction
     t = d.tspan[1]
@@ -268,8 +269,8 @@ function DBB.relax!(d::DiscretizeRelax{F,X,T,S}) where {F, X, T <: Number, S}
     end
 
     # initialize QR type storage
-    set_Δ!(d.Δ, d.storage)
-    reinitialize!(d.A)
+    set_Δ!(d.Δ, d.storage)::Nothing
+    reinitialize!(d.A)::Nothing
 
     # Begin integration loop
     hlast = 0.0
@@ -283,7 +284,7 @@ function DBB.relax!(d::DiscretizeRelax{F,X,T,S}) where {F, X, T <: Number, S}
         d.step_result.hj = min(d.step_result.hj, next_support - t, tmax - t)
 
         # perform step size calculation and update bound information
-        single_step!(d.step_result, d.step_params, d.method_f!, d.set_tf!, d.Δ, d.A, d.P, d.rP, d.p)
+        single_step!(d.step_result, d.step_params, d.method_f!, d.set_tf!, d.Δ, d.A, d.P, d.rP, d.p, t)::Nothing
 
         # advance step counters
         t += d.step_result.hj
@@ -317,7 +318,6 @@ function DBB.relax!(d::DiscretizeRelax{F,X,T,S}) where {F, X, T <: Number, S}
     if d.error_code === RELAXATION_NOT_CALLED
         d.error_code = COMPLETED
     end
-
 
     nothing
 end

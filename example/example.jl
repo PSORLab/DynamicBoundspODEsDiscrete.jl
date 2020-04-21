@@ -1,7 +1,10 @@
-using Revise
+#using Revise
+using IntervalArithmetic
+#setrounding(Interval, :none)
 
-using DynamicBoundsBase, DynamicBoundspODEsPILMS, Plots, DifferentialEquations
-pyplot()
+using DynamicBoundsBase, DynamicBoundspODEsPILMS #Plots, DifferentialEquations#, Cthulhu
+
+#pyplot()
 println(" ")
 println(" ------------------------------------------------------------ ")
 println(" ------------------------------------------------------------ ")
@@ -28,16 +31,17 @@ integrator = DiscretizeRelax(prob, h = 0.01, skip_step2 = false, k = 20)
 setall!(integrator, ParameterValue(), [-1.0])
 
 using BenchmarkTools
+println("TIME RELAX")
 @btime DynamicBoundsBase.relax!($integrator)
-@code_warntype DynamicBoundsBase.relax!(integrator)
+
 
 DynamicBoundsBase.relax!(integrator)
 t_vec = integrator.time
 lo_vec = getfield.(getindex.(integrator.storage[:],1), :lo)
 hi_vec = getfield.(getindex.(integrator.storage[:],1), :hi)
-plt = plot(t_vec , lo_vec, label="Interval Bounds -1.0", linecolor = :blue, linestyle = :dashdot,
-           lw=1.5, legend=:bottomleft)
-plot!(plt, t_vec , hi_vec, label="", linecolor = :blue, linestyle = :dashdot, lw=1.5)
+#plt = plot(t_vec , lo_vec, label="Interval Bounds -1.0", linecolor = :blue, linestyle = :dashdot,
+#           lw=1.5, legend=:bottomleft)
+#plot!(plt, t_vec , hi_vec, label="", linecolor = :blue, linestyle = :dashdot, lw=1.5)
 
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
 integrator = DiscretizeRelax(prob, h = 0.01, skip_step2 = false, k = 20)
@@ -49,9 +53,9 @@ DynamicBoundsBase.relax!(integrator)
 t_vec = integrator.time
 lo_vec = getfield.(getindex.(integrator.storage[:],1), :lo)
 hi_vec = getfield.(getindex.(integrator.storage[:],1), :hi)
-plot!(plt, t_vec , lo_vec, label="Interval Bounds 0.0", linecolor = :black, linestyle = :dot,
-           lw=1.5, legend=:bottomleft)
-plot!(plt, t_vec , hi_vec, label="", linecolor = :black, linestyle = :dot, lw=1.5)
+#plot!(plt, t_vec , lo_vec, label="Interval Bounds 0.0", linecolor = :black, linestyle = :dot,
+#           lw=1.5, legend=:bottomleft)
+#plot!(plt, t_vec , hi_vec, label="", linecolor = :black, linestyle = :dot, lw=1.5)
 
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
 integrator = DiscretizeRelax(prob, h = 0.01, skip_step2 = false, k = 20)
@@ -63,25 +67,59 @@ DynamicBoundsBase.relax!(integrator)
 t_vec = integrator.time
 lo_vec = getfield.(getindex.(integrator.storage[:],1), :lo)
 hi_vec = getfield.(getindex.(integrator.storage[:],1), :hi)
-plot!(plt, t_vec , lo_vec, label="Interval Bounds 1.0", linecolor = :green, linestyle = :dash,
-           lw=1.5, legend=:bottomleft)
-plot!(plt, t_vec , hi_vec, label="", linecolor = :green, linestyle = :dash, lw=1.5)
+#plot!(plt, t_vec , lo_vec, label="Interval Bounds 1.0", linecolor = :green, linestyle = :dash,
+#           lw=1.5, legend=:bottomleft)
+#plot!(plt, t_vec , hi_vec, label="", linecolor = :green, linestyle = :dash, lw=1.5)
 
-prob = ODEProblem(f!, [9.0], tspan, [-1.0])
-sol = solve(prob, Tsit5(), reltol=1e-8, abstol=1e-8)
-plot!(plt, sol.t , sol[1,:], label="", linecolor = :red, linestyle = :solid, lw=1.5)
+#prob = ODEProblem(f!, [9.0], tspan, [-1.0])
+#sol = solve(prob, Tsit5(), reltol=1e-8, abstol=1e-8)
+#plot!(plt, sol.t , sol[1,:], label="", linecolor = :red, linestyle = :solid, lw=1.5)
 
-prob = ODEProblem(f!, [9.0], tspan,[1.0])
-sol = solve(prob, Tsit5(), reltol=1e-8, abstol=1e-8)
-plot!(plt, sol.t , sol[1,:], label="", linecolor = :red, linestyle = :solid, lw=1.5)
+#prob = ODEProblem(f!, [9.0], tspan,[1.0])
+#sol = solve(prob, Tsit5(), reltol=1e-8, abstol=1e-8)
+#plot!(plt, sol.t , sol[1,:], label="", linecolor = :red, linestyle = :solid, lw=1.5)
 
-ylabel!("x[1] (M)")
-xlabel!("Time (seconds)")
-display(plt)
+#ylabel!("x[1] (M)")
+#xlabel!("Time (seconds)")
+#display(plt)
 
 status_code = get(integrator, TerminationStatus())
 println("status code: $(status_code)")
+d = integrator
+t = 2.3
+@code_warntype DynamicBoundspODEsPILMS.single_step!(d.step_result, d.step_params, d.method_f!, d.set_tf!, d.Δ, d.A, d.P, d.rP, d.p, t)
+@btime DynamicBoundspODEsPILMS.single_step!($(d.step_result), $(d.step_params), $(d.method_f!),
+                    $(d.set_tf!), $(d.Δ), $(d.A), $(d.P), $(d.rP), $(d.p), $t)
+#=
+println("INTERNAL TESTS 1!")
+@code_warntype DynamicBoundspODEsPILMS.existence_uniqueness!(integrator.step_result,
+                                                             integrator.set_tf!,
+                                                             integrator.step_params.hmin,
+                                                             integrator.P,
+                                                             t)
+=#
+println("INTERNAL TESTS 2!")
+out = d.step_result
+lf = integrator.method_f!
+@code_warntype lf(out.hj, out.unique_result.X, out.Xⱼ, out.xⱼ, d.A, d.Δ,
+                  d.P, d.rP, d.p, t)
+@btime ($lf)($(out.hj), $(out.unique_result.X), $(out.Xⱼ), $(out.xⱼ),
+                  $(d.A), $(d.Δ), $(d.P), $(d.rP), $(d.p), $t)
 
+println("INTERNAL TESTS 3!")
+jacfunc = lf.jac_tf!
+@code_warntype DynamicBoundspODEsPILMS.set_JxJp!(jacfunc, out.Xⱼ, d.P, t)
+@btime DynamicBoundspODEsPILMS.set_JxJp!($jacfunc, $(out.Xⱼ), $(d.P), $t)
+
+@code_warntype DynamicBoundspODEsPILMS.jacobian_taylor_coeffs!(jacfunc, out.Xⱼ, d.P, t)
+@btime DynamicBoundspODEsPILMS.jacobian_taylor_coeffs!($jacfunc, $(out.Xⱼ), $(d.P), $t)
+
+#=
+s = integrator.step_result
+@code_warntype DynamicBoundspODEsPILMS.existence_uniqueness!(s.unique_result, integrator.set_tf!, s.Xⱼ, s.hj,
+                                              integrator.step_params.hmin, s.f, s.∂f∂x,
+                                              s.∂f∂p, integrator.P, s.h, t)
+=#
 #=
 ratio = rand(6)
 pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
