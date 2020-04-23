@@ -18,16 +18,16 @@
             end
 end
 
-@generated function copy_recurse(dx::STaylor1{N,T}, x::STaylor1{N,T}, ord::Int) where {N,T}
+@generated function copy_recurse(dx::STaylor1{N,T}, x::STaylor1{N,T}, ord::Int, ford::Float64) where {N,T}
     ex_calc = quote end
     append!(ex_calc.args, Any[nothing for i in 1:(N+1)])
     syms = Symbol[Symbol("c$i") for i in 1:N]
-    ex_line = :(nv = dx[ord]/T(ord))
+    ex_line = :(nv = dx[ord-1]/ford) #/ord)
     ex_calc.args[1] = ex_line
-    for i = 1:N
-        sym = syms[i]
-        ex_line = :($(sym) = $i < ord ? x[$i] : ($i == ord ? nv : zero(T)))
-        ex_calc.args[i+1] = ex_line
+    for i = 0:(N-1)
+        sym = syms[i+1]
+        ex_line = :($(sym) = $i < ord ? x[$i] : (($i == ord) ? nv : zero(T))) # nv))
+        ex_calc.args[i+2] = ex_line
     end
     exout = :(($(syms[1]),))
     for i = 2:N
@@ -38,13 +38,6 @@ end
                $ex_calc
                return STaylor1{N,T}($exout)
             end
-end
-
-function recurse_taylor!(dx::AbstractVector{STaylor1{N,U}},
-                          x::AbstractVector{STaylor1{N,U}},
-                          ordnext::Int) where {N,U}
-    @__dot__ x = copy_recurse(dx, x, ordnext)
-    nothing
 end
 
 """
@@ -65,17 +58,34 @@ conditions: The above copyright notice and this permission notice shall be
 included in all copies or substantial portions of the Software.
 """
 function jetcoeffs!(eqsdiff!, t::T, x::Vector{STaylor1{N,U}}, xaux::Vector{STaylor1{N,U}},
-                    dx::Vector{STaylor1{N,U}}, order::Int, params) where {N, T<:Real, U<:Number}
+                    dx::Vector{STaylor1{N,U}}, order::Int, params,
+                    vnxt::Vector{Int}, fnxt::Vector{Float64}) where {N, T<:Number, U<:Number}
 
-      ordnext = 0
-      ttaylor = STaylor1(t, Val(N-1))
-      taux = STaylor1(t, Val(N-1))
-      for ord in 0:(order - 1)
-          ordnext = ord + 1
-          taux = truncuated_STaylor1(ttaylor, ordnext)
-          xaux .= truncuated_STaylor1.(x, ordnext)
-          eqsdiff!(dx, xaux, params, taux)::Nothing
-          recurse_taylor!(dx, x, ordnext)::Nothing
+      ttaylor = STaylor1(t, Val{N-1}())
+      for ord=1:order
+
+          fill!(vnxt, ord)
+          fill!(fnxt, Float64(ord))
+
+          map!(truncuated_STaylor1, xaux, x, vnxt)
+          eqsdiff!(dx, xaux, params, ttaylor)::Nothing
+          x .= copy_recurse.(dx, x, vnxt, fnxt)
+      end
+      nothing
+end
+
+function jetcoeffs!(eqsdiff!, t::T, x::Vector{STaylor1{N,U}}, xaux::Vector{STaylor1{N,U}},
+                    dx::Vector{STaylor1{N,U}}, order::Int, params::Vector{U},
+                    vnxt::Vector{Int}, fnxt::Vector{Float64}) where {N, T<:Number, U<:Number}
+
+      ttaylor = STaylor1(t, Val{N-1}())
+      for ord=1:order
+          fill!(vnxt, ord)
+          fill!(fnxt, Float64(ord))
+
+          map!(truncuated_STaylor1, xaux, x, vnxt)
+          eqsdiff!(dx, xaux, params, ttaylor)::Nothing
+          x .= copy_recurse.(dx, x, vnxt, fnxt)
       end
       nothing
 end
@@ -130,6 +140,8 @@ mutable struct TaylorFunctor!{F <: Function, N, T <: Real, S <: Real}
     "Store temporary STaylor1 vector for calculations"
     dx::Vector{STaylor1{N,S}}
     taux::Vector{STaylor1{N,T}}
+    vnxt::Vector{Int}
+    fnxt::Vector{Float64}
 end
 
 """
@@ -144,7 +156,8 @@ function (d::TaylorFunctor!{F, K, T, S})(out::Vector{Vector{S}}, x::Vector{S},
     for i in eachindex(d.xtaylor)
         d.xtaylor[i] = STaylor1(x[i], val)
     end
-    jetcoeffs!(d.g!, t, d.xtaylor, d.xaux, d.dx, K-1, p)::Nothing
+
+    jetcoeffs!(d.g!, t, d.xtaylor, d.xaux, d.dx, K-1, p, d.vnxt, d.fnxt)::Nothing
     for i in eachindex(out)
         for j in eachindex(d.xtaylor)
             out[i][j] = d.xtaylor[j][i-1]
@@ -189,9 +202,12 @@ function TaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K, T
     Uⱼ = zeros(T, nx)
     x = zeros(T, nx)
     p = zeros(T, np)
+    vnxt = zeros(Int, nx)
+    fnxt = zeros(Float64, nx)
     return TaylorFunctor!{typeof(g!), K+1, Q, T}(g!, nx, np, K, Vⱼ, f̃, X̃ⱼ₀, X̃ⱼ,
-                                               ∂f∂x, ∂f∂p, βⱼⱼ, βⱼᵥ, βⱼₖ, Uⱼ,
-                                               x, p, xtaylor, xaux, dx, taux)
+                                               ∂f∂x, ∂f∂p, βⱼⱼ, βⱼᵥ, βⱼₖ, Uⱼ, x,
+                                               p, xtaylor, xaux, dx, taux, vnxt,
+                                               fnxt)
 end
 
 """
@@ -241,6 +257,8 @@ mutable struct JacTaylorFunctor!{F <: Function, N, T <: Real, S <: Real, NY}
     M2::Matrix{S}
     "Temporary storage nx-by-np in Lohner's QR & Hermite-Obreschkoff"
     M3::Matrix{S}
+    "Temporary storage np-by-1 in Lohner's QR & Hermite-Obreschkoff"
+    M4::Vector{S}
     "Temporary storage in Lohner's QR & Hermite-Obreschkoff"
     M2Y::Matrix{S}
     "Storage for sum of Jacobian w.r.t x"
@@ -265,6 +283,8 @@ mutable struct JacTaylorFunctor!{F <: Function, N, T <: Real, S <: Real, NY}
     dx::Vector{STaylor1{N,Dual{Nothing,S,NY}}}
     taux::Vector{STaylor1{N,T}}
     t::Float64
+    vnxt::Vector{Int}
+    fnxt::Vector{Float64}
 end
 
 """
@@ -292,6 +312,7 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K
     M1 = zeros(T, nx)
     M2 = zeros(T, nx, nx)
     M3 = zeros(T, nx, np)
+    M4 = zeros(T, np)
     M2Y = zeros(T, nx, nx)
     Jxsto = zeros(T, nx, nx)
     Jpsto = zeros(T, nx, np)
@@ -311,10 +332,12 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K
         push!(Jp, zeros(T,nx,np))
     end
     t = 0.0
+    vnxt = zeros(Int, nx)
+    fnxt = zeros(Float64, nx)
     return JacTaylorFunctor!{typeof(g!), K+1, Q, T, nx+np}(g!, nx, np, K, out,
                              y, x, p, B, Δⱼ₊₁, Xⱼ₊₁, xⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, vⱼ₊₁,
-                             M1, M2, M3, M2Y, Jxsto, Jpsto, tjac, Jx, Jp,
-                             result, cfg, xtaylor, xaux, dx, taux, t)
+                             M1, M2, M3, M4, M2Y, Jxsto, Jpsto, tjac, Jx, Jp,
+                             result, cfg, xtaylor, xaux, dx, taux, t, vnxt, fnxt)
 end
 
 """
@@ -326,16 +349,17 @@ objects as necessary.
 function (d::JacTaylorFunctor!{F,K,T,S,NY})(out::AbstractVector{Dual{Nothing,S,NY}},
                                             y::AbstractVector{Dual{Nothing,S,NY}}) where {F <: Function,
                                                                                           K, T <: Real, S, NY}
+
+
     copyto!(d.x, 1, y, 1, d.nx)
     copyto!(d.p, 1, y, d.nx+1, d.np)
-
     val = Val{K-1}()
-    for i in eachindex(d.xtaylor)
+    for i=1:d.nx
         d.xtaylor[i] = STaylor1(d.x[i], val)
     end
-    jetcoeffs!(d.g!, d.t, d.xtaylor, d.xaux, d.dx, K-1, d.p)
-    for q in 1:K
-        for i in eachindex(d.xtaylor)
+    jetcoeffs!(d.g!, d.t, d.xtaylor, d.xaux, d.dx, K-1, d.p, d.vnxt, d.fnxt)
+    for q=1:K
+        for i=1:d.nx
             indx = d.nx*(q-1) + i
             out[indx] = d.xtaylor[i].coeffs[q]
         end

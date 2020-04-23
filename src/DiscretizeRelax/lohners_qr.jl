@@ -98,14 +98,18 @@ function (x::LohnersFunctor{F,K,S,T,NY})(hⱼ::Float64, X̃ⱼ, Xⱼ, xⱼ, A, �
     # update X and Delta
     #term1 = jac_tf!.Jxsto*A[2].Q)*Δⱼ[1]
     #copyto!(jac_tf!.M1, 1, term1, 1, nx)
+    #mul!(jac_tf!.M2, jac_tf!.Jxsto, A[2].Q)
+    #mul!(jac_tf!.M1, jac_tf!.M2, Δⱼ[1])
     term1 = (jac_tf!.Jxsto*A[2].Q)*Δⱼ[1]
     #copy!(jac_tf!.M1, jac_tf!.Jxsto*A[2].Q)*Δⱼ[1])
+    #mul!(jac_tf!.M4, jac_tf!.Jpsto, rP)
     term2 = jac_tf!.Jpsto*rP
     @__dot__ jac_tf!.Xⱼ₊₁ = jac_tf!.xⱼ₊₁ + term1 + term2 + jac_tf!.Rⱼ₊₁ - jac_tf!.mRⱼ₊₁
     term3 = (Aⱼ₊₁.inv*(jac_tf!.Jxsto*A[2].Q))*Δⱼ[1]
     term4 = (Aⱼ₊₁.inv*jac_tf!.Jpsto)*rP
+    #mul!(jac_tf!.M4, (Aⱼ₊₁.inv*jac_tf!.Jpsto), rP)
     term5 = Aⱼ₊₁.inv*(jac_tf!.Rⱼ₊₁ - jac_tf!.mRⱼ₊₁)
-    @__dot__ jac_tf!.Δⱼ₊₁ = term3 + term4 + term5
+    @__dot__ jac_tf!.Δⱼ₊₁ = term3 + jac_tf!.M4 + term5
 
     pushfirst!(Δⱼ,jac_tf!.Δⱼ₊₁)
 

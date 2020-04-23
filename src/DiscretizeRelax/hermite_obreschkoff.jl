@@ -27,7 +27,6 @@ function HermiteObreschkoff(p::Int, q::Int)
     HermiteObreschkoff(SVector{p}(cpq), SVector{q}(cqp))
 end
 
-#=
 """
 $(TYPEDSIGNATURES)
 
@@ -37,17 +36,44 @@ an initial value problem for an ordinary differential equation. 1999. Universist
 of Toronto, PhD Dissertation, Algorithm 5.1, page 49) full details to be included
 in a forthcoming paper.
 """
-function parametric_hermite_obreschkoff!(stf!::TaylorFunctor!{F,S,T},
-                                         rtf!::TaylorFunctor!{F,S,S},
-                                         dtf!::JacTaylorFunctor!{F,S,D},
-                                         hₖ, Ỹₖ, Xₖ, X0ₖ₊₁, xₖ, P, p, Aₖ₊₁, Aₖ, Δₖ,
-                                         result, tjac,
-                                         cfg, Jxsto, Jpsto,
-                                         Jx, Jp, ho::HermiteObreschkoff{Pho,Qho}) where  {F <: Function, T <: Real,
-                                                                                      S <: Real, D <: Real,
-                                                                                      Qho, Pho}
+function (x::LohnersFunctor{F,K,S,T,NY,})(hⱼ::Float64, X̃ⱼ, Xⱼ, xⱼ, A, Δⱼ, P, rP, p, t) where {F <: Function, K, S <: Real, T <: Real, NY}
 
-    x̂0ₖ₊₁ = mid.(X0ₖ₊₁)
+    # Compute lohner function step
+    out.status_flag = lf(out.hj, out.unique_result.X, out.Xⱼ, out.xⱼ, A, Δ, P, rP, p, t)
+
+    X̂0ₖ₊₁ = out.Xⱼ
+    x̂0ₖ₊₁ = mid.(X̂0ₖ₊₁)
+    real_tf!(rf̃, x̂0ₖ₊₁, p, t)
+    prf̃ = out.xⱼ
+    srf̃ = copy(x̂0ₖ₊₁)
+    for i=2:k
+        cpq = ho.cpq[i]
+        cqp = ho.cqp[i]
+        for j=1:nx
+            prf̃[j] += cpq*x.real_tf!.f̃[i][j]
+            srf̃[j] += ((-1)^(i-1))*cqp*rf̃[i][j]
+        end
+    end
+    @__dot__ gₖ₊₁ = out.xⱼ - x̂0ₖ₊₁ + rf + prf̃ - srf̃ + fk + γ*out.fk
+    @__dot__ Vₖ = X̂0ₖ₊₁ - x̂0ₖ₊₁
+    set_JxJp!(jac_tf!, X̂0ₖ₊₁, P, t)
+
+    for i=1:nx
+        jac_tf!.Jxsto[i,i] = one(S)
+    end
+    for i=2:k
+        hji = hⱼ^(i-1)
+        for j in eachindex(jac_tf!.Jxsto)
+            jac_tf!.Jxsto[j] += hji*jac_tf!.Jx[i][j]
+        end
+    end
+    for i=2:k
+        hji = hⱼ^(i-1)
+        for j in eachindex(jac_tf!.Jpsto)
+            jac_tf!.Jpsto[j] += hji*jac_tf!.Jp[i][j]
+        end
+    end
+
     Rₖ₊₁ =
     δₖ₊₁ = vₖ₊₁ - vₖ + Rₖ₊₁
     mJx = mid(Jxsto)
@@ -59,30 +85,3 @@ function parametric_hermite_obreschkoff!(stf!::TaylorFunctor!{F,S,T},
     Δₖ₊₁ = (Q*Bₖ₊₁)*Δₖ + (Q*Cₖ₊₁)*(X0ₖ₊₁ - x̂0ₖ₊₁) + Q*Jpsto*rP - Q*Jpsto1*rP + Q*inv(mid(Jxsto1)*δₖ₊₁
     nothing
 end
-
-Jx = Matrix{Interval{Float64}}[zeros(Interval{Float64},2,2) for i in 1:4]
-Jp = Matrix{Interval{Float64}}[zeros(Interval{Float64},2,2) for i in 1:4]
-Jxsto = zeros(Interval{Float64},2,2)
-Jpsto = zeros(Interval{Float64},2,2)
-
-rtf  = TaylorFunctor!(f!, nx, np, k, zero(Float64), zero(Float64))
-Yⱼ = [Interval{Float64}(-10.0, 20.0); Interval{Float64}(-10.0, 20.0)]
-Y0ⱼ₊₁ = Yⱼ
-P = [Interval{Float64}(2.0, 3.0); Interval{Float64}(2.0, 3.0)]
-yⱼ = mid.(Yⱼ)
-Δⱼ = Yⱼ - yⱼ
-At = zeros(2,2) + I
-Aⱼ =  QRDenseStorage(nx)
-Aⱼ₊₁ =  QRDenseStorage(nx)
-itf = TaylorFunctor!(f!, nx, np, k, zero(Interval{Float64}), zero(Float64))
-dtf = g
-hⱼ = 0.001
-# TODO: Remember rP is computed outside iteration and stored to JacTaylorFunctor
-plohners = parametric_hermite_obreschkoff!itf, rtf, dtf, hⱼ, Yⱼ, Yⱼ, Y0ⱼ₊₁, yⱼ,
-                                     P, p, Aⱼ₊₁, Aⱼ, Δⱼ, result, tjac, cfg,
-                                     Jxsto, Jpsto, Jx, Jp)
-
-@btime parametric_hermite_obreschkoff!($itf, $rtf, $dtf, $hⱼ, $Yⱼ, $Yⱼ, $Y0ⱼ₊₁, $yⱼ,
-                                       $P, $p, $Aⱼ₊₁, $Aⱼ, $Δⱼ, $result, $tjac, $cfg,
-                                       $Jxsto, $Jpsto, $Jx, $Jp)
-=#
