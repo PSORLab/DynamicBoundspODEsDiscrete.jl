@@ -5,11 +5,13 @@ A structure that stores the cofficient of the (p,q)-Hermite-Obreschkoff method.
 
 $(TYPEDFIELDS)
 """
-struct HermiteObreschkoff{P,Q}
+struct HermiteObreschkoff{P,Q,K} <: AbstractStateContractorName
     "Cpq[i=1:p] index starting at i = 1 rather than 0"
     cpq::SVector{Float64,P}
     "Cqp[i=1:q] index starting at i = 1 rather than 0"
     cqp::SVector{Float64,Q}
+    "gamma for method"
+    γ::Float64
 end
 function HermiteObreschkoff(p::Int, q::Int)
     temp_cpq = 1.0
@@ -24,8 +26,30 @@ function HermiteObreschkoff(p::Int, q::Int)
         temp_cqp = temp_cqp*(q - i + 1.0)/(q + p - i + 1)
         push!(cqp, temp_cqp)
     end
-    HermiteObreschkoff(SVector{p}(cpq), SVector{q}(cqp))
+    k = p + q + 1
+    HermiteObreschkoff{p,q,k}(SVector{p}(cpq), SVector{q}(cqp),γ)
 end
+
+mutable struct HOFunctor{F <: Function, P, Q, K, T <: Real, S <: Real, NY} <: AbstractStateContractor
+    ho::HermiteObreschkoff{P, Q, K}
+    lon::LohnersFunctor{F, Q+1, T, S, NY}
+    implicit_r::TaylorFunctor!{F, K, T, T}
+    implicit_J::JacTaylorFunctor!{F, P, T, S, NY}
+end
+function HOFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q},
+                                   k::Val{K}, style, s) where {P,Q,K}
+    set_tf! = TaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
+    real_tf! = TaylorFunctor!(f!, nx, np, k, zero(T), zero(T))
+    jac_tf! = JacTaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
+    HOFunctor{F, P, Q, K, T, S, nx+np}(set_tf!, real_tf!, jac_tf!)
+end
+
+function state_contractor(m::HermiteObreschkoff{P,Q,K}, f, nx, np, style, s) where {P,Q,K}
+    HermiteObreschkoffFunctor(f, nx, np, Val{P}(), Val{Q}(), Val{K}(), style, s)
+end
+state_contractor_k(m::HermiteObreschkoff{P,Q,K}) where {P,Q,K} = K
+state_contractor_γ(m::HermiteObreschkoff) = m.γ
+state_contractor_steps(m::HermiteObreschkoff) = 2
 
 """
 $(TYPEDSIGNATURES)
@@ -36,52 +60,63 @@ an initial value problem for an ordinary differential equation. 1999. Universist
 of Toronto, PhD Dissertation, Algorithm 5.1, page 49) full details to be included
 in a forthcoming paper.
 """
-function (x::LohnersFunctor{F,K,S,T,NY,})(hⱼ::Float64, X̃ⱼ, Xⱼ, xⱼ, A, Δⱼ, P, rP, p, t) where {F <: Function, K, S <: Real, T <: Real, NY}
+function (d::HOFunctor{F,P,Q,K,T,S,NY})(hⱼ::Float64, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP,
+                                        pval, t) where {F <: Function, K, S <: Real,
+                                                        T <: Real, NY}
 
     # Compute lohner function step
-    out.status_flag = lf(out.hj, out.unique_result.X, out.Xⱼ, out.xⱼ, A, Δ, P, rP, p, t)
+    Jf! = x.implicit_J
+    expJf! = x.jac_tf!
+    p =
+    q =
 
-    X̂0ₖ₊₁ = out.Xⱼ
-    x̂0ₖ₊₁ = mid.(X̂0ₖ₊₁)
-    real_tf!(rf̃, x̂0ₖ₊₁, p, t)
-    prf̃ = out.xⱼ
-    srf̃ = copy(x̂0ₖ₊₁)
-    for i=2:k
-        cpq = ho.cpq[i]
-        cqp = ho.cqp[i]
-        for j=1:nx
-            prf̃[j] += cpq*x.real_tf!.f̃[i][j]
-            srf̃[j] += ((-1)^(i-1))*cqp*rf̃[i][j]
-        end
-    end
-    @__dot__ gₖ₊₁ = out.xⱼ - x̂0ₖ₊₁ + rf + prf̃ - srf̃ + fk + γ*out.fk
-    @__dot__ Vₖ = X̂0ₖ₊₁ - x̂0ₖ₊₁
-    set_JxJp!(jac_tf!, X̂0ₖ₊₁, P, t)
+    zⱼ₊₁ = x.lon.jac_tf!.Rⱼ₊₁
 
-    for i=1:nx
-        jac_tf!.Jxsto[i,i] = one(S)
+    d.lon(hⱼ, X̃ⱼ, Xⱼ, xval, A, Δ, P, rP, pval, t)
+
+    Xⱼ₊₁ = d.lon.jac_tf!.Xⱼ₊₁
+    x̂0ⱼ₊₁ = mid.(Xⱼ₊₁)
+
+    fpⱼ₊₁ = zeros(nx)
+    d.implicit_r(d.implicit_r.f̃, x̂0ⱼ₊₁, p, t)
+    for i=1:p
+        fpⱼ₊₁ += (hⱼ^i)*(ho.cpq[i])*d.implicit_r.f̃[i+1]
     end
-    for i=2:k
-        hji = hⱼ^(i-1)
-        for j in eachindex(jac_tf!.Jxsto)
-            jac_tf!.Jxsto[j] += hji*jac_tf!.Jx[i][j]
-        end
-    end
-    for i=2:k
-        hji = hⱼ^(i-1)
-        for j in eachindex(jac_tf!.Jpsto)
-            jac_tf!.Jpsto[j] += hji*jac_tf!.Jp[i][j]
-        end
+    fqⱼ₊₁ = zeros(nx)
+    for i=1:q
+        fqⱼ₊₁ += (ho.cpq[i])*d.lon.real_tf!.f̃[i+1]       # hⱼ^i included prior
     end
 
-    Rₖ₊₁ =
-    δₖ₊₁ = vₖ₊₁ - vₖ + Rₖ₊₁
-    mJx = mid(Jxsto)
-    Bₖ₊₁ = mJx*(Jxsto*Aₖ)
-    Cₖ₊₁ = mJx*Jxsto1
-    Xₖ₊₁ = X + Bₖ₊₁*Δₖ + Cₖ₊₁*(X0ₖ₊₁ - x̂0ₖ₊₁) + δₖ₊₁ +
-    xₖ₊₁ = mid.(Xₖ₊₁)
-    Q = inv(Aⱼ₊₁)
-    Δₖ₊₁ = (Q*Bₖ₊₁)*Δₖ + (Q*Cₖ₊₁)*(X0ₖ₊₁ - x̂0ₖ₊₁) + Q*Jpsto*rP - Q*Jpsto1*rP + Q*inv(mid(Jxsto1)*δₖ₊₁
+    gⱼ₊₁ = xval - x̂0ⱼ₊₁ + fpⱼ₊₁ + fqⱼ₊₁ + x.γ*zⱼ₊₁
+
+
+    set_JxJp!(Jf!, Xⱼ, P, t)
+    for i = 1:k
+        if i == 1
+            for j = 1:nx
+                Jf!.Jxsto[j,j] = one(S)
+            end
+        else
+            @__dot__ Jf!.Jxsto += (hⱼ^(i-1))*Jf!.Jx[i]
+        end
+        @__dot__ Jf!.Jpsto += (hⱼ^(i-1))*Jf!.Jp[i]
+    end
+
+    # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
+    Aⱼ₊₁ = A[1]
+    Jf!.B .= mid.(Jf!.Jxsto*A[2].Q)
+    calculateQ!(Aⱼ₊₁, Jf!.B, nx)
+    calculateQinv!(Aⱼ₊₁)
+
+    RELAXATION_NOT_CALLED
+end
+
+get_Δ(lf) = lf.jac_tf!.Δⱼ₊₁
+function set_x!(out::Vector{Float64}, lf::LohnersFunctor)
+    out .= lf.jac_tf!.xⱼ₊₁
+    nothing
+end
+function set_X!(out::Vector{S}, lf::LohnersFunctor) where S
+    out .= lf.jac_tf!.Xⱼ₊₁
     nothing
 end

@@ -86,7 +86,6 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
     verified  = false
 
     if hfixed <= 0.0
-        #=
         while ((hⱼ >= hmin) && ~verified) #&& (max_iters > iters)
             #iters += 1
             tf!(f, X̃ⱼ, P, t)
@@ -159,7 +158,6 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
                 end
             end
         end
-        =#
     else
         # compute taylor coefficients
         tf!(f̃, X̃ⱼ, P, t)

@@ -24,7 +24,7 @@ An elastic array is Y
 
 $(TYPEDFIELDS)
 """
-mutable struct DiscretizeRelax{F,K,X,T,S,NY} <: AbstractODERelaxIntegator
+mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY} <: AbstractODERelaxIntegator
 
     # Problem description
     "Initial Conditiion for pODEs"
@@ -75,7 +75,7 @@ mutable struct DiscretizeRelax{F,K,X,T,S,NY} <: AbstractODERelaxIntegator
     # Main functions used in routines
     "Functor for evaluating Taylor coefficients over a set"
     set_tf!::TaylorFunctor!{F,K,S,T}
-    method_f!::LohnersFunctor{F,K,S,T,NY}
+    method_f!::M
 
     step_result::StepResult{T}
     step_params::StepParams
@@ -83,9 +83,12 @@ mutable struct DiscretizeRelax{F,K,X,T,S,NY} <: AbstractODERelaxIntegator
     new_decision_pnt::Bool
     new_decision_box::Bool
 end
-function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
-                         tol = 1E-5, hmin = 1E-13, relax = false, k = 4,
-                         method_steps = 2, γ = 1.0, h = 0.0, skip_step2 = false)
+function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit = 1000,
+                         tol = 1E-5, hmin = 1E-13, relax = false, h = 0.0, skip_step2 = false) where SCN <: AbstractStateContractorName
+
+    γ = state_contractor_γ(m)::Float64
+    k = state_contractor_k(m)::Int
+    method_steps = state_contractor_steps(m)::Int
 
     tsupports = d.tsupports
     if ~isempty(tsupports)
@@ -114,16 +117,21 @@ function DiscretizeRelax(d::ODERelaxProb; repeat_limit = 50, step_limit = 1000,
     fill!(Δ, zeros(T, d.nx))
 
     set_tf! = TaylorFunctor!(d.f, d.nx, d.np, Val(k), style, zero(Float64))
-    method_f! = LohnersFunctor(d.f, d.nx, d.np, Val(k), style, zero(Float64))
+    state_method = state_contractor(m, d.f, d.nx, d.np, style, zero(Float64))
+    #method_f! = LohnersFunctor(d.f, d.nx, d.np, Val(k), style, zero(Float64))
 
     step_result = StepResult(style, d.nx, d.np, k, h)
     step_params = StepParams(tol, hmin, d.nx, repeat_limit, γ, k, skip_step2)
 
-    return DiscretizeRelax{typeof(d.f), k+1, typeof(d.x0), T, Float64, d.nx+d.np}(d.x0,
-                           d.p, d.pL, d.pU, d.nx, d.np, d.tspan, d.tsupports, step_limit,
-                           0, storage, storage_apriori, time, support_dict, error_code, A,
-                           Δ, P, rP, skip_step2, style, set_tf!, method_f!, step_result,
-                           step_params, true, true)
+    return DiscretizeRelax{typeof(state_method), T, Float64, typeof(d.f), k+1,
+                           typeof(d.x0), d.nx+d.np}(d.x0, d.p, d.pL, d.pU, d.nx,
+                           d.np, d.tspan, d.tsupports, step_limit, 0, storage,
+                           storage_apriori, time, support_dict, error_code, A,
+                           Δ, P, rP, skip_step2, style, set_tf!, state_method,
+                           step_result, step_params, true, true)
+end
+function DiscretizeRelax(d::ODERelaxProb; kwargs...)
+    DiscretizeRelax(d, LohnerContractor{4}(); kwargs...)
 end
 
 
@@ -162,9 +170,9 @@ $(TYPEDSIGNATURES)
 
 Performs a single-step of the validated integrator. Input stepsize is out.step.
 """
-function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor{F,K,T,S,NY},
+function single_step!(out::StepResult{S}, params::StepParams, sc::M,
                       stf!::TaylorFunctor!, Δ::CircularBuffer{Vector{S}},
-                      A::CircularBuffer{QRDenseStorage}, P, rP, p, t) where {F,K,S,T,NY}
+                      A::CircularBuffer{QRDenseStorage}, P, rP, p, t) where {M<:AbstractStateContractor, S<:Real}
 
     k = params.k
 
@@ -186,7 +194,7 @@ function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor
         while (out.hj > params.hmin) && (count < params.repeat_limit)
 
             # perform corrector step
-            out.status_flag = lf(out.hj, out.unique_result.X, out.Xⱼ, out.xⱼ, A, Δ, P, rP, p, t)
+            out.status_flag = sc(out.hj, out.unique_result.X, out.Xⱼ, out.xⱼ, A, Δ, P, rP, p, t)
 
             # Perform Lepus error control scheme if step size not set
             if out.h <= 0.0
@@ -201,10 +209,10 @@ function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor
 
         # updates shifts Aj+1 -> Aj and so on
         pushfirst!(A, last(A))
-        pushfirst!(Δ, get_Δ(lf))
+        pushfirst!(Δ, get_Δ(sc))
 
-        set_x!(out.xⱼ, lf)::Nothing
-        set_X!(out.Xⱼ, lf)::Nothing
+        set_x!(out.xⱼ, sc)::Nothing
+        set_X!(out.Xⱼ, sc)::Nothing
     else
         out.hj = out.h
         out.xⱼ .= mid.(out.Xapriori)
@@ -214,13 +222,13 @@ function single_step!(out::StepResult{S}, params::StepParams, lf::LohnersFunctor
     nothing
 end
 
-function set_P!(d::DiscretizeRelax{F, K, X, IntervalArithmetic.Interval{Float64}, S, NY}) where {F, K, X, S, NY}
+function set_P!(d::DiscretizeRelax{M,Interval{Float64},S,F,K,X,NY}) where {M<:AbstractStateContractor, S, F, K, X, NY}
     @__dot__ d.P = Interval(d.pL, d.pU)
     @__dot__ d.rP = d.P - d.p
     nothing
 end
 
-function set_P!(d::DiscretizeRelax{F, K, X, MC{N,T}, S, NY}) where {F, K, X, N, T<:RelaxTag, S, NY}
+function set_P!(d::DiscretizeRelax{M,MC{N,T},S,F,K,X,NY}) where {M<:AbstractStateContractor, T<:RelaxTag, S <: Real, F, K, X, N, NY}
     @__dot__ d.P = MC{N,NS}.(d.p, Interval(d.pL, d.pU), 1:np)
     @__dot__ d.rP = d.P - d.p
     nothing
@@ -242,7 +250,7 @@ function set_Δ!(Δ::CircularBuffer{Vector{T}}, out::Vector{Vector{T}}) where T
     nothing
 end
 
-function DBB.relax!(d::DiscretizeRelax{F,K,X,T,S,NY}) where {F, K, X, T <: Number, S, NY}
+function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY}
 
     set_P!(d) ::Nothing         # Functor set P and P - p values for calculations
     compute_X0!(d)::Nothing     # Compute initial condition values

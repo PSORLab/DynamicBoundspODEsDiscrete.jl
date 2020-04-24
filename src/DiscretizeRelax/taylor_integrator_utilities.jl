@@ -569,3 +569,6 @@ function StepResult(s::S, nx::Int, np::Int, k::Int, h::Float64) where S
     StepResult{S}(status_flag, h, hj, predicted_hj, errⱼ, xⱼ, zⱼ, Xⱼ, Xapriori,
                   unique_result, f, ∂f∂x, ∂f∂p, jacobians_set)
 end
+
+abstract type AbstractStateContractor end
+abstract type AbstractStateContractorName end

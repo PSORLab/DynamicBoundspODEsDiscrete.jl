@@ -49,15 +49,13 @@ plt = plot(t_vec , lo_vec, label="Interval Bounds -1.0", linecolor = :blue, line
 plot!(plt, t_vec , hi_vec, label="", linecolor = :blue, linestyle = :dashdot, lw=1.5)
 =#
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
-integrator = DiscretizeRelax(prob, h = 0.01, skip_step2 = false, k = kval)
+integrator = DiscretizeRelax(prob, h = 0.01, skip_step2 = false)
 ratio = rand(1)
 pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
 setall!(integrator, ParameterValue(), [-1.0])
 DynamicBoundsBase.relax!(integrator)
 
 using BenchmarkTools
-#println("TIME RELAX")
-#DynamicBoundsBase.relax!(integrator)
 @btime DynamicBoundsBase.relax!($integrator)
 
 t_vec = integrator.time

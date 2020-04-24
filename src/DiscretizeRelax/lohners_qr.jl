@@ -1,7 +1,7 @@
 """
 $(TYPEDEF)
 """
-mutable struct LohnersFunctor{F <: Function, K, T <: Real, S <: Real, NY}
+mutable struct LohnersFunctor{F <: Function, K, T <: Real, S <: Real, NY} <: AbstractStateContractor
     set_tf!::TaylorFunctor!{F, K, T, S}
     real_tf!::TaylorFunctor!{F, K, T, T}
     jac_tf!::JacTaylorFunctor!{F, K, T, S, NY}
@@ -12,6 +12,15 @@ function LohnersFunctor(f!::F, nx::Int, np::Int, k::Val{K}, s::S, t::T) where {F
     jac_tf! = JacTaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
     LohnersFunctor{F, K+1, T, S, nx+np}(set_tf!, real_tf!, jac_tf!)
 end
+
+struct LohnerContractor{K} <: AbstractStateContractorName end
+LohnerContractor(k::Int) = LohnerContractor{k}()
+function state_contractor(m::LohnerContractor{K}, f, nx, np, style, s) where K
+    LohnersFunctor(f, nx, np, Val{K}(), style, s)
+end
+state_contractor_k(m::LohnerContractor{K}) where K = K
+state_contractor_γ(m::LohnerContractor) = 1.0
+state_contractor_steps(m::LohnerContractor) = 2
 
 """
 $(TYPEDSIGNATURES)
@@ -48,7 +57,8 @@ function (x::LohnersFunctor{F,K,S,T,NY})(hⱼ::Float64, X̃ⱼ, Xⱼ, xval, A, �
     @__dot__ Jf!.xⱼ₊₁ = xval + Jf!.mRⱼ₊₁
 
     for i = 2:k
-        @__dot__ Jf!.xⱼ₊₁ += (hⱼ^(i-1))*real_tf!.f̃[i]
+        real_tf!.f̃[i] .*= (hⱼ^(i-1))
+        @__dot__ Jf!.xⱼ₊₁ += real_tf!.f̃[i]
     end
 
     # compute extensions of taylor cofficients for rhs
