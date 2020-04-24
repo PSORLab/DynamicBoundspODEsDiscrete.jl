@@ -14,7 +14,7 @@ using ForwardDiff: Chunk, Dual, Partials, construct_seeds, single_seed,
 using DiffResults: JacobianResult, MutableDiffResult
 
 import DynamicBoundsBase: relax!, set, setall!, get, getall!, getall, relax!, supports
-import Base: setindex!, getindex, copyto!
+import Base: setindex!, getindex, copyto!, literal_pow
 
 #import DynamicBoundsBase: relax!, integrate!
 #export Wilhelm2019, set, setall!, get, getall!, relax!, integrate!
@@ -33,6 +33,7 @@ function (x::PrintCount)(s::String)
       nothing
 end
 
+include("DiscretizeRelax/fast_conversion.jl")
 include("DiscretizeRelax/taylor_integrator_utilities.jl")
 include("DiscretizeRelax/higher_order_enclosure.jl")
 include("DiscretizeRelax/lohners_qr.jl")

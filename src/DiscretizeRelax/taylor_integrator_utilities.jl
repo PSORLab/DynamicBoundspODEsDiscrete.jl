@@ -73,7 +73,7 @@ function jetcoeffs!(eqsdiff!, t::T, x::Vector{STaylor1{N,U}}, xaux::Vector{STayl
       end
       nothing
 end
-
+#=
 function jetcoeffs!(eqsdiff!, t::T, x::Vector{STaylor1{N,U}}, xaux::Vector{STaylor1{N,U}},
                     dx::Vector{STaylor1{N,U}}, order::Int, params::Vector{U},
                     vnxt::Vector{Int}, fnxt::Vector{Float64}) where {N, T<:Number, U<:Number}
@@ -89,6 +89,7 @@ function jetcoeffs!(eqsdiff!, t::T, x::Vector{STaylor1{N,U}}, xaux::Vector{STayl
       end
       nothing
 end
+=#
 
 """
 $(TYPEDEF)
@@ -253,8 +254,14 @@ mutable struct JacTaylorFunctor!{F <: Function, N, T <: Real, S <: Real, NY}
     vⱼ₊₁::Vector{T}
     "Temporary storage nx-by-1 in Lohner's QR & Hermite-Obreschkoff"
     M1::Vector{S}
+    "Temporary storage nx-by-1 in Lohner's QR & Hermite-Obreschkoff"
+    M1a::Vector{S}
+    "Temporary storage nx-by-1 in Lohner's QR & Hermite-Obreschkoff"
+    M1b::Vector{S}
     "Temporary storage nx-by-nx in Lohner's QR & Hermite-Obreschkoff"
     M2::Matrix{S}
+    "Temporary storage nx-by-nx in Lohner's QR & Hermite-Obreschkoff"
+    M2a::Matrix{S}
     "Temporary storage nx-by-np in Lohner's QR & Hermite-Obreschkoff"
     M3::Matrix{S}
     "Temporary storage np-by-1 in Lohner's QR & Hermite-Obreschkoff"
@@ -310,7 +317,10 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K
     mRⱼ₊₁ = zeros(Q, nx)
     vⱼ₊₁ = zeros(Q, nx)
     M1 = zeros(T, nx)
+    M1a = zeros(T, nx)
+    M1b = zeros(T, nx)
     M2 = zeros(T, nx, nx)
+    M2a = zeros(T, nx, nx)
     M3 = zeros(T, nx, np)
     M4 = zeros(T, np)
     M2Y = zeros(T, nx, nx)
@@ -336,8 +346,9 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K
     fnxt = zeros(Float64, nx)
     return JacTaylorFunctor!{typeof(g!), K+1, Q, T, nx+np}(g!, nx, np, K, out,
                              y, x, p, B, Δⱼ₊₁, Xⱼ₊₁, xⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, vⱼ₊₁,
-                             M1, M2, M3, M4, M2Y, Jxsto, Jpsto, tjac, Jx, Jp,
-                             result, cfg, xtaylor, xaux, dx, taux, t, vnxt, fnxt)
+                             M1, M1a, M1b, M2, M2a, M3, M4, M2Y, Jxsto, Jpsto,
+                             tjac, Jx, Jp, result, cfg, xtaylor, xaux, dx,
+                             taux, t, vnxt, fnxt)
 end
 
 """
@@ -381,7 +392,6 @@ function jacobian_taylor_coeffs!(g::JacTaylorFunctor!{F,K,T,S,NY}, X::Vector{S},
     copyto!(g.y, 1, X, 1, g.nx)
     copyto!(g.y, g.nx + 1, P, 1, g.np)
     g.t = t
-
     # other AD schemes may be usable as well but this is a length(g.out) >> nx + np
     # situtation typically
     jacobian!(g.result, g, g.out, g.y, g.cfg)
