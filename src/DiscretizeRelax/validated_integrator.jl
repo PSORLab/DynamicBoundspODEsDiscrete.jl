@@ -229,7 +229,7 @@ function set_P!(d::DiscretizeRelax{M,Interval{Float64},S,F,K,X,NY}) where {M<:Ab
 end
 
 function set_P!(d::DiscretizeRelax{M,MC{N,T},S,F,K,X,NY}) where {M<:AbstractStateContractor, T<:RelaxTag, S <: Real, F, K, X, N, NY}
-    @__dot__ d.P = MC{N,NS}.(d.p, Interval(d.pL, d.pU), 1:np)
+    @__dot__ d.P = MC{N,NS}.(d.p, Interval(d.pL, d.pU), 1:d.np)
     @__dot__ d.rP = d.P - d.p
     nothing
 end

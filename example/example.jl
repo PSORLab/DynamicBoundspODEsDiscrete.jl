@@ -49,7 +49,7 @@ plt = plot(t_vec , lo_vec, label="Interval Bounds -1.0", linecolor = :blue, line
 plot!(plt, t_vec , hi_vec, label="", linecolor = :blue, linestyle = :dashdot, lw=1.5)
 =#
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
-integrator = DiscretizeRelax(prob, h = 0.01, skip_step2 = false)
+integrator = DiscretizeRelax(prob, skip_step2 = false, relax = false)
 ratio = rand(1)
 pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
 setall!(integrator, ParameterValue(), [-1.0])
@@ -61,6 +61,12 @@ using BenchmarkTools
 t_vec = integrator.time
 lo_vec = getfield.(getindex.(integrator.storage[:],1), :lo)
 hi_vec = getfield.(getindex.(integrator.storage[:],1), :hi)
+#lo_vec = getfield.(getfield.(getindex.(integrator.storage[:],1), :Intv), :lo)
+#hi_vec = getfield.(getfield.(getindex.(integrator.storage[:],1), :Intv), :hi)
+
+#lo_vec = getfield.(getindex.(integrator.storage[:],1), :cv)
+#hi_vec = getfield.(getindex.(integrator.storage[:],1), :cc)
+
 plt = plot(t_vec , lo_vec, label="Interval Bounds 0.0", linecolor = :black, linestyle = :dot,
            lw=1.5, legend=:bottomleft)
 plot!(plt, t_vec , hi_vec, label="", linecolor = :black, linestyle = :dot, lw=1.5)

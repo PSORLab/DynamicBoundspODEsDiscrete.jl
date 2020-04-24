@@ -174,7 +174,12 @@ A constructor for `TaylorFunctor` that preallocates storage for computing
 interval extensions of Taylor coefficients.
 """
 function TaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K, T <: Number, Q <: Number}
-    @assert eltype(t) == Q
+    #println("typeof(t): $(typeof(t))")
+    #println("typeof(Q): $(typeof(Q))")
+    #println("typeof(eltype(t)): $(eltype(t))")
+    #println("typeof(eltype(Q)): $(eltype(Q))")
+
+    #@assert eltype(t) == Q
     x0 = zeros(T, nx)
     Vⱼ = zeros(T, nx)
     f̃ = Vector{T}[]
@@ -302,7 +307,7 @@ extensions of Taylor coefficients. The type `T` should use type `Q` for internal
 computations.
 """
 function JacTaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K, T <: Number, Q <: Number}
-    @assert eltype(t) == Q
+    #@assert eltype(t) == Q
     x0 = zeros(T, nx)
     xd0 = zeros(Dual{Nothing, T, nx+np}, nx)
     out = zeros(T, nx*(K+1))

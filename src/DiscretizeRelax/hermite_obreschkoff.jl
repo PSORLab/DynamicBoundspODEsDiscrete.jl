@@ -72,24 +72,25 @@ function (d::HOFunctor{F,P,Q,K,T,S,NY})(hⱼ::Float64, X̃ⱼ, Xⱼ, xval, A, Δ
 
     zⱼ₊₁ = x.lon.jac_tf!.Rⱼ₊₁
 
+    # perform a lohners method tightening
     d.lon(hⱼ, X̃ⱼ, Xⱼ, xval, A, Δ, P, rP, pval, t)
 
     Xⱼ₊₁ = d.lon.jac_tf!.Xⱼ₊₁
     x̂0ⱼ₊₁ = mid.(Xⱼ₊₁)
 
+    # compute real value sum of taylor series
     fpⱼ₊₁ = zeros(nx)
     d.implicit_r(d.implicit_r.f̃, x̂0ⱼ₊₁, p, t)
     for i=1:p
-        fpⱼ₊₁ += (hⱼ^i)*(ho.cpq[i])*d.implicit_r.f̃[i+1]
+        @__dot__ fpⱼ₊₁ += (hⱼ^i)*(ho.cpq[i])*d.implicit_r.f̃[i+1]
     end
     fqⱼ₊₁ = zeros(nx)
     for i=1:q
-        fqⱼ₊₁ += (ho.cpq[i])*d.lon.real_tf!.f̃[i+1]       # hⱼ^i included prior
+        @__dot__ fqⱼ₊₁ += (ho.cpq[i])*d.lon.real_tf!.f̃[i+1]       # hⱼ^i included prior
     end
-
     gⱼ₊₁ = xval - x̂0ⱼ₊₁ + fpⱼ₊₁ + fqⱼ₊₁ + x.γ*zⱼ₊₁
 
-
+    # compute set-valued extension of Jacobian of Taylor series (implicit)
     set_JxJp!(Jf!, Xⱼ, P, t)
     for i = 1:k
         if i == 1

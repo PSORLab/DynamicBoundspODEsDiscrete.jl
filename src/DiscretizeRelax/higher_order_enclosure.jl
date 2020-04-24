@@ -78,7 +78,7 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
 
     for i=1:(tf!.k+1)
         for j in eachindex(∂f∂x_in[i])
-            ∂f∂x[i][j] = Interval{Float64}(∂f∂x_in[i][j])
+            ∂f∂x[i][j] = ∂f∂x_in[i][j]
         end
     end
 
@@ -89,7 +89,7 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
         while ((hⱼ >= hmin) && ~verified) #&& (max_iters > iters)
             #iters += 1
             tf!(f, X̃ⱼ, P, t)
-            fill!(Vⱼ, Interval{Float64}(0.0))
+            fill!(Vⱼ, zero(T))
             @__dot__ Vⱼ = X̃ⱼ
             for j in 2:(tf!.k)
                 @__dot__ Vⱼ += Interval{Float64}(0.0, hⱼ^(j-1))*f[j]
@@ -99,7 +99,7 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
             βⱼⱼ .= ∂f∂x[tf!.k]
             βⱼⱼ .*= hIk
             for i in 1:tf!.nx
-                βⱼⱼ[i,i] += one(Interval{Float64})
+                βⱼⱼ[i,i] += one(T)
             end
 
             #βⱼᵥ = f[k,:] .+ ∂f∂y[k]*Vⱼ
@@ -124,7 +124,7 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
             while ~verified && reduced < 2
                 s = 0
                 for l = 1:tf!.k
-                    fill!(Vⱼ, Interval{Float64}(0.0))
+                    fill!(Vⱼ, zero(T))
                     @__dot__ Vⱼ = X̃ⱼ₀
                     for i in 2:l
                         @__dot__ Vⱼ += Interval{Float64}(0.0, hⱼ^(i-1))*f[i]
@@ -163,7 +163,7 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
         tf!(f̃, X̃ⱼ, P, t)
 
         # set X to sum of Taylor cofficients
-        fill!(Vⱼ, Interval{Float64}(0.0))
+        fill!(Vⱼ, zero(T))
         copyto!(Vⱼ, X̃ⱼ)
         for i=2:tf!.k
             for j in eachindex(f̃[1])
