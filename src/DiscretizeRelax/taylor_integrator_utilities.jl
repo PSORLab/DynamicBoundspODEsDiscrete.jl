@@ -552,7 +552,7 @@ mutable struct StepResult{S <: Number}
     Xⱼ::Vector{S}
     Xapriori::Vector{S}
     unique_result::UniquenessResult{S}
-    f::Matrix{S}
+    f::Vector{Vector{S}}
     ∂f∂x::Vector{Matrix{S}}
     ∂f∂p::Vector{Matrix{S}}
     jacobians_set::Bool
@@ -567,7 +567,10 @@ function StepResult(s::S, nx::Int, np::Int, k::Int, h::Float64) where S
     Xⱼ = zeros(S, nx)
     Xapriori = zeros(S, nx)
     unique_result = UniquenessResult(s, nx, np)
-    f = zeros(S, nx, k+1)
+    f = Vector{S}[]
+    for i in 1:(k+1)
+        push!(f, zeros(S, nx))
+    end
     ∂f∂x = Matrix{S}[zeros(S,nx,nx) for i in 1:(k+1)]
     ∂f∂p = Matrix{S}[zeros(S,nx,np) for i in 1:(k+1)]
     jacobians_set = true

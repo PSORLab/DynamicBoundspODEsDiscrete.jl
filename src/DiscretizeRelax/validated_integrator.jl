@@ -151,14 +151,13 @@ function estimate_excess(hj, k, fk, γ, nx)
     return γ*(hj^k)*errⱼ
 end
 
-# TODO: fix setting... zjp1?
 function lepus_step_size!(out::StepResult{S}, params::StepParams, k::Int, nx::Int) where {S <: Real}
     out.errⱼ = estimate_excess(out.hj, k, out.f[k], params.γ, nx)
     if out.errⱼ <= out.hj*params.tol
         out.predicted_hj = 0.9*out.hj*(0.5*out.hj/out.errⱼ)^(1/(k-1))
     else
         out.predicted_hj = out.hj*(out.hj*params.tol/out.errⱼ)^(1/(k-1))
-        out.f[:,k] = out.f[:,k]*(out.predicted_hj/out.hj)^k
+        @__dot__ out.f[k] = out.f[k]*(out.predicted_hj/out.hj)^k
         out.hj = out.predicted_hj
         return false
     end
@@ -287,6 +286,7 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
 
         # max step size is min of predicted, when next support point occurs,
         # or the last time step in the span
+        println("sr.hj = $(d.step_result.hj), ns - t = $(next_support - t), tm - t = $(tmax - t)")
         d.step_result.hj = min(d.step_result.hj, next_support - t, tmax - t)
 
         # perform step size calculation and update bound information

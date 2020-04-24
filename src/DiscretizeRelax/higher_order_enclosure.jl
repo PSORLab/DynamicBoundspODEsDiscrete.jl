@@ -18,7 +18,6 @@ function improvement_condition(X̃ⱼ::Vector{Interval{T}}, X̃ⱼ₀::Vector{In
         Ynorm = (diam1 > Ynorm) ? diam1 : Ynorm
         Y0norm = (diam2 > Y0norm) ? diam2 : Y0norm
     end
-    println("improvement ratio: $(Ynorm/Y0norm)")
     return (Ynorm/Y0norm) > 1.01
 end
 
@@ -51,9 +50,11 @@ function existence_uniqueness!(s::StepResult{T}, tf!::TaylorFunctor!{F,K,S,T}, h
     nothing
 end
 function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K,S,T}, Xⱼ::Vector{T},
-                               hⱼ::Float64, hmin::Float64, f::Matrix{T},
+                               hⱼ::Float64, hmin::Float64, f::Vector{Vector{T}},
                                ∂f∂x_in::Vector{Matrix{T}}, ∂f∂p_in::Vector{Matrix{T}},
                                P::Vector{T}, hfixed::Float64, t::Float64) where {F, K, S, T <: Real}
+
+    #println("input hⱼ = $(hⱼ), hmin = $(hmin), hfixed = $(hfixed)")
 
     #println("start existence and uniqueness kernel")
     #println("start of Xⱼ: $(Xⱼ)")
@@ -71,7 +72,7 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
     copyto!(X̃ⱼ, 1, Xⱼ, 1, tf!.nx)
 
     ∂f∂x = tf!.∂f∂x
-    if hfixed >= 0.0
+    if hfixed > 0.0
         hⱼ = hfixed
     end
     hIk = Interval{Float64}(0.0, hⱼ^tf!.k)
@@ -86,10 +87,11 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
     verified  = false
 
     if hfixed <= 0.0
+        #println("pre while: hⱼ = $(hⱼ), hmin = $(hmin), verified = $(verified)")
         while ((hⱼ >= hmin) && ~verified) #&& (max_iters > iters)
+            #println("outer while: hⱼ = $(hⱼ), hmin = $(hmin), verified = $(verified)")
             #iters += 1
             tf!(f, X̃ⱼ, P, t)
-            fill!(Vⱼ, zero(T))
             @__dot__ Vⱼ = X̃ⱼ
             for j in 2:(tf!.k)
                 @__dot__ Vⱼ += Interval{Float64}(0.0, hⱼ^(j-1))*f[j]
@@ -122,9 +124,9 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
 
             reduced = 0
             while ~verified && reduced < 2
+                #println("while start, verified = $(verified), reduced = $(reduced)")
                 s = 0
                 for l = 1:tf!.k
-                    fill!(Vⱼ, zero(T))
                     @__dot__ Vⱼ = X̃ⱼ₀
                     for i in 2:l
                         @__dot__ Vⱼ += Interval{Float64}(0.0, hⱼ^(i-1))*f[i]
@@ -138,6 +140,7 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
                 end
 
                 if verified
+                    #println("if branch verified")
                     improving = true
                     while improving
                         tf!(f̃, X̃ⱼ, P, t)
@@ -152,9 +155,13 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
                         end
                     end
                 else
+                    #println("else branch verified")
                     hⱼ *= 0.8                              # times alpha value
                     hIk = Interval{Float64}(0.0, hⱼ^tf!.k)
                     reduced += 1
+                    #println("hⱼ = $(hⱼ)")
+                    #println("hIk = $(hIk)")
+                    #println("reduced = $(reduced)")
                 end
             end
         end
@@ -172,6 +179,8 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
         end
         copy!(X̃ⱼ, Vⱼ)
     end
+    #println("hⱼ: $(hⱼ)")
+    #println("hmin: $(hmin)")
     flag = hⱼ > hmin
     out.fk .= f̃[tf!.k+1]
     out.fk .*= Interval{Float64}(0.0,hⱼ^tf!.k)
