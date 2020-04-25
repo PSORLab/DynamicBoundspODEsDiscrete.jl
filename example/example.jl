@@ -31,7 +31,7 @@ function f!(dx, x, p, t)
     dx[1] = p[1] - x[1]*x[1]
     nothing
 end
-tspan = (0.0,1.00)
+tspan = (0.0,0.04)
 #pL = [0.2; 0.1]
 #pU = 10.0*pL
 pL = [-1.0]
@@ -52,11 +52,11 @@ prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
 integrator = DiscretizeRelax(prob, skip_step2 = false, relax = false)
 ratio = rand(1)
 pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
-setall!(integrator, ParameterValue(), [-1.0])
+setall!(integrator, ParameterValue(), [0.0])
 DynamicBoundsBase.relax!(integrator)
 
-using BenchmarkTools
-@btime DynamicBoundsBase.relax!($integrator)
+#using BenchmarkTools
+#@btime DynamicBoundsBase.relax!($integrator)
 
 t_vec = integrator.time
 lo_vec = getfield.(getindex.(integrator.storage[:],1), :lo)

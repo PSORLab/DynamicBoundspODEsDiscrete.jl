@@ -573,7 +573,7 @@ function StepResult(s::S, nx::Int, np::Int, k::Int, h::Float64) where S
     end
     ∂f∂x = Matrix{S}[zeros(S,nx,nx) for i in 1:(k+1)]
     ∂f∂p = Matrix{S}[zeros(S,nx,np) for i in 1:(k+1)]
-    jacobians_set = true
+    jacobians_set = false
     StepResult{S}(status_flag, h, hj, predicted_hj, errⱼ, xⱼ, zⱼ, Xⱼ, Xapriori,
                   unique_result, f, ∂f∂x, ∂f∂p, jacobians_set)
 end

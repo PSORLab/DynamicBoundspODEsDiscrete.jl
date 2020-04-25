@@ -136,3 +136,21 @@ function set_X!(out::Vector{S}, lf::LohnersFunctor) where S
     out .= lf.jac_tf!.Xⱼ₊₁
     nothing
 end
+
+has_jacobians(d::LohnersFunctor) = true
+
+function extract_jacobians!(d::LohnersFunctor{F,K,S,T,NY}, ∂f∂x::Vector{Matrix{T}},
+                            ∂f∂p::Vector{Matrix{T}}, Xⱼ, P, t) where {F <: Function, K, S <: Real, T <: Real, NY}
+    for i=1:(d.set_tf!.k+1)
+        ∂f∂x[i] .= d.jac_tf!.Jx[i]
+        ∂f∂p[i] .= d.jac_tf!.Jp[i]
+    end
+    nothing
+end
+
+function get_jacobians!(d::LohnersFunctor{F,K,S,T,NY}, ∂f∂x::Vector{Matrix{T}},
+                        ∂f∂p::Vector{Matrix{T}}, Xⱼ, P, t) where {F <: Function, K, S <: Real, T <: Real, NY}
+    set_JxJp!(d.jac_tf!, Xⱼ, P, t)
+    extract_jacobians!(d, ∂f∂x, ∂f∂p, Xⱼ, P, t)
+    nothing
+end

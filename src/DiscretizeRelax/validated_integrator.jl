@@ -176,8 +176,9 @@ function single_step!(out::StepResult{S}, params::StepParams, sc::M,
     k = params.k
 
     # validate existence & uniqueness
-    if ~out.jacobians_set
-        set_JxJp!(lf.jac_tf!, out.Xⱼ, P, t)
+    println("out.jacobians_set = $(out.jacobians_set)")
+    if ~out.jacobians_set && has_jacobians(sc)
+        get_jacobians!(sc, out.∂f∂x, out.∂f∂p, out.Xⱼ, P, t)
     end
     existence_uniqueness!(out, stf!, params.hmin, P, t)
     out.Xapriori .= out.unique_result.X
@@ -194,6 +195,9 @@ function single_step!(out::StepResult{S}, params::StepParams, sc::M,
 
             # perform corrector step
             out.status_flag = sc(out.hj, out.unique_result.X, out.Xⱼ, out.xⱼ, A, Δ, P, rP, p, t)
+            if has_jacobians(sc)
+                extract_jacobians!(sc, out.∂f∂x, out.∂f∂p, out.Xⱼ, P, t)
+            end
 
             # Perform Lepus error control scheme if step size not set
             if out.h <= 0.0
@@ -286,7 +290,7 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
 
         # max step size is min of predicted, when next support point occurs,
         # or the last time step in the span
-        println("sr.hj = $(d.step_result.hj), ns - t = $(next_support - t), tm - t = $(tmax - t)")
+        println("t = $t, sr.hj = $(d.step_result.hj), ns - t = $(next_support - t), tm - t = $(tmax - t)")
         d.step_result.hj = min(d.step_result.hj, next_support - t, tmax - t)
 
         # perform step size calculation and update bound information
