@@ -556,8 +556,10 @@ mutable struct StepResult{S <: Number}
     ∂f∂x::Vector{Matrix{S}}
     ∂f∂p::Vector{Matrix{S}}
     jacobians_set::Bool
+    times::CircularBuffer{Float64}
+    steps::CircularBuffer{Float64}
 end
-function StepResult(s::S, nx::Int, np::Int, k::Int, h::Float64) where S
+function StepResult(s::S, nx::Int, np::Int, k::Int, h::Float64, cap::Int) where S
     status_flag = RELAXATION_NOT_CALLED
     hj = 0.0
     predicted_hj = 0.0
@@ -574,8 +576,10 @@ function StepResult(s::S, nx::Int, np::Int, k::Int, h::Float64) where S
     ∂f∂x = Matrix{S}[zeros(S,nx,nx) for i in 1:(k+1)]
     ∂f∂p = Matrix{S}[zeros(S,nx,np) for i in 1:(k+1)]
     jacobians_set = false
+    times = CircularBuffer{Float64}(cap)
+    steps = CircularBuffer{Float64}(cap)
     StepResult{S}(status_flag, h, hj, predicted_hj, errⱼ, xⱼ, zⱼ, Xⱼ, Xapriori,
-                  unique_result, f, ∂f∂x, ∂f∂p, jacobians_set)
+                  unique_result, f, ∂f∂x, ∂f∂p, jacobians_set, times, steps)
 end
 
 abstract type AbstractStateContractor end

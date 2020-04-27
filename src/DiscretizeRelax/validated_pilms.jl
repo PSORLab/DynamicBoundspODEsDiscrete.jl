@@ -134,13 +134,14 @@ eval_cycle_Jp!(pf::PLMsFunctor) = eval_cycle!(pf.Jp!, pf.buffer_Jp, first(pf.X),
 
 function compute_sum_Jp!(pf::PLMsFunctor)
     map!((x,y) -> x.*y, pf.buffer_Jp, pf.plms.coeffs, pf.buffer_Jp)
-    accumulate!(.+, pf.buffer_Jp, pf.buffer_Jp)
+    accumulate!(.+, pf.sJp, pf.buffer_Jp)
     nothing
 end
-#=
+
 function compute_δₖ!(pf::PILMsFunctor)
 end
 
+#=
 function refine_X!(pf::PILMsFunctor)
     pf.X = pf.x0 + (Jknx - mid(Jknx))*(X0 - x0) + pf.sJp*pf.rP + pf.δₖ
            + ((I - Jk1nx)*Aₖ₋₁)*Δₖ₋₁ + sum((Jkjnx*Akj)*Δₖⱼ for j=2:n))

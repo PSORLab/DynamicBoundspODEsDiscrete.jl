@@ -65,49 +65,76 @@ function (d::HOFunctor{F,P,Q,K,T,S,NY})(hⱼ::Float64, X̃ⱼ, Xⱼ, xval, A, Δ
                                                         T <: Real, NY}
 
     # Compute lohner function step
-    Jf! = x.implicit_J
-    expJf! = x.jac_tf!
-    p =
-    q =
+    implicitJf! = x.implicit_J
+    explicitJf! = x.lon.jac_tf!
+    explicitrf! = x.lon.real_tf!
+    p = P
+    q = Q
 
-    zⱼ₊₁ = x.lon.jac_tf!.Rⱼ₊₁
+    zⱼ₊₁ = explicitJf!.Rⱼ₊₁
 
     # perform a lohners method tightening
     d.lon(hⱼ, X̃ⱼ, Xⱼ, xval, A, Δ, P, rP, pval, t)
 
-    Xⱼ₊₁ = d.lon.jac_tf!.Xⱼ₊₁
+    Xⱼ₊₁ = explicitJf!.Xⱼ₊₁
     x̂0ⱼ₊₁ = mid.(Xⱼ₊₁)
 
-    # compute real value sum of taylor series
+    # compute real value sum of taylor series (implicit)
     fpⱼ₊₁ = zeros(nx)
     d.implicit_r(d.implicit_r.f̃, x̂0ⱼ₊₁, p, t)
     for i=1:p
         @__dot__ fpⱼ₊₁ += (hⱼ^i)*(ho.cpq[i])*d.implicit_r.f̃[i+1]
     end
+
+    #
     fqⱼ₊₁ = zeros(nx)
     for i=1:q
-        @__dot__ fqⱼ₊₁ += (ho.cpq[i])*d.lon.real_tf!.f̃[i+1]       # hⱼ^i included prior
+        @__dot__ fqⱼ₊₁ += (ho.cpq[i])*explicitrf!.f̃[i+1]       # hⱼ^i included prior
     end
     gⱼ₊₁ = xval - x̂0ⱼ₊₁ + fpⱼ₊₁ + fqⱼ₊₁ + x.γ*zⱼ₊₁
 
-    # compute set-valued extension of Jacobian of Taylor series (implicit)
-    set_JxJp!(Jf!, Xⱼ, P, t)
-    for i = 1:k
+    # compute sum of explicit Jacobian with ho weights
+    for i = 1:p
         if i == 1
             for j = 1:nx
-                Jf!.Jxsto[j,j] = one(S)
+                explicitJf!.Jxsto[j,j] = one(S)
             end
         else
-            @__dot__ Jf!.Jxsto += (hⱼ^(i-1))*Jf!.Jx[i]
+            @__dot__ explicitJf!.Jxsto += (ho.cpq[i]*hⱼ^(i-1))*explicitJf!.Jx[i]
         end
-        @__dot__ Jf!.Jpsto += (hⱼ^(i-1))*Jf!.Jp[i]
+        @__dot__ explicitJf!.Jpsto += (ho.cpq[i]*hⱼ^(i-1))*explicitJf!.Jp[i]
     end
+
+    # compute set-valued extension of Jacobian of Taylor series (implicit)
+    set_JxJp!(implicitJf!, Xⱼ₊₁, P, t)
+    for i = 1:q
+        if i == 1
+            for j = 1:nx
+                implicitJf!.Jxsto[j,j] = one(S)
+            end
+        else
+            @__dot__ implicitJf!.Jxsto += (ho.cqp[i]*hⱼ^(i-1))*implicitJf!.Jx[i]
+        end
+        @__dot__ implicitJf!.Jpsto += (ho.cqp[i]*hⱼ^(i-1))*implicitJf!.Jp[i]
+    end
+
+    Shat = mid.(implicitJf!.Jxsto)
+    B0 = (inv(Shat)*explicitJf!.Jxsto)*A[2].Q
+    C = I - Shat*implicitJf!.Jxsto
+    VJ = Xⱼ₊₁ - x̂0ⱼ₊₁
+    YJ1 = (x̂0ⱼ₊₁ + B0*Δⱼ[2] + C*VJ + inv(Shat)*gⱼ₊₁ +) .∩ Xⱼ₊₁
+    mB = mid(B0)
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
     Aⱼ₊₁ = A[1]
     Jf!.B .= mid.(Jf!.Jxsto*A[2].Q)
     calculateQ!(Aⱼ₊₁, Jf!.B, nx)
     calculateQinv!(Aⱼ₊₁)
+
+    mYJ1 = mid.(YJ1)
+    Jf!.Δⱼ₊₁ = (Aⱼ₊₁.inv*B0)* + (Aⱼ₊₁.inv*C)* + (Aⱼ₊₁.inv*Shat) + Aⱼ₊₁.inv*(x̂0ⱼ₊₁ - mYJ1)
+
+    pushfirst!(Δⱼ, Jf!.Δⱼ₊₁)
 
     RELAXATION_NOT_CALLED
 end

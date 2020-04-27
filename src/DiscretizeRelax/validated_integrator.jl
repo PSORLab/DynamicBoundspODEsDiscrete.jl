@@ -120,7 +120,7 @@ function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit 
     state_method = state_contractor(m, d.f, d.nx, d.np, style, zero(Float64))
     #method_f! = LohnersFunctor(d.f, d.nx, d.np, Val(k), style, zero(Float64))
 
-    step_result = StepResult(style, d.nx, d.np, k, h)
+    step_result = StepResult(style, d.nx, d.np, k, h, method_steps)
     step_params = StepParams(tol, hmin, d.nx, repeat_limit, γ, k, skip_step2)
 
     return DiscretizeRelax{typeof(state_method), T, Float64, typeof(d.f), k+1,
@@ -176,7 +176,7 @@ function single_step!(out::StepResult{S}, params::StepParams, sc::M,
     k = params.k
 
     # validate existence & uniqueness
-    println("out.jacobians_set = $(out.jacobians_set)")
+    #println("out.jacobians_set = $(out.jacobians_set)")
     if ~out.jacobians_set && has_jacobians(sc)
         get_jacobians!(sc, out.∂f∂x, out.∂f∂p, out.Xⱼ, P, t)
     end
@@ -290,7 +290,7 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
 
         # max step size is min of predicted, when next support point occurs,
         # or the last time step in the span
-        println("t = $t, sr.hj = $(d.step_result.hj), ns - t = $(next_support - t), tm - t = $(tmax - t)")
+        #println("t = $t, sr.hj = $(d.step_result.hj), ns - t = $(next_support - t), tm - t = $(tmax - t)")
         d.step_result.hj = min(d.step_result.hj, next_support - t, tmax - t)
 
         # perform step size calculation and update bound information

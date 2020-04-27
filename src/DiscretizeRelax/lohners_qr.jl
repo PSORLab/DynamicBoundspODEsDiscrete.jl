@@ -5,7 +5,7 @@ mutable struct LohnersFunctor{F <: Function, K, T <: Real, S <: Real, NY} <: Abs
     set_tf!::TaylorFunctor!{F, K, T, S}
     real_tf!::TaylorFunctor!{F, K, T, T}
     jac_tf!::JacTaylorFunctor!{F, K, T, S, NY}
-    η::Float64
+    η::Interval{Float64}
     μX::Vector{S}
     ρP::Vector{S}
 end
@@ -15,7 +15,8 @@ function LohnersFunctor(f!::F, nx::Int, np::Int, k::Val{K}, s::S, t::T) where {F
     jac_tf! = JacTaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
     μX = zeros(S, nx)
     ρP = zeros(S, np)
-    LohnersFunctor{F, K+1, T, S, nx+np}(set_tf!, real_tf!, jac_tf!, 0.5, μX, ρP)
+    LohnersFunctor{F, K+1, T, S, nx+np}(set_tf!, real_tf!, jac_tf!,
+                                        Interval{Float64}(0.5), μX, ρP)
 end
 
 struct LohnerContractor{K} <: AbstractStateContractorName end
@@ -27,20 +28,20 @@ state_contractor_k(m::LohnerContractor{K}) where K = K
 state_contractor_γ(m::LohnerContractor) = 1.0
 state_contractor_steps(m::LohnerContractor) = 2
 
-function μ!(out::Vector{Interval{Float64}}, xⱼ::Vector{Interval{Float64}}, x̂ⱼ::Vector{Float64}, η::Float64)
+function μ!(out::Vector{Interval{Float64}}, xⱼ::Vector{Interval{Float64}}, x̂ⱼ::Vector{Float64}, η::Interval{Float64})
     out .= xⱼ
     nothing
 end
-function μ!(out::Vector{MC{N,T}}, xⱼ::Vector{MC{N,T}}, x̂ⱼ::Vector{Float64}, η::Float64) where {N, T<:RelaxTag}
+function μ!(out::Vector{MC{N,T}}, xⱼ::Vector{MC{N,T}}, x̂ⱼ::Vector{Float64}, η::Interval{Float64}) where {N, T<:RelaxTag}
     @__dot__ out = x̂ⱼ + η*(xⱼ - x̂ⱼ)
     nothing
 end
 
-function ρ!(out::Vector{Interval{Float64}}, p::Vector{Interval{Float64}}, p̂::Vector{Float64}, η::Float64)
+function ρ!(out::Vector{Interval{Float64}}, p::Vector{Interval{Float64}}, p̂::Vector{Float64}, η::Interval{Float64})
     out .= p
     nothing
 end
-function ρ!(out::Vector{MC{N,T}}, p::Vector{MC{N,T}}, p̂::Vector{Float64}, η::Float64) where {N, T<:RelaxTag}
+function ρ!(out::Vector{MC{N,T}}, p::Vector{MC{N,T}}, p̂::Vector{Float64}, η::Interval{Float64}) where {N, T<:RelaxTag}
     @__dot__ out = p̂ + η*(p - p̂)
     nothing
 end
