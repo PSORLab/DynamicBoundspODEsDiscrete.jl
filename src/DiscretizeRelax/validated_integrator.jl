@@ -267,6 +267,7 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
     sign_tstep = copysign(1, tmax-t)
     d.time[1] = t
     d.step_result.times[1] = t
+    #d.step_result.steps[1] = sign_tstep*(tmax-t)
 
     # Computes maximum step size to take (either hit support or max time)
     support_indx = 1
@@ -298,7 +299,7 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
         d.step_result.hj = min(d.step_result.hj,
                                next_support - d.step_result.times[1],
                                tmax - d.step_result.times[1])
-
+        d.step_result.steps[1] = d.step_result.hj
         # perform step size calculation and update bound information
         single_step!(d.step_result, d.step_params, d.method_f!, d.set_tf!, d.Δ, d.A, d.P, d.rP, d.p)::Nothing
 
