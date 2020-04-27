@@ -16,7 +16,7 @@ function LohnersFunctor(f!::F, nx::Int, np::Int, k::Val{K}, s::S, t::T) where {F
     μX = zeros(S, nx)
     ρP = zeros(S, np)
     LohnersFunctor{F, K+1, T, S, nx+np}(set_tf!, real_tf!, jac_tf!,
-                                        Interval{Float64}(0.5), μX, ρP)
+                                        Interval{Float64}(0.0,1.0), μX, ρP)
 end
 
 struct LohnerContractor{K} <: AbstractStateContractorName end
@@ -60,13 +60,15 @@ ordinary initial and boundary value problems, in: J.R. Cash, I. Gladwell (Eds.),
 Computational Ordinary Differential Equations, vol. 1, Clarendon Press, 1992,
 pp. 425–436.](http://www.goldsztejn.com/old-papers/Lohner-1992.pdf)
 """
-function (d::LohnersFunctor{F,K,S,T,NY})(hⱼ::Float64, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP, pval, t) where {F <: Function, K, S <: Real, T <: Real, NY}
+function (d::LohnersFunctor{F,K,S,T,NY})(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP, pval) where {F <: Function, K, S <: Real, T <: Real, NY}
 
     set_tf! = d.set_tf!
     real_tf! = d.real_tf!
     Jf! = d.jac_tf!
     nx = set_tf!.nx
     k = set_tf!.k
+    hⱼ = hbuffer[1]
+    t = tbuffer[1]
 
     copyto!(set_tf!.X̃ⱼ₀, 1, X̃ⱼ, 1, nx)
     copyto!(set_tf!.X̃ⱼ, 1, X̃ⱼ, 1, nx)
@@ -141,7 +143,7 @@ end
 has_jacobians(d::LohnersFunctor) = true
 
 function extract_jacobians!(d::LohnersFunctor{F,K,S,T,NY}, ∂f∂x::Vector{Matrix{T}},
-                            ∂f∂p::Vector{Matrix{T}}, Xⱼ, P, t) where {F <: Function, K, S <: Real, T <: Real, NY}
+                            ∂f∂p::Vector{Matrix{T}}) where {F <: Function, K, S <: Real, T <: Real, NY}
     for i=1:(d.set_tf!.k+1)
         ∂f∂x[i] .= d.jac_tf!.Jx[i]
         ∂f∂p[i] .= d.jac_tf!.Jp[i]
@@ -151,7 +153,7 @@ end
 
 function get_jacobians!(d::LohnersFunctor{F,K,S,T,NY}, ∂f∂x::Vector{Matrix{T}},
                         ∂f∂p::Vector{Matrix{T}}, Xⱼ, P, t) where {F <: Function, K, S <: Real, T <: Real, NY}
-    set_JxJp!(d.jac_tf!, Xⱼ, P, t)
-    extract_jacobians!(d, ∂f∂x, ∂f∂p, Xⱼ, P, t)
+    set_JxJp!(d.jac_tf!, Xⱼ, P, t[1])
+    extract_jacobians!(d, ∂f∂x, ∂f∂p)
     nothing
 end

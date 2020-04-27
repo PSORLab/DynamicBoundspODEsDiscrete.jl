@@ -171,16 +171,16 @@ Performs a single-step of the validated integrator. Input stepsize is out.step.
 """
 function single_step!(out::StepResult{S}, params::StepParams, sc::M,
                       stf!::TaylorFunctor!, Δ::CircularBuffer{Vector{S}},
-                      A::CircularBuffer{QRDenseStorage}, P, rP, p, t) where {M<:AbstractStateContractor, S<:Real}
+                      A::CircularBuffer{QRDenseStorage}, P, rP, p) where {M<:AbstractStateContractor, S<:Real}
 
     k = params.k
 
     # validate existence & uniqueness
     #println("out.jacobians_set = $(out.jacobians_set)")
     if ~out.jacobians_set && has_jacobians(sc)
-        get_jacobians!(sc, out.∂f∂x, out.∂f∂p, out.Xⱼ, P, t)
+        get_jacobians!(sc, out.∂f∂x, out.∂f∂p, out.Xⱼ, P, out.times[1])
     end
-    existence_uniqueness!(out, stf!, params.hmin, P, t)
+    existence_uniqueness!(out, stf!, params.hmin, P, out.times[1])
     out.Xapriori .= out.unique_result.X
     out.hj = out.unique_result.step
     if ~out.unique_result.confirmed
@@ -194,9 +194,10 @@ function single_step!(out::StepResult{S}, params::StepParams, sc::M,
         while (out.hj > params.hmin) && (count < params.repeat_limit)
 
             # perform corrector step
-            out.status_flag = sc(out.hj, out.unique_result.X, out.Xⱼ, out.xⱼ, A, Δ, P, rP, p, t)
+            out.status_flag = sc(out.steps, out.times, out.unique_result.X, out.Xⱼ,
+                                 out.xⱼ, A, Δ, P, rP, p)
             if has_jacobians(sc)
-                extract_jacobians!(sc, out.∂f∂x, out.∂f∂p, out.Xⱼ, P, t)
+                extract_jacobians!(sc, out.∂f∂x, out.∂f∂p)
             end
 
             # Perform Lepus error control scheme if step size not set
@@ -221,6 +222,8 @@ function single_step!(out::StepResult{S}, params::StepParams, sc::M,
         out.xⱼ .= mid.(out.Xapriori)
         out.Xⱼ .= out.Xapriori
     end
+    pushfirst!(out.times, out.times[1] + out.hj)
+    pushfirst!(out.steps, out.hj)
 
     nothing
 end
@@ -263,6 +266,7 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
     tmax = d.tspan[2]
     sign_tstep = copysign(1, tmax-t)
     d.time[1] = t
+    d.step_result.times[1] = t
 
     # Computes maximum step size to take (either hit support or max time)
     support_indx = 1
@@ -283,21 +287,20 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
 
     # Begin integration loop
     hlast = 0.0
-    d.step_result.hj = d.step_result.h > 0.0 ? d.step_result.h : (tmax - t)
+    d.step_result.hj = d.step_result.h > 0.0 ? d.step_result.h : (tmax - d.step_result.times[1])
     d.step_count = 0
 
-    while sign_tstep*t < sign_tstep*tmax
+    while sign_tstep*d.step_result.times[1] < sign_tstep*tmax
 
         # max step size is min of predicted, when next support point occurs,
         # or the last time step in the span
         #println("t = $t, sr.hj = $(d.step_result.hj), ns - t = $(next_support - t), tm - t = $(tmax - t)")
-        d.step_result.hj = min(d.step_result.hj, next_support - t, tmax - t)
+        d.step_result.hj = min(d.step_result.hj,
+                               next_support - d.step_result.times[1],
+                               tmax - d.step_result.times[1])
 
         # perform step size calculation and update bound information
-        single_step!(d.step_result, d.step_params, d.method_f!, d.set_tf!, d.Δ, d.A, d.P, d.rP, d.p, t)::Nothing
-
-        # advance step counters
-        t += d.step_result.hj
+        single_step!(d.step_result, d.step_params, d.method_f!, d.set_tf!, d.Δ, d.A, d.P, d.rP, d.p)::Nothing
 
         # throw error if limit exceeded
         if d.step_count > d.step_limit
@@ -313,11 +316,11 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
         if d.step_count > length(d.time)-1
             push!(d.storage, copy(d.step_result.Xⱼ))
             push!(d.storage_apriori, copy(d.step_result.Xapriori))
-            push!(d.time, t)
+            push!(d.time, d.step_result.times[1])
         end
         copy!(d.storage[d.step_count+1], d.step_result.Xⱼ)
         copy!(d.storage_apriori[d.step_count+1], d.step_result.Xapriori)
-        d.time[d.step_count+1] = t
+        d.time[d.step_count+1] = d.step_result.times[1]
     end
 
     # cut out any unnecessary array elements

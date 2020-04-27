@@ -577,7 +577,9 @@ function StepResult(s::S, nx::Int, np::Int, k::Int, h::Float64, cap::Int) where 
     ∂f∂p = Matrix{S}[zeros(S,nx,np) for i in 1:(k+1)]
     jacobians_set = false
     times = CircularBuffer{Float64}(cap)
+    fill!(times, 0.0)
     steps = CircularBuffer{Float64}(cap)
+    fill!(steps, 0.0)
     StepResult{S}(status_flag, h, hj, predicted_hj, errⱼ, xⱼ, zⱼ, Xⱼ, Xapriori,
                   unique_result, f, ∂f∂x, ∂f∂p, jacobians_set, times, steps)
 end
