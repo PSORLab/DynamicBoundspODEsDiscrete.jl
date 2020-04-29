@@ -1,47 +1,60 @@
 """
 $(TYPEDEF)
 
-A structure that stores the cofficient of the (p,q)-Hermite-Obreschkoff method.
-
+A structure that stores the cofficient of the (P,Q)-Hermite-Obreschkoff method.
+(Offset due to method being zero indexed and Julia begin one indexed).
 $(TYPEDFIELDS)
 """
 struct HermiteObreschkoff{P,Q,K} <: AbstractStateContractorName
     "Cpq[i=1:p] index starting at i = 1 rather than 0"
-    cpq::SVector{Float64,P}
+    cpq::Vector{Float64}
     "Cqp[i=1:q] index starting at i = 1 rather than 0"
-    cqp::SVector{Float64,Q}
+    cqp::Vector{Float64}
     "gamma for method"
     γ::Float64
+    "Explicit order Hermite-Obreschkoff"
+    p::Int
+    "Implicit order Hermite-Obreschkoff"
+    q::Int
+    "Total order Hermite-Obreschkoff"
+    k::Int
 end
-function HermiteObreschkoff(p::Int, q::Int)
+function HermiteObreschkoff(p::Val{P}, q::Val{Q}) where {P,Q}
     temp_cpq = 1.0
     temp_cqp = 1.0
-    cpq = Float64[temp_cpq]
-    cqp = Float64[temp_cqp]
-    for i in 1:p
-        temp_cpq = temp_cpq*(p - i + 1.0)/(p + q - i + 1)
-        push!(cpq, temp_cpq)
+    cpq = zeros(P+1)
+    cqp = zeros(Q+1)
+    cpq[1] = temp_cpq
+    cqp[1] = temp_cqp
+    for i in 1:P
+        temp_cpq *= (P - i + 1.0)/(P + Q - i + 1)
+        cpq[i+1] = temp_cpq
     end
-    for i in 1:q
-        temp_cqp = temp_cqp*(q - i + 1.0)/(q + p - i + 1)
-        push!(cqp, temp_cqp)
+    γ = 1.0
+    for i in 1:Q
+        temp_cqp *= (Q - i + 1.0)/(Q + P - i + 1)
+        cqp[i+1] = temp_cqp
+        γ *= i/(P+i)
     end
-    k = p + q + 1
-    HermiteObreschkoff{p,q,k}(SVector{p}(cpq), SVector{q}(cqp),γ)
+    K = P + Q + 1
+    HermiteObreschkoff{P,Q,K}(cpq, cqp, γ, P, Q, K)
 end
+HermiteObreschkoff(p::Int, q::Int) = HermiteObreschkoff(Val(p), Val(q))
 
-mutable struct HOFunctor{F <: Function, P, Q, K, T <: Real, S <: Real, NY} <: AbstractStateContractor
-    ho::HermiteObreschkoff{P, Q, K}
-    lon::LohnersFunctor{F, Q+1, T, S, NY}
-    implicit_r::TaylorFunctor!{F, K, T, T}
-    implicit_J::JacTaylorFunctor!{F, P, T, S, NY}
+mutable struct HermiteObreschkoffFunctor{F <: Function, P, Q, K, T <: Real, S <: Real, NY} <: AbstractStateContractor
+    hermite_obreschkoff::HermiteObreschkoff{P, Q, K}
+    lon::LohnersFunctor{F, K, T, S, NY}
+    implicit_r::TaylorFunctor!{F, Q, T, T}
+    implicit_J::JacTaylorFunctor!{F, Q, T, S, NY}
 end
-function HOFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q},
-                                   k::Val{K}, style, s) where {P,Q,K}
-    set_tf! = TaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
-    real_tf! = TaylorFunctor!(f!, nx, np, k, zero(T), zero(T))
-    jac_tf! = JacTaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
-    HOFunctor{F, P, Q, K, T, S, nx+np}(set_tf!, real_tf!, jac_tf!)
+function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q},
+                                   k::Val{K}, s::S, t::T) where {F,P,Q,K,S,T}
+    hermite_obreschkoff = HermiteObreschkoff(p,q)
+    lon = LohnersFunctor(f!, nx, np, Val(K-1), s, t)
+    implicit_r = TaylorFunctor!(f!, nx, np, Val(Q-1), zero(T), zero(T))
+    implicit_J = JacTaylorFunctor!(f!, nx, np, Val(Q-1), zero(S), zero(T))
+    HermiteObreschkoffFunctor{F, P, Q, K, T, S, nx+np}(hermite_obreschkoff, lon,
+                                                       implicit_r, implicit_J)
 end
 
 function state_contractor(m::HermiteObreschkoff{P,Q,K}, f, nx, np, style, s) where {P,Q,K}
@@ -60,16 +73,17 @@ an initial value problem for an ordinary differential equation. 1999. Universist
 of Toronto, PhD Dissertation, Algorithm 5.1, page 49) full details to be included
 in a forthcoming paper.
 """
-function (d::HOFunctor{F,P,Q,K,T,S,NY})(hⱼ::Float64, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP,
-                                        pval, t) where {F <: Function, K, S <: Real,
-                                                        T <: Real, NY}
+function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP,
+                                                           pval) where {F,Pp,Q,K,T,S,NY}
 
     # Compute lohner function step
-    implicitJf! = x.implicit_J
-    explicitJf! = x.lon.jac_tf!
-    explicitrf! = x.lon.real_tf!
-    p = P
-    q = Q
+    implicitJf! = d.implicit_J
+    explicitJf! = d.lon.jac_tf!
+    explicitrf! = d.lon.real_tf!
+    p = d.hermite_obreschkoff.p
+    q = d.hermite_obreschkoff.q
+    cqp = d.hermite_obreschkoff.cqp
+    cpq = d.hermite_obreschkoff.cpq
 
     zⱼ₊₁ = explicitJf!.Rⱼ₊₁
 
@@ -83,13 +97,13 @@ function (d::HOFunctor{F,P,Q,K,T,S,NY})(hⱼ::Float64, X̃ⱼ, Xⱼ, xval, A, Δ
     fpⱼ₊₁ = zeros(nx)
     d.implicit_r(d.implicit_r.f̃, x̂0ⱼ₊₁, p, t)
     for i=1:p
-        @__dot__ fpⱼ₊₁ += (hⱼ^i)*(ho.cpq[i])*d.implicit_r.f̃[i+1]
+        @__dot__ fpⱼ₊₁ += (hⱼ^i)*(cpq[i])*d.implicit_r.f̃[i+1]
     end
 
     #
     fqⱼ₊₁ = zeros(nx)
     for i=1:q
-        @__dot__ fqⱼ₊₁ += (ho.cpq[i])*explicitrf!.f̃[i+1]       # hⱼ^i included prior
+        @__dot__ fqⱼ₊₁ += (cpq[i])*explicitrf!.f̃[i+1]       # hⱼ^i included prior
     end
     gⱼ₊₁ = xval - x̂0ⱼ₊₁ + fpⱼ₊₁ + fqⱼ₊₁ + x.γ*zⱼ₊₁
 
@@ -100,9 +114,9 @@ function (d::HOFunctor{F,P,Q,K,T,S,NY})(hⱼ::Float64, X̃ⱼ, Xⱼ, xval, A, Δ
                 explicitJf!.Jxsto[j,j] = one(S)
             end
         else
-            @__dot__ explicitJf!.Jxsto += (ho.cpq[i]*hⱼ^(i-1))*explicitJf!.Jx[i]
+            @__dot__ explicitJf!.Jxsto += (cpq[i]*hⱼ^(i-1))*explicitJf!.Jx[i]
         end
-        @__dot__ explicitJf!.Jpsto += (ho.cpq[i]*hⱼ^(i-1))*explicitJf!.Jp[i]
+        @__dot__ explicitJf!.Jpsto += (cpq[i]*hⱼ^(i-1))*explicitJf!.Jp[i]
     end
 
     # compute set-valued extension of Jacobian of Taylor series (implicit)
@@ -113,16 +127,16 @@ function (d::HOFunctor{F,P,Q,K,T,S,NY})(hⱼ::Float64, X̃ⱼ, Xⱼ, xval, A, Δ
                 implicitJf!.Jxsto[j,j] = one(S)
             end
         else
-            @__dot__ implicitJf!.Jxsto += (ho.cqp[i]*hⱼ^(i-1))*implicitJf!.Jx[i]
+            @__dot__ implicitJf!.Jxsto += (cqp[i]*hⱼ^(i-1))*implicitJf!.Jx[i]
         end
-        @__dot__ implicitJf!.Jpsto += (ho.cqp[i]*hⱼ^(i-1))*implicitJf!.Jp[i]
+        @__dot__ implicitJf!.Jpsto += (cqp[i]*hⱼ^(i-1))*implicitJf!.Jp[i]
     end
 
     Shat = mid.(implicitJf!.Jxsto)
     B0 = (inv(Shat)*explicitJf!.Jxsto)*A[2].Q
     C = I - Shat*implicitJf!.Jxsto
     VJ = Xⱼ₊₁ - x̂0ⱼ₊₁
-    YJ1 = (x̂0ⱼ₊₁ + B0*Δⱼ[2] + C*VJ + inv(Shat)*gⱼ₊₁ +) .∩ Xⱼ₊₁
+    YJ1 = (x̂0ⱼ₊₁ + B0*Δⱼ[2] + C*VJ + inv(Shat)*gⱼ₊₁) .∩ Xⱼ₊₁
     mB = mid(B0)
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
@@ -139,12 +153,30 @@ function (d::HOFunctor{F,P,Q,K,T,S,NY})(hⱼ::Float64, X̃ⱼ, Xⱼ, xval, A, Δ
     RELAXATION_NOT_CALLED
 end
 
-get_Δ(lf) = lf.jac_tf!.Δⱼ₊₁
-function set_x!(out::Vector{Float64}, lf::LohnersFunctor)
+get_Δ(lf::HermiteObreschkoffFunctor) = lf.jac_tf!.Δⱼ₊₁
+function set_x!(out::Vector{Float64}, lf::HermiteObreschkoffFunctor)
     out .= lf.jac_tf!.xⱼ₊₁
     nothing
 end
-function set_X!(out::Vector{S}, lf::LohnersFunctor) where S
+function set_X!(out::Vector{S}, lf::HermiteObreschkoffFunctor) where S
     out .= lf.jac_tf!.Xⱼ₊₁
+    nothing
+end
+
+has_jacobians(d::HermiteObreschkoffFunctor) = true
+
+function extract_jacobians!(d::HermiteObreschkoffFunctor, ∂f∂x::Vector{Matrix{T}},
+                            ∂f∂p::Vector{Matrix{T}}) where {T <: Real}
+    for i=1:(d.lon.set_tf!.k+1)
+        ∂f∂x[i] .= d.lon.jac_tf!.Jx[i]
+        ∂f∂p[i] .= d.lon.jac_tf!.Jp[i]
+    end
+    nothing
+end
+
+function get_jacobians!(d::HermiteObreschkoffFunctor, ∂f∂x::Vector{Matrix{T}},
+                        ∂f∂p::Vector{Matrix{T}}, Xⱼ, P, t) where {T <: Real}
+    set_JxJp!(d.lon.jac_tf!, Xⱼ, P, t[1])
+    extract_jacobians!(d, ∂f∂x, ∂f∂p)
     nothing
 end

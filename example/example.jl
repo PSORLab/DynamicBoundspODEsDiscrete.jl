@@ -7,11 +7,29 @@
 #using Revise
 using IntervalArithmetic, TaylorSeries
 setrounding(Interval, :none)
-import Base.literal_pow
+import Base: literal_pow, ^
+import IntervalArithmetic.pow
+function ^(x::Interval{Float64}, n::Integer)  # fast integer power
+    if n < 0
+        return 1/IntervalArithmetic.pow(x, -n)
+    end
+    isempty(x) && return x
+    if iseven(n) && 0 ∈ x
+        return IntervalArithmetic.hull(zero(x),
+                    hull(Base.power_by_squaring(Interval(mig(x)), n),
+                        Base.power_by_squaring(Interval(mag(x)), n))
+            )
+    else
+      return IntervalArithmetic.hull( Base.power_by_squaring(Interval(x.lo), n),
+                    Base.power_by_squaring(Interval(x.hi), n) )
+    end
+end
+
+#=
 function Base.literal_pow(::typeof(^), x::Interval{T}, ::Val{N}) where {N,T<:AbstractFloat}
     IntervalArithmetic.pow(x, N)
 end
-
+=#
 using DynamicBoundsBase, DynamicBoundspODEsPILMS, Plots, DifferentialEquations#, Cthulhu
 
 #pyplot()
@@ -28,10 +46,11 @@ x0(p) = [9.0]
 function f!(dx, x, p, t)
     #dx[1] = -x[1]^2 + p[1]
     #dx[1] = p[1] - x[1]^2
-    dx[1] = p[1] - x[1]*x[1]
+    dx[1] = p[1] - x[1]^2
     nothing
 end
-tspan = (0.0,0.04)
+
+tspan = (0.0,1.00)
 #pL = [0.2; 0.1]
 #pU = 10.0*pL
 pL = [-1.0]
@@ -49,14 +68,15 @@ plt = plot(t_vec , lo_vec, label="Interval Bounds -1.0", linecolor = :blue, line
 plot!(plt, t_vec , hi_vec, label="", linecolor = :blue, linestyle = :dashdot, lw=1.5)
 =#
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
-integrator = DiscretizeRelax(prob, skip_step2 = false, relax = false)
+#integrator = DiscretizeRelax(prob, DynamicBoundspODEsPILMS.LohnerContractor{4}(), h = 0.01, skip_step2 = false, relax = true)
+integrator = DiscretizeRelax(prob, HermiteObreschkoff(2,2), h = 0.01, skip_step2 = false, relax = false)
 ratio = rand(1)
 pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
-setall!(integrator, ParameterValue(), [0.0])
+setall!(integrator, ParameterValue(), [0.1])
 DynamicBoundsBase.relax!(integrator)
 
-#using BenchmarkTools
-#@btime DynamicBoundsBase.relax!($integrator)
+using BenchmarkTools
+@btime DynamicBoundsBase.relax!($integrator)
 
 t_vec = integrator.time
 lo_vec = getfield.(getindex.(integrator.storage[:],1), :lo)

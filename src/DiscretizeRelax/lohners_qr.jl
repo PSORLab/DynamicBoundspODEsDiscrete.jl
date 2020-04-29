@@ -130,7 +130,7 @@ function (d::LohnersFunctor{F,K,S,T,NY})(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A
     RELAXATION_NOT_CALLED
 end
 
-get_Δ(lf) = lf.jac_tf!.Δⱼ₊₁
+get_Δ(lf::LohnersFunctor) = lf.jac_tf!.Δⱼ₊₁
 function set_x!(out::Vector{Float64}, lf::LohnersFunctor)
     out .= lf.jac_tf!.xⱼ₊₁
     nothing

@@ -239,7 +239,7 @@ function (pf::PLMsFunctor)(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP
     compute_δₖ!(pf)                              # set pf.δₖ
 
     refine_X!(pf, A, Δⱼ)                        # compute X storing to first position w/o cycling
-    @__dot__ pf.x = mid(pf.X)                   # set x
+    @__dot__ pf.x = mid(X̃ⱼ)                     # set x
     compute_Δₖ!(Δ, pf)                           # compute Δₖ storing to the first position without cycling
 
     nothing

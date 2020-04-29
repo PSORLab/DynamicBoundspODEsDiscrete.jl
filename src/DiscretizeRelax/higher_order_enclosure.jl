@@ -56,10 +56,10 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
 
     #println("input hⱼ = $(hⱼ), hmin = $(hmin), hfixed = $(hfixed)")
 
-    println("P: $(P)")
-    println("f: $(f)")
-    println("∂f∂x_in: $(∂f∂x_in)")
-    println("∂f∂p_in: $(∂f∂p_in)")
+    #println("P: $(P)")
+    #println("f: $(f)")
+    #println("∂f∂x_in: $(∂f∂x_in)")
+    #println("∂f∂p_in: $(∂f∂p_in)")
     #println("start existence and uniqueness kernel")
     #println("start of Xⱼ: $(Xⱼ)")
     np = tf!.np
@@ -101,7 +101,7 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
             for j in 2:k
                 @__dot__ Vⱼ += Interval{Float64}(0.0, hⱼ^(j-1))*f[j]
             end
-            println("Vⱼ = $(Vⱼ)")
+            #println("Vⱼ = $(Vⱼ)")
 
             #βⱼⱼ .= (I + Interval{Float64}(0.0, hⱼ^k).*∂f∂y[k])
             βⱼⱼ .= ∂f∂x[k+1]
@@ -130,7 +130,7 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
 
             reduced = 0
             while ~verified && reduced < 2
-                println("while start, verified = $(verified), reduced = $(reduced)")
+                #println("while start, verified = $(verified), reduced = $(reduced)")
                 s = 0
                 for l = 2:k+1
                     @__dot__ Vⱼ = X̃ⱼ₀
@@ -138,7 +138,7 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
                         @__dot__ Vⱼ += Interval{Float64}(0.0, hⱼ^(i-1))*f[i]
                     end
                     @__dot__ X̃ⱼ  = Uⱼ + hIk*f̃[l]
-                    println("check contains 1: X̃ⱼ = $(X̃ⱼ), X̃ⱼ₀ = $(X̃ⱼ₀)")
+                    #println("check contains 1: X̃ⱼ = $(X̃ⱼ), X̃ⱼ₀ = $(X̃ⱼ₀)")
                     if contains(X̃ⱼ, X̃ⱼ₀, tf!.nx)
                         verified = true
                         s = l
@@ -147,25 +147,25 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
                 end
 
                 if verified
-                    println("if branch verified")
+                    #println("if branch verified")
                     improving = true
                     while improving
                         tf!(f̃, X̃ⱼ, P, t)
-                        println("next B f̃: $(f̃)")
+                        #println("next B f̃: $(f̃)")
                         for j in 2:k
                             X̃ⱼ₀  = Vⱼ + Interval{Float64}(0.0, hⱼ^(s-1))*f̃[j]
                         end
-                        println("X̃ⱼ = $(X̃ⱼ), X̃ⱼ₀ = $(X̃ⱼ₀)")
+                        #println("X̃ⱼ = $(X̃ⱼ), X̃ⱼ₀ = $(X̃ⱼ₀)")
                         if improvement_condition(X̃ⱼ, X̃ⱼ₀, tf!.nx)
-                            println("copy to...")
+                            #println("copy to...")
                             copyto!(X̃ⱼ, 1, X̃ⱼ₀, 1, tf!.nx)
                         else
-                            println("not improving")
+                            #println("not improving")
                             improving = false
                         end
                     end
                 else
-                    println("else branch verified")
+                    #println("else branch verified")
                     hⱼ *= 0.8                              # times alpha value
                     hIk = Interval{Float64}(0.0, hⱼ^tf!.k)
                     reduced += 1
@@ -189,7 +189,7 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
         end
         copy!(X̃ⱼ, Vⱼ)
     end
-    println("predicted step hⱼ: $(hⱼ), X̃ⱼ = $(X̃ⱼ)")
+    #println("predicted step hⱼ: $(hⱼ), X̃ⱼ = $(X̃ⱼ)")
     #println("hmin: $(hmin)")
     flag = hⱼ > hmin
     out.fk .= f̃[k+1]
