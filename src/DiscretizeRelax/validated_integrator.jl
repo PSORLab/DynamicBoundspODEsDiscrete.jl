@@ -24,11 +24,15 @@ An elastic array is Y
 
 $(TYPEDFIELDS)
 """
-mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY} <: AbstractODERelaxIntegator
+mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY, JX, JP} <: AbstractODERelaxIntegator
 
     # Problem description
     "Initial Conditiion for pODEs"
     x0f::X
+    "Jacobian w.r.t x"
+    Jx!::JX
+    "Jacobian w.r.t p"
+    Jp!::JP
     "Parameter value for pODEs"
     p::Vector{Float64}
     "Lower Parameter Bounds for pODEs"
@@ -117,14 +121,18 @@ function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit 
     fill!(Δ, zeros(T, d.nx))
 
     set_tf! = TaylorFunctor!(d.f, d.nx, d.np, Val(k), style, zero(Float64))
-    state_method = state_contractor(m, d.f, d.nx, d.np, style, zero(Float64))
+    state_method = state_contractor(m, d.f, d.Jx!, d.Jp!, d.nx, d.np, style, zero(Float64))
     #method_f! = LohnersFunctor(d.f, d.nx, d.np, Val(k), style, zero(Float64))
 
     step_result = StepResult(style, d.nx, d.np, k, h, method_steps)
     step_params = StepParams(tol, hmin, d.nx, repeat_limit, γ, k, skip_step2)
 
-    return DiscretizeRelax{typeof(state_method), T, Float64, typeof(d.f), k+1,
-                           typeof(d.x0), d.nx+d.np}(d.x0, d.p, d.pL, d.pU, d.nx,
+    Jx! = d.Jx!
+    Jp! = d.Jp!
+
+    return DiscretizeRelax{typeof(state_method), T,
+                           Float64, typeof(d.f), k+1, typeof(d.x0),
+                           d.nx+d.np,typeof(Jx!), typeof(Jp!), }(d.x0, Jx!, Jp!, d.p, d.pL, d.pU, d.nx,
                            d.np, d.tspan, d.tsupports, step_limit, 0, storage,
                            storage_apriori, time, support_dict, error_code, A,
                            Δ, P, rP, skip_step2, style, set_tf!, state_method,

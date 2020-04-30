@@ -57,7 +57,7 @@ function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q}
                                                        implicit_r, implicit_J)
 end
 
-function state_contractor(m::HermiteObreschkoff{P,Q,K}, f, nx, np, style, s) where {P,Q,K}
+function state_contractor(m::HermiteObreschkoff{P,Q,K}, f, Jx!, Jp!, nx, np, style, s) where {P,Q,K}
     HermiteObreschkoffFunctor(f, nx, np, Val{P}(), Val{Q}(), Val{K}(), style, s)
 end
 state_contractor_k(m::HermiteObreschkoff{P,Q,K}) where {P,Q,K} = K
@@ -84,24 +84,26 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
     q = d.hermite_obreschkoff.q
     cqp = d.hermite_obreschkoff.cqp
     cpq = d.hermite_obreschkoff.cpq
+    hⱼ = hbuffer[1]
+    t = tbuffer[1]
 
     zⱼ₊₁ = explicitJf!.Rⱼ₊₁
 
     # perform a lohners method tightening
-    d.lon(hⱼ, X̃ⱼ, Xⱼ, xval, A, Δ, P, rP, pval, t)
+    d.lon(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP, pval)
 
     Xⱼ₊₁ = explicitJf!.Xⱼ₊₁
     x̂0ⱼ₊₁ = mid.(Xⱼ₊₁)
 
     # compute real value sum of taylor series (implicit)
-    fpⱼ₊₁ = zeros(nx)
+    fpⱼ₊₁ = zeros(d.lon.nx)
     d.implicit_r(d.implicit_r.f̃, x̂0ⱼ₊₁, p, t)
     for i=1:p
         @__dot__ fpⱼ₊₁ += (hⱼ^i)*(cpq[i])*d.implicit_r.f̃[i+1]
     end
 
     #
-    fqⱼ₊₁ = zeros(nx)
+    fqⱼ₊₁ = zeros(d.lon.nx)
     for i=1:q
         @__dot__ fqⱼ₊₁ += (cpq[i])*explicitrf!.f̃[i+1]       # hⱼ^i included prior
     end
@@ -110,7 +112,7 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
     # compute sum of explicit Jacobian with ho weights
     for i = 1:p
         if i == 1
-            for j = 1:nx
+            for j = 1:d.lon.nx
                 explicitJf!.Jxsto[j,j] = one(S)
             end
         else
@@ -123,7 +125,7 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
     set_JxJp!(implicitJf!, Xⱼ₊₁, P, t)
     for i = 1:q
         if i == 1
-            for j = 1:nx
+            for j = 1:d.lon.nx
                 implicitJf!.Jxsto[j,j] = one(S)
             end
         else

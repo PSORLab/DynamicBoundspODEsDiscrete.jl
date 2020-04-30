@@ -21,7 +21,7 @@ end
 
 struct LohnerContractor{K} <: AbstractStateContractorName end
 LohnerContractor(k::Int) = LohnerContractor{k}()
-function state_contractor(m::LohnerContractor{K}, f, nx, np, style, s) where K
+function state_contractor(m::LohnerContractor{K}, f, Jx!, Jp!, nx, np, style, s) where K
     LohnersFunctor(f, nx, np, Val{K}(), style, s)
 end
 state_contractor_k(m::LohnerContractor{K}) where K = K

@@ -9,7 +9,7 @@ A structure which holds an N-step parametric linear method of
 
 $(TYPEDFIELDS)
 """
-struct PLMS{N,T<:AbstractLinearMethod}
+struct PLMS{N,T<:AbstractLinearMethod} <: AbstractStateContractorName
     "Time ordered from current time step 1 to (N-1)th prior time"
     times::CircularBuffer{Float64}
     "Coefficients of the PLMs method"
@@ -39,6 +39,11 @@ function PLMS(x::Val{N}, s::T) where {N, T<:AbstractLinearMethod}
     end
     PLMS{N,T}(c, zeros(Float64,N), β, zeros(Float64,N,N), zeros(Float64,N), φ)
 end
+PLMS(x::Int, s::T) where {N, T<:AbstractLinearMethod} = PLMS(Val(x),s)
+
+state_contractor_k(m::PLMS{N,T}) where {N,T<:AbstractLinearMethod} = N+1
+state_contractor_γ(m::PLMS) = 1.0
+state_contractor_steps(m::PLMS{N,T}) where {N,T<:AbstractLinearMethod} = N
 
 @generated function seed_tuple(u::Val{U}, n::Val{N}) where {U,N}
     expr = Expr(:tuple)
@@ -100,7 +105,7 @@ $(TYPEDEF)
 
 Functor used to evaluate an N-step PLM method.
 """
-struct PLMsFunctor{F,N,T,S,JX,JP}
+struct PLMsFunctor{F,N,T,S,JX,JP} <: AbstractStateContractor
     "PLMS Storage"
     plms::PLMS{N,T}
     "Circular Buffer for Holding Jx's"
@@ -143,6 +148,7 @@ function PLMsFunctor(s::S, plms::PLMS{N,T}, f!::F, Jx!::JX, Jp!::JP,
     buffer_Jx = CircularBuffer{Matrix{S}}(N)
     buffer_Jp = CircularBuffer{Matrix{S}}(N)
     X = CircularBuffer{Vector{S}}(N)
+    refx  = CircularBuffer{Vector{Float64}}(N)
     t = CircularBuffer{Float64}(N)
     fill!(buffer_Jx, zeros(S, nx, nx))
     fill!(buffer_Jp, zeros(S, nx, np))
@@ -150,19 +156,24 @@ function PLMsFunctor(s::S, plms::PLMS{N,T}, f!::F, Jx!::JX, Jp!::JP,
     fill!(t, 0.0)
     P = zeros(S,np)
     rP = zeros(S,np)
+    p = zeros(Float64,np)
     sJp = zeros(S, nx, np)
     δₖ = zeros(Float64, nx)
     Z = zeros(Float64, nx)
     x0 = zeros(Float64, nx)
     x = zeros(Float64, nx)
     M1x = zeros(Float64,nx)
-    PLMsFunctor{N,T,S,JX,JP}(plms, buffer_Jx, buffer_Jp, X,
-                             t, P, rP, nx, np, f!, Jx!, Jp!, sJp, δₖ,
+    PLMsFunctor{F, N,T,S,JX,JP}(plms, buffer_Jx, buffer_Jp, X, refx,
+                             t, P, rP, p, nx, np, f!, Jx!, Jp!, sJp, δₖ,
                              Z, x0, x, M1x)
 end
 
+function state_contractor(m::PLMS{N,T}, f!::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, style, s::S) where {F,N,T,JX,JP,S}
+    PLMsFunctor(s, m, f!, Jx!, Jp!, nx, np)
+end
 
-function update_coefficients!(pf::PLMsFunctor{F,N,T,S,JX,JP}, t0::Float64)
+
+function update_coefficients!(pf::PLMsFunctor, t0::Float64)
     pushfirst!(pf.plms.times, t0)
     compute_coefficients!(x.plms)
     nothing
@@ -182,7 +193,7 @@ function compute_sum_Jp!(pf::PLMsFunctor)
     nothing
 end
 
-function compute_δₖ!(pf::PILMsFunctor{N,T,S,JX,JP}) where {N,T,S,JX,JP}
+function compute_δₖ!(pf::PLMsFunctor{N,T,S,JX,JP}) where {N,T,S,JX,JP}
     @__dot__ pf.δₖ = pf.x0 - pf.x + pf.R
     for i=1:N
         pf.f!(pf.M1x, pf.refx[i], pf.p, pf.t[i])
@@ -191,7 +202,7 @@ function compute_δₖ!(pf::PILMsFunctor{N,T,S,JX,JP}) where {N,T,S,JX,JP}
     nothing
 end
 
-function refine_X!(pf::PILMsFunctor, A, Δⱼ)
+function refine_X!(pf::PLMsFunctor, A, Δⱼ)
     mul!(pf.M1x, pf.sJp, pf.rP)
     JxX1 = (pf.buffer_Jx[1] - mid(pf.buffer_Jx[1]))*(pf.X0 - pf.x0)
     JxX2 = ((I - pf.buffer_Jx[2])*A[1])*Δⱼ[1]
@@ -205,7 +216,7 @@ function refine_X!(pf::PILMsFunctor, A, Δⱼ)
     nothing
 end
 
-function compute_Δₖ!(pf::PILMsFunctor, A, Δⱼ)
+function compute_Δₖ!(pf::PLMsFunctor, A, Δⱼ)
     Yinv = inv((I - mid(pf.buffer_Jx[1]))*Aₖ)
     mul!(pf.M2xp, Yinv, pf.sJp)
     mul!(pf.M1x, pf.M2xp, pf.rP) # Yinv*Jkp*pf.rP
@@ -244,3 +255,5 @@ function (pf::PLMsFunctor)(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP
 
     nothing
 end
+
+has_jacobians(d::PLMsFunctor) = false

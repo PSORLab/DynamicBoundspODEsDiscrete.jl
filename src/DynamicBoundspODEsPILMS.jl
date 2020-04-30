@@ -19,7 +19,7 @@ import Base: setindex!, getindex, copyto!, literal_pow
 #import DynamicBoundsBase: relax!, integrate!
 #export Wilhelm2019, set, setall!, get, getall!, relax!, integrate!
 
-export DiscretizeRelax, AdamsMoulton, BDF, LohnerContractor, HermiteObreschkoff
+export DiscretizeRelax, AdamsMoulton, BDF, LohnerContractor, HermiteObreschkoff, PLMS
 
 const DBB = DynamicBoundsBase
 
@@ -37,7 +37,7 @@ include("DiscretizeRelax/fast_conversion.jl")
 include("DiscretizeRelax/taylor_integrator_utilities.jl")
 include("DiscretizeRelax/higher_order_enclosure.jl")
 include("DiscretizeRelax/lohners_qr.jl")
-#include("DiscretizeRelax/validated_pilms.jl")
+include("DiscretizeRelax/validated_pilms.jl")
 include("DiscretizeRelax/hermite_obreschkoff.jl")
 include("DiscretizeRelax/validated_integrator.jl")
 include("DiscretizeRelax/access_functions.jl")
