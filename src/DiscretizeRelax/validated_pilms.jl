@@ -175,7 +175,7 @@ end
 
 function update_coefficients!(pf::PLMsFunctor, t0::Float64)
     pushfirst!(pf.plms.times, t0)
-    compute_coefficients!(x.plms)
+    compute_coefficients!(pf.plms)
     nothing
 end
 
@@ -240,7 +240,7 @@ Experimental implementation of parametric linear multistep methods.
 function (pf::PLMsFunctor)(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP, pval)
 
     copyto!(pf.t, tbuffer)                      # copy time buffer
-    update_coefficients!(pf.plms, tbuffer[1])   # update coefficients in linear multistep method
+    update_coefficients!(pf, tbuffer[1])   # update coefficients in linear multistep method
     set_cycle_X!(pf, Xⱼ)                        # update X, rP & P is set in relax
     eval_cycle_Jx!(pf)                          # compute Jx for new time and state (X,P,t) tuple
     eval_cycle_Jp!(pf)                          # compute Jp for new time and state (X,P,t) tuple
