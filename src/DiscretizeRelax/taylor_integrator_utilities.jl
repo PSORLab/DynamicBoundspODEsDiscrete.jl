@@ -420,12 +420,12 @@ function set_JxJp!(g::JacTaylorFunctor!{F,K,T,S,NY}, X::Vector{S}, P, t) where {
 
     jacobian_taylor_coeffs!(g, X, P, t)
     jac = g.result.derivs[1]
-    for i in 1:(g.s+1)
-        for q in 1:g.nx
-            for z in 1:g.nx
+    for i = 1:(g.s+1)
+        for q = 1:g.nx
+            for z = 1:g.nx
                 g.Jx[i][z, q] = jac[q + g.nx*(i-1), z]
             end
-            for z in 1:g.np
+            for z = 1:g.np
                 g.Jp[i][z, q] = jac[q + g.nx*(i-1), g.nx + z]
             end
         end

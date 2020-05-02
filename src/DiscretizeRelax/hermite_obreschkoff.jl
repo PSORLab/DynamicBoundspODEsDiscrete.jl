@@ -86,6 +86,7 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
     cpq = d.hermite_obreschkoff.cpq
     hⱼ = hbuffer[1]
     t = tbuffer[1]
+    nx = d.lon.set_tf!.nx
 
     zⱼ₊₁ = explicitJf!.Rⱼ₊₁
 
@@ -96,23 +97,23 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
     x̂0ⱼ₊₁ = mid.(Xⱼ₊₁)
 
     # compute real value sum of taylor series (implicit)
-    fpⱼ₊₁ = zeros(d.lon.nx)
-    d.implicit_r(d.implicit_r.f̃, x̂0ⱼ₊₁, p, t)
+    fpⱼ₊₁ = zeros(nx)
+    d.implicit_r(d.implicit_r.f̃, x̂0ⱼ₊₁, pval, t)
     for i=1:p
-        @__dot__ fpⱼ₊₁ += (hⱼ^i)*(cpq[i])*d.implicit_r.f̃[i+1]
+        @__dot__ fpⱼ₊₁ += (hⱼ^i)*(cpq[i+1])*d.implicit_r.f̃[i]
     end
 
     #
-    fqⱼ₊₁ = zeros(d.lon.nx)
+    fqⱼ₊₁ = zeros(nx)
     for i=1:q
-        @__dot__ fqⱼ₊₁ += (cpq[i])*explicitrf!.f̃[i+1]       # hⱼ^i included prior
+        @__dot__ fqⱼ₊₁ += (cpq[i+1])*explicitrf!.f̃[i]       # hⱼ^i included prior
     end
-    gⱼ₊₁ = xval - x̂0ⱼ₊₁ + fpⱼ₊₁ + fqⱼ₊₁ + x.γ*zⱼ₊₁
+    gⱼ₊₁ = xval - x̂0ⱼ₊₁ + fpⱼ₊₁ + fqⱼ₊₁ + d.hermite_obreschkoff.γ*zⱼ₊₁
 
     # compute sum of explicit Jacobian with ho weights
     for i = 1:p
         if i == 1
-            for j = 1:d.lon.nx
+            for j = 1:nx
                 explicitJf!.Jxsto[j,j] = one(S)
             end
         else
@@ -125,7 +126,7 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
     set_JxJp!(implicitJf!, Xⱼ₊₁, P, t)
     for i = 1:q
         if i == 1
-            for j = 1:d.lon.nx
+            for j = 1:nx
                 implicitJf!.Jxsto[j,j] = one(S)
             end
         else
@@ -139,29 +140,31 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
     C = I - Shat*implicitJf!.Jxsto
     VJ = Xⱼ₊₁ - x̂0ⱼ₊₁
     YJ1 = (x̂0ⱼ₊₁ + B0*Δⱼ[2] + C*VJ + inv(Shat)*gⱼ₊₁) .∩ Xⱼ₊₁
-    mB = mid(B0)
+    mB = mid.(B0)
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
     Aⱼ₊₁ = A[1]
-    Jf!.B .= mid.(Jf!.Jxsto*A[2].Q)
-    calculateQ!(Aⱼ₊₁, Jf!.B, nx)
+    implicitJf!.B .= mid.(implicitJf!.Jxsto*A[2].Q)
+    calculateQ!(Aⱼ₊₁, implicitJf!.B, nx)
     calculateQinv!(Aⱼ₊₁)
 
     mYJ1 = mid.(YJ1)
-    Jf!.Δⱼ₊₁ = (Aⱼ₊₁.inv*B0)* + (Aⱼ₊₁.inv*C)* + (Aⱼ₊₁.inv*Shat) + Aⱼ₊₁.inv*(x̂0ⱼ₊₁ - mYJ1)
+    R = Δⱼ[2]
+    V = VJ
+    implicitJf!.Δⱼ₊₁ = (Aⱼ₊₁.inv*B0)*R + (Aⱼ₊₁.inv*C)*V + (Aⱼ₊₁.inv*Shat)*gⱼ₊₁ + Aⱼ₊₁.inv*(x̂0ⱼ₊₁ - mYJ1)
 
-    pushfirst!(Δⱼ, Jf!.Δⱼ₊₁)
+    pushfirst!(Δⱼ, implicitJf!.Δⱼ₊₁)
 
     RELAXATION_NOT_CALLED
 end
 
-get_Δ(lf::HermiteObreschkoffFunctor) = lf.jac_tf!.Δⱼ₊₁
+get_Δ(lf::HermiteObreschkoffFunctor) = lf.implicit_J.Δⱼ₊₁
 function set_x!(out::Vector{Float64}, lf::HermiteObreschkoffFunctor)
-    out .= lf.jac_tf!.xⱼ₊₁
+    out .= lf.implicit_J.xⱼ₊₁
     nothing
 end
 function set_X!(out::Vector{S}, lf::HermiteObreschkoffFunctor) where S
-    out .= lf.jac_tf!.Xⱼ₊₁
+    out .= lf.implicit_J.Xⱼ₊₁
     nothing
 end
 
