@@ -42,7 +42,7 @@ ordinary initial and boundary value problems, in: J.R. Cash, I. Gladwell (Eds.),
 Computational Ordinary Differential Equations, vol. 1, Clarendon Press, 1992,
 pp. 425–436.](http://www.goldsztejn.com/old-papers/Lohner-1992.pdf)
 """
-function (d::LohnersFunctor{F,K,S,T,NY})(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP, pval) where {F <: Function, K, S <: Real, T <: Real, NY}
+function (d::LohnersFunctor{F,K,S,T,NY})(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP, pval, zⱼ₊₁) where {F <: Function, K, S <: Real, T <: Real, NY}
 
     set_tf! = d.set_tf!
     real_tf! = d.real_tf!
@@ -60,7 +60,7 @@ function (d::LohnersFunctor{F,K,S,T,NY})(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A
     set_tf!(set_tf!.f̃, set_tf!.X̃ⱼ, P, t)
     real_tf!(real_tf!.f̃, real_tf!.X̃ⱼ₀, pval, t)
     hjk = hⱼ^k
-    @__dot__ Jf!.Rⱼ₊₁ = hjk*set_tf!.f̃[k+1]
+    @__dot__ Jf!.Rⱼ₊₁ = hjk*zⱼ₊₁ #hjk*set_tf!.f̃[k+1]
     @__dot__ Jf!.mRⱼ₊₁ = mid(Jf!.Rⱼ₊₁)
     @__dot__ Jf!.xⱼ₊₁ = xval + Jf!.mRⱼ₊₁
 

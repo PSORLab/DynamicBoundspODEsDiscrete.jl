@@ -203,7 +203,7 @@ function single_step!(out::StepResult{S}, params::StepParams, sc::M,
 
             # perform corrector step
             out.status_flag = sc(out.steps, out.times, out.unique_result.X, out.Xⱼ,
-                                 out.xⱼ, A, Δ, P, rP, p)
+                                 out.xⱼ, A, Δ, P, rP, p, out.unique_result.fk)
             if has_jacobians(sc)
                 extract_jacobians!(sc, out.∂f∂x, out.∂f∂p)
             end
