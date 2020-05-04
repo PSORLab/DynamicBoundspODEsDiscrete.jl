@@ -4,7 +4,7 @@
 
 #
 
-#using Revise
+using Revise
 using IntervalArithmetic, TaylorSeries
 setrounding(Interval, :none)
 import Base: literal_pow, ^
@@ -50,7 +50,7 @@ function f!(dx, x, p, t)
     nothing
 end
 
-tspan = (0.0,1.00)
+tspan = (0.0,0.01)
 #pL = [0.2; 0.1]
 #pU = 10.0*pL
 pL = [-1.0]
@@ -70,13 +70,14 @@ plot!(plt, t_vec , hi_vec, label="", linecolor = :blue, linestyle = :dashdot, lw
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
 #integrator = DiscretizeRelax(prob, DynamicBoundspODEsPILMS.LohnerContractor{4}(), h = 0.01, skip_step2 = false, relax = true)
 integrator = DiscretizeRelax(prob, HermiteObreschkoff(2,2), h = 0.01, skip_step2 = false, relax = false)
+#integrator = DiscretizeRelax(prob, PLMS(4, AdamsMoulton()), h = 0.01, skip_step2 = false, relax = false)
 ratio = rand(1)
 pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
 setall!(integrator, ParameterValue(), [0.1])
 DynamicBoundsBase.relax!(integrator)
 
-using BenchmarkTools
-@btime DynamicBoundsBase.relax!($integrator)
+#using BenchmarkTools
+#@btime DynamicBoundsBase.relax!($integrator)
 
 t_vec = integrator.time
 lo_vec = getfield.(getindex.(integrator.storage[:],1), :lo)

@@ -586,3 +586,21 @@ end
 
 abstract type AbstractStateContractor end
 abstract type AbstractStateContractorName end
+
+function μ!(out::Vector{Interval{Float64}}, xⱼ::Vector{Interval{Float64}}, x̂ⱼ::Vector{Float64}, η::Interval{Float64})
+    out .= xⱼ
+    nothing
+end
+function μ!(out::Vector{MC{N,T}}, xⱼ::Vector{MC{N,T}}, x̂ⱼ::Vector{Float64}, η::Interval{Float64}) where {N, T<:RelaxTag}
+    @__dot__ out = x̂ⱼ + η*(xⱼ - x̂ⱼ)
+    nothing
+end
+
+function ρ!(out::Vector{Interval{Float64}}, p::Vector{Interval{Float64}}, p̂::Vector{Float64}, η::Interval{Float64})
+    out .= p
+    nothing
+end
+function ρ!(out::Vector{MC{N,T}}, p::Vector{MC{N,T}}, p̂::Vector{Float64}, η::Interval{Float64}) where {N, T<:RelaxTag}
+    @__dot__ out = p̂ + η*(p - p̂)
+    nothing
+end

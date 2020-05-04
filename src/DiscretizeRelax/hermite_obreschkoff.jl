@@ -46,6 +46,9 @@ mutable struct HermiteObreschkoffFunctor{F <: Function, P, Q, K, T <: Real, S <:
     lon::LohnersFunctor{F, K, T, S, NY}
     implicit_r::TaylorFunctor!{F, Q, T, T}
     implicit_J::JacTaylorFunctor!{F, Q, T, S, NY}
+    η::Interval{Float64}
+    μX::Vector{S}
+    ρP::Vector{S}
 end
 function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q},
                                    k::Val{K}, s::S, t::T) where {F,P,Q,K,S,T}
@@ -53,8 +56,11 @@ function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q}
     lon = LohnersFunctor(f!, nx, np, Val(K-1), s, t)
     implicit_r = TaylorFunctor!(f!, nx, np, Val(Q-1), zero(T), zero(T))
     implicit_J = JacTaylorFunctor!(f!, nx, np, Val(Q-1), zero(S), zero(T))
+    μX = zeros(S, nx)
+    ρP = zeros(S, np)
     HermiteObreschkoffFunctor{F, P, Q, K, T, S, nx+np}(hermite_obreschkoff, lon,
-                                                       implicit_r, implicit_J)
+                                                       implicit_r, implicit_J,
+                                                       Interval{Float64}(0.0,1.0), μX, ρP)
 end
 
 function state_contractor(m::HermiteObreschkoff{P,Q,K}, f, Jx!, Jp!, nx, np, style, s) where {P,Q,K}
@@ -76,6 +82,13 @@ in a forthcoming paper.
 function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP,
                                                            pval) where {F,Pp,Q,K,T,S,NY}
 
+    Δⱼlast = deepcopy(Δⱼ)
+
+    println(" ------ START FUNCTOR ------")
+    println("  *** inputs *** ")
+    println(" X̃ⱼ = $(X̃ⱼ), Xⱼ = $(Xⱼ), xval = $(xval), P = $(P), rP = $(rP), pval = $(pval)")
+    println(" A = $(A),  Δⱼ = $(Δⱼ)")
+    println("  *** calcs *** ")
     # Compute lohner function step
     implicitJf! = d.implicit_J
     explicitJf! = d.lon.jac_tf!
@@ -84,31 +97,46 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
     q = d.hermite_obreschkoff.q
     cqp = d.hermite_obreschkoff.cqp
     cpq = d.hermite_obreschkoff.cpq
+    println("hermite obresrchkoff cqp coefficient: $(cqp)")
+    println("hermite obresrchkoff cpq coefficient: $(cpq)")
     hⱼ = hbuffer[1]
     t = tbuffer[1]
     nx = d.lon.set_tf!.nx
 
-    zⱼ₊₁ = explicitJf!.Rⱼ₊₁
-
     # perform a lohners method tightening
     d.lon(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP, pval)
 
+    println("post Lohners Δⱼ: $(Δⱼ)")
+
+    zⱼ₊₁ = explicitJf!.Rⱼ₊₁
+    #println("input zⱼ₊₁: $(zⱼ₊₁)") LOOKS GOOD
+
     Xⱼ₊₁ = explicitJf!.Xⱼ₊₁
+    #println("input Xⱼ₊₁: $(Xⱼ₊₁)") LOOKS GOOD
     x̂0ⱼ₊₁ = mid.(Xⱼ₊₁)
+    # println("mid of input Xⱼ₊₁: $(x̂0ⱼ₊₁)") LOOKS GOOD
 
     # compute real value sum of taylor series (implicit)
+
+    copyto!(d.implicit_r.X̃ⱼ₀, 1, xval, 1, nx)
+    copyto!(d.implicit_r.X̃ⱼ, 1, xval, 1, nx)
+
     fpⱼ₊₁ = zeros(nx)
     d.implicit_r(d.implicit_r.f̃, x̂0ⱼ₊₁, pval, t)
+    println(" implicit real taylor coefficients: $(d.implicit_r.f̃)")
     for i=1:p
         @__dot__ fpⱼ₊₁ += (hⱼ^i)*(cpq[i+1])*d.implicit_r.f̃[i]
     end
 
     #
     fqⱼ₊₁ = zeros(nx)
+    println(" explicit real taylor coefficients: $(explicitrf!.f̃)")
     for i=1:q
         @__dot__ fqⱼ₊₁ += (cpq[i+1])*explicitrf!.f̃[i]       # hⱼ^i included prior
     end
+    println("gamma value: $(d.hermite_obreschkoff.γ)")
     gⱼ₊₁ = xval - x̂0ⱼ₊₁ + fpⱼ₊₁ + fqⱼ₊₁ + d.hermite_obreschkoff.γ*zⱼ₊₁
+    println("gⱼ₊₁ value : $(gⱼ₊₁)")
 
     # compute sum of explicit Jacobian with ho weights
     for i = 1:p
@@ -121,9 +149,13 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
         end
         @__dot__ explicitJf!.Jpsto += (cpq[i]*hⱼ^(i-1))*explicitJf!.Jp[i]
     end
+    println("sum of explicit Jx: $(explicitJf!.Jxsto)")
+    println("sum of explicit Jp: $(explicitJf!.Jpsto)")
 
     # compute set-valued extension of Jacobian of Taylor series (implicit)
-    set_JxJp!(implicitJf!, Xⱼ₊₁, P, t)
+    μ!(d.μX, Xⱼ₊₁, xval, d.η)
+    ρ!(d.ρP, P, pval, d.η)
+    set_JxJp!(implicitJf!, d.μX, d.ρP, t)
     for i = 1:q
         if i == 1
             for j = 1:nx
@@ -134,13 +166,24 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
         end
         @__dot__ implicitJf!.Jpsto += (cqp[i]*hⱼ^(i-1))*implicitJf!.Jp[i]
     end
+    println("sum of implicit Jx: $(implicitJf!.Jxsto)")
+    println("sum of implicit Jp: $(implicitJf!.Jpsto)")
 
     Shat = mid.(implicitJf!.Jxsto)
+    println("Shat: $(Shat)")
     B0 = (inv(Shat)*explicitJf!.Jxsto)*A[2].Q
+    println("B0: $(B0)")
     C = I - Shat*implicitJf!.Jxsto
+    println("C: $C")
     VJ = Xⱼ₊₁ - x̂0ⱼ₊₁
-    YJ1 = (x̂0ⱼ₊₁ + B0*Δⱼ[2] + C*VJ + inv(Shat)*gⱼ₊₁) .∩ Xⱼ₊₁
+    println("VJ: $(VJ)")
+    pre_intersect = (x̂0ⱼ₊₁ + B0*Δⱼlast[2] + C*VJ + inv(Shat)*gⱼ₊₁)
+    println("pre_intersect: $(pre_intersect)")
+    YJ1 = pre_intersect .∩ Xⱼ₊₁
+    implicitJf!.Xⱼ₊₁ .= YJ1
+    println("YJ1: $(YJ1)")
     mB = mid.(B0)
+    println("mB: $(mB)")
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
     Aⱼ₊₁ = A[1]
