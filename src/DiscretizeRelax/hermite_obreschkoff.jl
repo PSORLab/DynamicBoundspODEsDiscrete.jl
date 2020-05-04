@@ -83,6 +83,7 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
                                                            pval, fk) where {F,Pp,Q,K,T,S,NY}
 
     Δⱼlast = deepcopy(Δⱼ)
+    Alast = deepcopy(A)
 
     println(" ------ START FUNCTOR ------")
     println("  *** inputs *** ")
@@ -115,37 +116,43 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
     println("input zⱼ₊₁: $(zⱼ₊₁)")
 
     Xⱼ₊₁ = explicitJf!.Xⱼ₊₁
-    #println("input Xⱼ₊₁: $(Xⱼ₊₁)") LOOKS GOOD
+    println("input Xⱼ₊₁: $(Xⱼ₊₁)") #LOOKS GOOD
     x̂0ⱼ₊₁ = mid.(Xⱼ₊₁)
-    # println("mid of input Xⱼ₊₁: $(x̂0ⱼ₊₁)") LOOKS GOOD
+    println("mid of input Xⱼ₊₁: $(x̂0ⱼ₊₁)") #LOOKS GOOD
 
     # compute real value sum of taylor series (implicit)
 
     copyto!(d.implicit_r.X̃ⱼ₀, 1, xval, 1, nx)
     copyto!(d.implicit_r.X̃ⱼ, 1, xval, 1, nx)
 
-    fpⱼ₊₁ = zeros(nx)
+    fqⱼ₊₁ = zeros(nx)
     d.implicit_r(d.implicit_r.f̃, x̂0ⱼ₊₁, pval, t)
     println(" implicit real taylor coefficients: $(d.implicit_r.f̃)")
-    for i=2:(p+1)
+    for i=2:(q+1)
         println("i: $i")
-        @__dot__ fpⱼ₊₁ += (hⱼ^(i-1))*(cqp[i])*d.implicit_r.f̃[i]
-        println("fpⱼ₊₁ = $(fpⱼ₊₁)")
+        @__dot__ fqⱼ₊₁ -= (hⱼ^(i-1))*(cqp[i])*d.implicit_r.f̃[i]
+        println("fqⱼ₊₁ = $(fqⱼ₊₁)")
     end
 
     #
-    fqⱼ₊₁ = zeros(nx)
+    fpⱼ₊₁ = zeros(nx)
     println(" explicit real taylor coefficients: $(explicitrf!.f̃)")
-    for i=2:(q+1)
+    for i=2:(p+1)
         println("i: $i")
-        @__dot__ fqⱼ₊₁ -= (cpq[i])*explicitrf!.f̃[i]       # hⱼ^(i-1) performed in Lohners
-        println("fqⱼ₊₁ = $(fqⱼ₊₁)")
+        @__dot__ fpⱼ₊₁ += (cpq[i])*explicitrf!.f̃[i]       # hⱼ^(i-1) performed in Lohners
+        println("fpⱼ₊₁ = $(fpⱼ₊₁)")
     end
     println("gamma value: $(d.hermite_obreschkoff.γ)")
     gⱼ₊₁ = xval - x̂0ⱼ₊₁ + fpⱼ₊₁ + fqⱼ₊₁ + d.hermite_obreschkoff.γ*zⱼ₊₁
     println("gⱼ₊₁ value : $(gⱼ₊₁)")
 
+    println("input sum of explicit Jx: $(explicitJf!.Jxsto)")
+    println("input sum of explicit Jp: $(explicitJf!.Jpsto)")
     # compute sum of explicit Jacobian with ho weights
+    fill!(explicitJf!.Jxsto, zero(S))
+    fill!(explicitJf!.Jpsto, zero(S))
+    println("sum of explicit Jx: $(explicitJf!.Jxsto)")
+    println("sum of explicit Jp: $(explicitJf!.Jpsto)")
     for i = 1:(p+1)
         if i == 1
             for j = 1:nx
@@ -153,8 +160,8 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
             end
         else
             @__dot__ explicitJf!.Jxsto += (cpq[i]*hⱼ^(i-1))*explicitJf!.Jx[i]
+            @__dot__ explicitJf!.Jpsto += (cpq[i]*hⱼ^(i-1))*explicitJf!.Jp[i]
         end
-        @__dot__ explicitJf!.Jpsto += (cpq[i]*hⱼ^(i-1))*explicitJf!.Jp[i]
     end
     println("sum of explicit Jx: $(explicitJf!.Jxsto)")
     println("sum of explicit Jp: $(explicitJf!.Jpsto)")
@@ -170,21 +177,23 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
             end
         else
             @__dot__ implicitJf!.Jxsto += (cqp[i]*hⱼ^(i-1))*implicitJf!.Jx[i]
+            @__dot__ implicitJf!.Jpsto += (cqp[i]*hⱼ^(i-1))*implicitJf!.Jp[i]
         end
-        @__dot__ implicitJf!.Jpsto += (cqp[i]*hⱼ^(i-1))*implicitJf!.Jp[i]
     end
     println("sum of implicit Jx: $(implicitJf!.Jxsto)")
     println("sum of implicit Jp: $(implicitJf!.Jpsto)")
 
     Shat = mid.(implicitJf!.Jxsto)
     println("Shat: $(Shat)")
-    B0 = (inv(Shat)*explicitJf!.Jxsto)*A[2].Q
+    println("A[2].Q: $(A[2].Q)")
+    B0 = (inv(Shat)*explicitJf!.Jxsto)*Alast[1].Q
     println("B0: $(B0)")
     C = I - Shat*implicitJf!.Jxsto
     println("C: $C")
     VJ = Xⱼ₊₁ - x̂0ⱼ₊₁
-    println("x̂0ⱼ₊₁ = $(x̂0ⱼ₊₁), B0*Δⱼlast[2] = $(B0*Δⱼlast[2]), C*VJ = $(C*VJ), $(inv(Shat)*gⱼ₊₁)")
-    pre_intersect = (x̂0ⱼ₊₁ + B0*Δⱼlast[2] + C*VJ + inv(Shat)*gⱼ₊₁)
+    println("Δⱼlast: $(Δⱼlast)")
+    println("x̂0ⱼ₊₁ = $(x̂0ⱼ₊₁), B0*Δⱼlast[1] = $(B0*Δⱼlast[1]), C*VJ = $(C*VJ), $(inv(Shat)*gⱼ₊₁)")
+    pre_intersect = (x̂0ⱼ₊₁ + B0*Δⱼlast[1] + C*VJ + inv(Shat)*gⱼ₊₁)
     println("pre_intersect: $(pre_intersect), Xⱼ₊₁ = $(Xⱼ₊₁)") # Xj+1 is good
     YJ1 = pre_intersect .∩ Xⱼ₊₁
     implicitJf!.Xⱼ₊₁ .= YJ1
@@ -193,8 +202,8 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
     println("mB: $(mB)")
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
-    Aⱼ₊₁ = A[1]
-    implicitJf!.B .= mid.(implicitJf!.Jxsto*A[2].Q)
+    Aⱼ₊₁ = Alast[1]
+    implicitJf!.B .= mid.(implicitJf!.Jxsto*Alast[1].Q)
     calculateQ!(Aⱼ₊₁, implicitJf!.B, nx)
     calculateQinv!(Aⱼ₊₁)
 
