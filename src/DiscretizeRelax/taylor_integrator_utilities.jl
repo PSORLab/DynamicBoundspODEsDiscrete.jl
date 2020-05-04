@@ -174,16 +174,11 @@ A constructor for `TaylorFunctor` that preallocates storage for computing
 interval extensions of Taylor coefficients.
 """
 function TaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K, T <: Number, Q <: Number}
-    #println("typeof(t): $(typeof(t))")
-    #println("typeof(Q): $(typeof(Q))")
-    #println("typeof(eltype(t)): $(eltype(t))")
-    #println("typeof(eltype(Q)): $(eltype(Q))")
 
-    #@assert eltype(t) == Q
     x0 = zeros(T, nx)
     Vⱼ = zeros(T, nx)
     f̃ = Vector{T}[]
-    for i in 1:(K+1)
+    for i = 1:(K+1)
         push!(f̃, zeros(T, nx))
     end
     temp = STaylor1(zeros(T,K+1))
@@ -191,7 +186,7 @@ function TaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K, T
     xaux = STaylor1{K+1,T}[]
     dx = STaylor1{K+1,T}[]
     taux = STaylor1{K+1,Q}[]
-    for i in 1:nx
+    for i = 1:nx
         push!(xtaylor, temp)
         push!(xaux, temp)
         push!(dx, temp)

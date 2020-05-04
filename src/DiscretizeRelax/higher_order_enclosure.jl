@@ -54,14 +54,6 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
                                ∂f∂x_in::Vector{Matrix{T}}, ∂f∂p_in::Vector{Matrix{T}},
                                P::Vector{T}, hfixed::Float64, t::Float64) where {F, K, S, T <: Real}
 
-    #println("input hⱼ = $(hⱼ), hmin = $(hmin), hfixed = $(hfixed)")
-
-    #println("P: $(P)")
-    #println("f: $(f)")
-    #println("∂f∂x_in: $(∂f∂x_in)")
-    #println("∂f∂p_in: $(∂f∂p_in)")
-    #println("start existence and uniqueness kernel")
-    #println("start of Xⱼ: $(Xⱼ)")
     np = tf!.np
     Vⱼ = tf!.Vⱼ
     f̃ = tf!.f̃
@@ -193,7 +185,7 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
     #println("hmin: $(hmin)")
     flag = hⱼ > hmin
     out.fk .= f̃[k+1]
-    out.fk .*= Interval{Float64}(0.0,hⱼ^k)
+    #out.fk .*= Interval{Float64}(0.0,hⱼ^k)
 
     out.step = hⱼ
     out.confirmed = flag
