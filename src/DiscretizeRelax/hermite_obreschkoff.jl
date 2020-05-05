@@ -46,13 +46,23 @@ mutable struct HermiteObreschkoffFunctor{F <: Function, P, Q, K, Q1, T <: Real, 
     lon::LohnersFunctor{F, K, T, S, NY}
     implicit_r::TaylorFunctor!{F, Q1, T, T}
     implicit_J::JacTaylorFunctor!{F, Q1, T, S, NY}
-    η::Interval{Float64}
+    η::Interval{T}
     μX::Vector{S}
     ρP::Vector{S}
-    x̂0ⱼ₊₁::Vector{Float64}
+    x̂0ⱼ₊₁::Vector{T}
     gⱼ₊₁::Vector{S}
     fqⱼ₊₁::Vector{S}
     fpⱼ₊₁::Vector{S}
+    V1xS::Vector{S}
+    V2xS::Vector{S}
+    V3xS::Vector{S}
+    M1xxT::Matrix{T}
+    M1xxTa::Matrix{T}
+    M1xxTb::Matrix{T}
+    M1xxS::Matrix{S}
+    M1xxSa::Matrix{S}
+    M1xxSb::Matrix{S}
+    M1xpS::Matrix{S}
 end
 function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q},
                                    k::Val{K}, s::S, t::T) where {F,P,Q,K,S,T}
@@ -60,17 +70,28 @@ function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q}
     lon = LohnersFunctor(f!, nx, np, Val(K-1), s, t)
     implicit_r = TaylorFunctor!(f!, nx, np, Val(Q), zero(T), zero(T))
     implicit_J = JacTaylorFunctor!(f!, nx, np, Val(Q), zero(S), zero(T))
-    η = Interval{Float64}(0.0,1.0)
+    η = Interval{T}(0.0,1.0)
     μX = zeros(S, nx)
     ρP = zeros(S, np)
     x̂0ⱼ₊₁ = zeros(T, nx)
     gⱼ₊₁ = zeros(S, nx)
     fqⱼ₊₁ = zeros(S, nx)
     fpⱼ₊₁ = zeros(S, nx)
+    V1xS = zeros(S, nx)
+    V2xS = zeros(S, nx)
+    V3xS = zeros(S, nx)
+    M1xxT = zeros(T, nx, nx)
+    M1xxTa = zeros(T, nx, nx)
+    M1xxTb = zeros(T, nx, nx)
+    M1xxS = zeros(S, nx, nx)
+    M1xxSa = zeros(S, nx, nx)
+    M1xxSb = zeros(S, nx, nx)
+    M1xpS = zeros(S, nx, np)
     HermiteObreschkoffFunctor{F, P, Q, K, Q+1, T, S, nx+np}(hermite_obreschkoff, lon,
                                                        implicit_r, implicit_J,
                                                        η, μX, ρP, x̂0ⱼ₊₁, gⱼ₊₁, fqⱼ₊₁,
-                                                       fpⱼ₊₁)
+                                                       fpⱼ₊₁, V1xS, V2xS, V3xS, M1xxT, M1xxTa, M1xxTb,
+                                                       M1xxS, M1xxSa, M1xxSb, M1xpS)
 end
 
 function state_contractor(m::HermiteObreschkoff{P,Q,K}, f, Jx!, Jp!, nx, np, style, s) where {P,Q,K}
@@ -79,6 +100,15 @@ end
 state_contractor_k(m::HermiteObreschkoff{P,Q,K}) where {P,Q,K} = K
 state_contractor_γ(m::HermiteObreschkoff) = m.γ
 state_contractor_steps(m::HermiteObreschkoff) = 2
+
+function mul_split!(Y, A, B, nx)
+    if nx == 1
+        @inbounds Y[1,1] = A[1,1]*B[1,1]
+    else
+        mul!(Y, A, B)
+    end
+    nothing
+end
 
 # Hermite Obreschkoff Update #1
 """
@@ -167,16 +197,23 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
         end
     end
 
-    Shat = mid.(implicitJf!.Jxsto)
-    B0 = (inv(Shat)*explicitJf!.Jxsto)*Alast[1].Q
-    C = I - inv(Shat)*implicitJf!.Jxsto
-    VJ = Xⱼ₊₁ - d.x̂0ⱼ₊₁
-    PsumJ = explicitJf!.Jpsto - implicitJf!.Jpsto
-    Pterm = (inv(Shat)*PsumJ)*rP
-    pre_intersect = d.x̂0ⱼ₊₁ + B0*Δⱼlast[1] + C*VJ + inv(Shat)*d.gⱼ₊₁ + Pterm
-    YJ1 = pre_intersect .∩ Xⱼ₊₁
-    implicitJf!.Xⱼ₊₁ .= YJ1
-    mB = mid.(B0)
+    @__dot__ d.M1xxT = mid(implicitJf!.Jxsto)
+    invShat = inv(d.M1xxT)
+    B0 = (invShat*explicitJf!.Jxsto)*Alast[1].Q
+    mul_split!(d.M1xxS, invShat, implicitJf!.Jxsto, nx)
+    @__dot__ d.M1xxS *= -one(T)
+    for j = 1:nx
+        d.M1xxS[j,j] += one(T)
+    end
+    #C = I - invShat*implicitJf!.Jxsto
+    @__dot__ d.V1xS = Xⱼ₊₁ - d.x̂0ⱼ₊₁
+    @__dot__ explicitJf!.Jpsto -= implicitJf!.Jpsto
+    mul_split!(d.M1xpS, invShat, explicitJf!.Jpsto, nx)
+    mul_split!(d.V2xS, d.M1xpS, rP, nx)
+    mul_split!(d.V3xS, d.M1xxTa, d.V1xS, nx)
+    pre_intersect = B0*Δⱼlast[1] + d.V3xS + invShat*d.gⱼ₊₁
+    #YJ1 = pre_intersect .∩ Xⱼ₊₁
+    @__dot__ implicitJf!.Xⱼ₊₁ = (d.x̂0ⱼ₊₁ + pre_intersect  + d.V2xS) ∩ Xⱼ₊₁
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
     Aⱼ₊₁ = Alast[1]
@@ -184,12 +221,13 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
     calculateQ!(Aⱼ₊₁, implicitJf!.B, nx)
     calculateQinv!(Aⱼ₊₁)
 
-    mYJ1 = mid.(YJ1)
-    implicitJf!.xⱼ₊₁ .= mYJ1
-    R = Δⱼ[2]
-    PsumJ = explicitJf!.Jpsto - implicitJf!.Jpsto
-    term = (Aⱼ₊₁.inv*PsumJ)*rP
-    implicitJf!.Δⱼ₊₁ = (Aⱼ₊₁.inv*B0)*Δⱼlast[1] + (Aⱼ₊₁.inv*C)*VJ+ (Aⱼ₊₁.inv*inv(Shat))*d.gⱼ₊₁ + Aⱼ₊₁.inv*(d.x̂0ⱼ₊₁ - mYJ1) + term
+    #mYJ1 = mid.(implicitJf!.Xⱼ₊₁)
+    @__dot__ implicitJf!.xⱼ₊₁ = mid(implicitJf!.Xⱼ₊₁)
+    @__dot__ d.x̂0ⱼ₊₁ -= implicitJf!.xⱼ₊₁
+    #PsumJ = explicitJf!.Jpsto - implicitJf!.Jpsto
+    #term = (Aⱼ₊₁.inv*explicitJf!.Jpsto)*rP
+    mul_split!(d.M1xxSa, Aⱼ₊₁.inv, d.M1xxS, nx)
+    implicitJf!.Δⱼ₊₁ = (Aⱼ₊₁.inv*B0)*Δⱼlast[1] + d.M1xxTb*d.V1xS + (Aⱼ₊₁.inv*invShat)*d.gⱼ₊₁ + Aⱼ₊₁.inv*d.x̂0ⱼ₊₁ + d.V2xS
 
     pushfirst!(Δⱼ, implicitJf!.Δⱼ₊₁)
 
