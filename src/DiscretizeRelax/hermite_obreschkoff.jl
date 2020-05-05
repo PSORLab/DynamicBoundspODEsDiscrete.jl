@@ -80,6 +80,7 @@ state_contractor_k(m::HermiteObreschkoff{P,Q,K}) where {P,Q,K} = K
 state_contractor_γ(m::HermiteObreschkoff) = m.γ
 state_contractor_steps(m::HermiteObreschkoff) = 2
 
+# Hermite Obreschkoff Update #1
 """
 $(TYPEDSIGNATURES)
 
@@ -110,7 +111,8 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
     # perform a lohners method tightening
     d.lon(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP, pval, fk)
 
-    zⱼ₊₁ = (hⱼ^(p+q+1))*fk
+    #zⱼ₊₁ = (hⱼ^(p+q+1))*fk
+    fk .*= hⱼ^(p+q+1)
 
     Xⱼ₊₁ = explicitJf!.Xⱼ₊₁
     @__dot__ d.x̂0ⱼ₊₁ = mid(Xⱼ₊₁)
@@ -122,16 +124,17 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
 
     fill!(d.fqⱼ₊₁, zero(S))
     d.implicit_r(d.implicit_r.f̃, d.x̂0ⱼ₊₁, pval, t)
-    for i=2:(q+1)
-        @__dot__ d.fqⱼ₊₁ -= ((-hⱼ)^(i-1))*cqp[i]*d.implicit_r.f̃[i]
+    for i = 2:q+1
+        coeff = cqp[i]*(-hⱼ)^(i-1)
+        @__dot__ d.fqⱼ₊₁ -= coeff*d.implicit_r.f̃[i]
     end
 
     #
     fill!(d.fpⱼ₊₁, zero(S))
-    for i=2:(p+1)
-        @__dot__ d.fpⱼ₊₁ += (cpq[i])*explicitrf!.f̃[i]       # hⱼ^(i-1) performed in Lohners
+    for i = 2:p+1
+        @__dot__ d.fpⱼ₊₁ += cpq[i]*explicitrf!.f̃[i]       # hⱼ^(i-1) performed in Lohners
     end
-    d.gⱼ₊₁ = xval - d.x̂0ⱼ₊₁ + d.fpⱼ₊₁ + d.fqⱼ₊₁ + d.hermite_obreschkoff.γ*zⱼ₊₁
+    @__dot__ d.gⱼ₊₁ = xval - d.x̂0ⱼ₊₁ + d.fpⱼ₊₁ + d.fqⱼ₊₁ + d.hermite_obreschkoff.γ*fk
 
     # compute sum of explicit Jacobian with ho weights
     fill!(explicitJf!.Jxsto, zero(S))
@@ -142,8 +145,9 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
                 explicitJf!.Jxsto[j,j] = one(S)
             end
         else
-            @__dot__ explicitJf!.Jxsto += (cpq[i]*hⱼ^(i-1))*explicitJf!.Jx[i]
-            @__dot__ explicitJf!.Jpsto += (cpq[i]*hⱼ^(i-1))*explicitJf!.Jp[i]
+            coeff = cpq[i]*hⱼ^(i-1)
+            @__dot__ explicitJf!.Jxsto += coeff*explicitJf!.Jx[i]
+            @__dot__ explicitJf!.Jpsto += coeff*explicitJf!.Jp[i]
         end
     end
 
@@ -157,8 +161,9 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
                 implicitJf!.Jxsto[j,j] = one(S)
             end
         else
-            @__dot__ implicitJf!.Jxsto += ((-hⱼ)^(i-1))*cqp[i]*implicitJf!.Jx[i]
-            @__dot__ implicitJf!.Jpsto += ((-hⱼ)^(i-1))*cqp[i]*implicitJf!.Jp[i]
+            coeff = cqp[i]*(-hⱼ)^(i-1)
+            @__dot__ implicitJf!.Jxsto += coeff*implicitJf!.Jx[i]
+            @__dot__ implicitJf!.Jpsto += coeff*implicitJf!.Jp[i]
         end
     end
 
