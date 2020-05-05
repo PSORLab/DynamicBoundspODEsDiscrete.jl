@@ -186,14 +186,12 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,Q1,T,S,NY})(hbuffer::CircularBuf
     # perform a lohners method tightening
     d.lon(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP, pval, fk)
 
-    #zⱼ₊₁ = (hⱼ^(p+q+1))*fk
     fk .*= hⱼ^(p+q+1)
 
     Xⱼ₊₁ = explicitJf!.Xⱼ₊₁
     @__dot__ d.x̂0ⱼ₊₁ = mid(Xⱼ₊₁)
 
     # compute real value sum of taylor series (implicit)
-
     copyto!(d.implicit_r.X̃ⱼ₀, 1, xval, 1, nx)
     copyto!(d.implicit_r.X̃ⱼ, 1, xval, 1, nx)
 
@@ -204,10 +202,9 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,Q1,T,S,NY})(hbuffer::CircularBuf
         @__dot__ d.fqⱼ₊₁ -= coeff*d.implicit_r.f̃[i]
     end
 
-    #
     fill!(d.fpⱼ₊₁, zero(S))
     for i = 2:p+1
-        @__dot__ d.fpⱼ₊₁ += cpq[i]*explicitrf!.f̃[i]       # hⱼ^(i-1) performed in Lohners
+        @__dot__ d.fpⱼ₊₁ += cpq[i]*explicitrf!.f̃[i]
     end
     @__dot__ d.gⱼ₊₁ = xval - d.x̂0ⱼ₊₁ + d.fpⱼ₊₁ + d.fqⱼ₊₁ + d.hermite_obreschkoff.γ*fk
 
@@ -243,7 +240,6 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,Q1,T,S,NY})(hbuffer::CircularBuf
     end
 
     @__dot__ d.M1xxT = mid(implicitJf!.Jxsto)
-    # POINT 2
     invShat = inv(d.M1xxT)
     B0 = (invShat*explicitJf!.Jxsto)*d.A[1].Q
     mul_split!(d.M1xxS, invShat, implicitJf!.Jxsto, nx)
@@ -251,17 +247,14 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,Q1,T,S,NY})(hbuffer::CircularBuf
     for j = 1:nx
         d.M1xxS[j,j] += one(T)
     end
-    #C = I - invShat*implicitJf!.Jxsto
     @__dot__ d.V1xS = Xⱼ₊₁ - d.x̂0ⱼ₊₁
     @__dot__ explicitJf!.Jpsto -= implicitJf!.Jpsto
     mul_split!(d.M1xpS, invShat, explicitJf!.Jpsto, nx)
     mul_split!(d.V2xS, d.M1xpS, rP, nx)
     mul_split!(d.V3xS, d.M1xxTa, d.V1xS, nx)
     pre_intersect = B0*d.Δⱼ[1] + d.V3xS + invShat*d.gⱼ₊₁
-    #YJ1 = pre_intersect .∩ Xⱼ₊₁
     @__dot__ implicitJf!.Xⱼ₊₁ = (d.x̂0ⱼ₊₁ + pre_intersect  + d.V2xS) ∩ Xⱼ₊₁
 
-    # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
     Aⱼ₊₁ = d.A[1]
     implicitJf!.B .= mid.(implicitJf!.Jxsto*d.A[1].Q)
     calculateQ!(Aⱼ₊₁, implicitJf!.B, nx)
