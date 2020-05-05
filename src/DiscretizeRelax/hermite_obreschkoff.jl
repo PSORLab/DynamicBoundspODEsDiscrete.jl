@@ -56,12 +56,20 @@ mutable struct HermiteObreschkoffFunctor{F <: Function, P, Q, K, Q1, T <: Real, 
     V1xS::Vector{S}
     V2xS::Vector{S}
     V3xS::Vector{S}
+    V4xS::Vector{S}
+    V5xS::Vector{S}
+    V6xS::Vector{S}
+    V7xS::Vector{S}
+    V8xS::Vector{S}
+    V9xS::Vector{S}
     M1xxT::Matrix{T}
     M1xxTa::Matrix{T}
     M1xxTb::Matrix{T}
     M1xxS::Matrix{S}
     M1xxSa::Matrix{S}
     M1xxSb::Matrix{S}
+    M1xxSc::Matrix{S}
+    M1xxSd::Matrix{S}
     M1xpS::Matrix{S}
 end
 function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q},
@@ -80,18 +88,27 @@ function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q}
     V1xS = zeros(S, nx)
     V2xS = zeros(S, nx)
     V3xS = zeros(S, nx)
+    V4xS = zeros(S, nx)
+    V5xS = zeros(S, nx)
+    V6xS = zeros(S, nx)
+    V7xS = zeros(S, nx)
+    V8xS = zeros(S, nx)
+    V9xS = zeros(S, nx)
     M1xxT = zeros(T, nx, nx)
     M1xxTa = zeros(T, nx, nx)
     M1xxTb = zeros(T, nx, nx)
     M1xxS = zeros(S, nx, nx)
     M1xxSa = zeros(S, nx, nx)
     M1xxSb = zeros(S, nx, nx)
+    M1xxSc = zeros(S, nx, nx)
+    M1xxSd = zeros(S, nx, nx)
     M1xpS = zeros(S, nx, np)
     HermiteObreschkoffFunctor{F, P, Q, K, Q+1, T, S, nx+np}(hermite_obreschkoff, lon,
                                                        implicit_r, implicit_J,
                                                        η, μX, ρP, x̂0ⱼ₊₁, gⱼ₊₁, fqⱼ₊₁,
-                                                       fpⱼ₊₁, V1xS, V2xS, V3xS, M1xxT, M1xxTa, M1xxTb,
-                                                       M1xxS, M1xxSa, M1xxSb, M1xpS)
+                                                       fpⱼ₊₁, V1xS, V2xS, V3xS, V4xS, V5xS,
+                                                       V6xS, V7xS, V8xS, V9xS, M1xxT, M1xxTa, M1xxTb,
+                                                       M1xxS, M1xxSa, M1xxSb, M1xxSc, M1xxSd, M1xpS)
 end
 
 function state_contractor(m::HermiteObreschkoff{P,Q,K}, f, Jx!, Jp!, nx, np, style, s) where {P,Q,K}
@@ -101,7 +118,16 @@ state_contractor_k(m::HermiteObreschkoff{P,Q,K}) where {P,Q,K} = K
 state_contractor_γ(m::HermiteObreschkoff) = m.γ
 state_contractor_steps(m::HermiteObreschkoff) = 2
 
-function mul_split!(Y, A, B, nx)
+function mul_split!(Y::Vector{R}, A::Matrix{S}, B::Vector{T}, nx) where {R,S,T}
+    if nx == 1
+        @inbounds Y[1] = A[1,1]*B[1]
+    else
+        mul!(Y, A, B)
+    end
+    nothing
+end
+
+function mul_split!(Y::Matrix{R}, A::Matrix{S}, B::Matrix{T}, nx) where {R,S,T}
     if nx == 1
         @inbounds Y[1,1] = A[1,1]*B[1,1]
     else
@@ -227,7 +253,13 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
     #PsumJ = explicitJf!.Jpsto - implicitJf!.Jpsto
     #term = (Aⱼ₊₁.inv*explicitJf!.Jpsto)*rP
     mul_split!(d.M1xxSa, Aⱼ₊₁.inv, d.M1xxS, nx)
-    implicitJf!.Δⱼ₊₁ = (Aⱼ₊₁.inv*B0)*Δⱼlast[1] + d.M1xxTb*d.V1xS + (Aⱼ₊₁.inv*invShat)*d.gⱼ₊₁ + Aⱼ₊₁.inv*d.x̂0ⱼ₊₁ + d.V2xS
+    mul_split!(d.V4xS, d.M1xxTb, d.V1xS, nx)
+    mul_split!(d.V7xS, Aⱼ₊₁.inv, d.x̂0ⱼ₊₁, nx)
+    mul_split!(d.M1xxSb, Aⱼ₊₁.inv, B0, nx)
+    mul_split!(d.V5xS, d.M1xxSb, Δⱼlast[1], nx)
+    mul_split!(d.M1xxSc, Aⱼ₊₁.inv, invShat, nx)
+    mul_split!(d.V6xS, d.M1xxSc, d.gⱼ₊₁, nx)
+    @__dot__ implicitJf!.Δⱼ₊₁ = d.V2xS + d.V4xS + d.V5xS + d.V6xS + d.V7xS
 
     pushfirst!(Δⱼ, implicitJf!.Δⱼ₊₁)
 
