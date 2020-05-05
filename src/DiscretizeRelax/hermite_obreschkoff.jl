@@ -46,6 +46,8 @@ mutable struct HermiteObreschkoffFunctor{F <: Function, P, Q, K, Q1, T <: Real, 
     lon::LohnersFunctor{F, K, T, S, NY}
     implicit_r::TaylorFunctor!{F, Q1, T, T}
     implicit_J::JacTaylorFunctor!{F, Q1, T, S, NY}
+    A::CircularBuffer{QRDenseStorage}
+    Δⱼ::CircularBuffer{Vector{S}}
     η::Interval{T}
     μX::Vector{S}
     ρP::Vector{S}
@@ -78,6 +80,10 @@ function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q}
     lon = LohnersFunctor(f!, nx, np, Val(K-1), s, t)
     implicit_r = TaylorFunctor!(f!, nx, np, Val(Q), zero(T), zero(T))
     implicit_J = JacTaylorFunctor!(f!, nx, np, Val(Q), zero(S), zero(T))
+    A = CircularBuffer{QRDenseStorage}(2)
+    Δⱼ = CircularBuffer{Vector{S}}(2)
+    push!(A, QRDenseStorage(nx));  push!(A, QRDenseStorage(nx))
+    push!(Δⱼ, zeros(S, nx)); push!(Δⱼ, zeros(S, nx))
     η = Interval{T}(0.0,1.0)
     μX = zeros(S, nx)
     ρP = zeros(S, np)
@@ -104,7 +110,7 @@ function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q}
     M1xxSd = zeros(S, nx, nx)
     M1xpS = zeros(S, nx, np)
     HermiteObreschkoffFunctor{F, P, Q, K, Q+1, T, S, nx+np}(hermite_obreschkoff, lon,
-                                                       implicit_r, implicit_J,
+                                                       implicit_r, implicit_J, A, Δⱼ,
                                                        η, μX, ρP, x̂0ⱼ₊₁, gⱼ₊₁, fqⱼ₊₁,
                                                        fpⱼ₊₁, V1xS, V2xS, V3xS, V4xS, V5xS,
                                                        V6xS, V7xS, V8xS, V9xS, M1xxT, M1xxTa, M1xxTb,
@@ -136,6 +142,14 @@ function mul_split!(Y::Matrix{R}, A::Matrix{S}, B::Matrix{T}, nx) where {R,S,T}
     nothing
 end
 
+function copy_buffer!(y::CircularBuffer{T}, x::CircularBuffer{T}) where T
+    y.capacity = x.capacity
+    y.first = x.first
+    y.length = x.length
+    copyto!(y.buffer, x.buffer)
+    nothing
+end
+
 # Hermite Obreschkoff Update #1
 """
 $(TYPEDSIGNATURES)
@@ -146,11 +160,16 @@ an initial value problem for an ordinary differential equation. 1999. Universist
 of Toronto, PhD Dissertation, Algorithm 5.1, page 49) full details to be included
 in a forthcoming paper.
 """
-function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP,
-                                                           pval, fk) where {F,Pp,Q,K,T,S,NY}
+function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,Q1,T,S,NY})(hbuffer::CircularBuffer{Float64},
+                                                         tbuffer::CircularBuffer{Float64},
+                                                         X̃ⱼ::Vector{S},
+                                                         Xⱼ::Vector{S}, xval::Vector{T},
+                                                         A::CircularBuffer{QRDenseStorage},
+                                                         Δⱼ::CircularBuffer{Vector{S}}, P::Vector{S}, rP::Vector{S},
+                                                         pval::Vector{T}, fk::Vector{S}) where {F, Pp, Q, K, Q1, T, S, NY}
 
-    Δⱼlast = deepcopy(Δⱼ)
-    Alast = deepcopy(A)
+    copy_buffer!(d.Δⱼ, Δⱼ)
+    copy_buffer!(d.A, A)
 
     # Compute lohner function step
     implicitJf! = d.implicit_J
@@ -224,8 +243,9 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
     end
 
     @__dot__ d.M1xxT = mid(implicitJf!.Jxsto)
+    # POINT 2
     invShat = inv(d.M1xxT)
-    B0 = (invShat*explicitJf!.Jxsto)*Alast[1].Q
+    B0 = (invShat*explicitJf!.Jxsto)*d.A[1].Q
     mul_split!(d.M1xxS, invShat, implicitJf!.Jxsto, nx)
     @__dot__ d.M1xxS *= -one(T)
     for j = 1:nx
@@ -237,32 +257,28 @@ function (d::HermiteObreschkoffFunctor{F,Pp,Q,K,T,S,NY})(hbuffer, tbuffer, X̃�
     mul_split!(d.M1xpS, invShat, explicitJf!.Jpsto, nx)
     mul_split!(d.V2xS, d.M1xpS, rP, nx)
     mul_split!(d.V3xS, d.M1xxTa, d.V1xS, nx)
-    pre_intersect = B0*Δⱼlast[1] + d.V3xS + invShat*d.gⱼ₊₁
+    pre_intersect = B0*d.Δⱼ[1] + d.V3xS + invShat*d.gⱼ₊₁
     #YJ1 = pre_intersect .∩ Xⱼ₊₁
     @__dot__ implicitJf!.Xⱼ₊₁ = (d.x̂0ⱼ₊₁ + pre_intersect  + d.V2xS) ∩ Xⱼ₊₁
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
-    Aⱼ₊₁ = Alast[1]
-    implicitJf!.B .= mid.(implicitJf!.Jxsto*Alast[1].Q)
+    Aⱼ₊₁ = d.A[1]
+    implicitJf!.B .= mid.(implicitJf!.Jxsto*d.A[1].Q)
     calculateQ!(Aⱼ₊₁, implicitJf!.B, nx)
     calculateQinv!(Aⱼ₊₁)
 
-    #mYJ1 = mid.(implicitJf!.Xⱼ₊₁)
     @__dot__ implicitJf!.xⱼ₊₁ = mid(implicitJf!.Xⱼ₊₁)
     @__dot__ d.x̂0ⱼ₊₁ -= implicitJf!.xⱼ₊₁
-    #PsumJ = explicitJf!.Jpsto - implicitJf!.Jpsto
-    #term = (Aⱼ₊₁.inv*explicitJf!.Jpsto)*rP
     mul_split!(d.M1xxSa, Aⱼ₊₁.inv, d.M1xxS, nx)
     mul_split!(d.V4xS, d.M1xxTb, d.V1xS, nx)
     mul_split!(d.V7xS, Aⱼ₊₁.inv, d.x̂0ⱼ₊₁, nx)
     mul_split!(d.M1xxSb, Aⱼ₊₁.inv, B0, nx)
-    mul_split!(d.V5xS, d.M1xxSb, Δⱼlast[1], nx)
+    mul_split!(d.V5xS, d.M1xxSb, d.Δⱼ[1], nx)
     mul_split!(d.M1xxSc, Aⱼ₊₁.inv, invShat, nx)
     mul_split!(d.V6xS, d.M1xxSc, d.gⱼ₊₁, nx)
     @__dot__ implicitJf!.Δⱼ₊₁ = d.V2xS + d.V4xS + d.V5xS + d.V6xS + d.V7xS
 
     pushfirst!(Δⱼ, implicitJf!.Δⱼ₊₁)
-
     RELAXATION_NOT_CALLED
 end
 
