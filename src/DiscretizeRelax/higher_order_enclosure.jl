@@ -54,9 +54,13 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
                                ∂f∂x_in::Vector{Matrix{T}}, ∂f∂p_in::Vector{Matrix{T}},
                                P::Vector{T}, hfixed::Float64, t::Float64) where {F, K, S, T <: Real}
 
+    println("start existence and uniqueness")
+    println(" ")
+
     np = tf!.np
     Vⱼ = tf!.Vⱼ
     f̃ = tf!.f̃
+    println("f̃: $(f̃)")
     X̃ⱼ₀ = tf!.X̃ⱼ₀
     X̃ⱼ = tf!.X̃ⱼ
     βⱼⱼ = tf!.βⱼⱼ
@@ -64,36 +68,41 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
     βⱼₖ = tf!.βⱼₖ
     Uⱼ = tf!.Uⱼ
     k = tf!.k
+    println("k: $(k)")
 
     copyto!(X̃ⱼ₀, 1, Xⱼ, 1, tf!.nx)
     copyto!(X̃ⱼ, 1, Xⱼ, 1, tf!.nx)
+
+    println("X̃ⱼ₀ = $(X̃ⱼ₀)")
+    println("X̃ⱼ = $(X̃ⱼ)")
 
     ∂f∂x = tf!.∂f∂x
     if hfixed > 0.0
         hⱼ = hfixed
     end
+
+    println("∂f∂x_asdsaadin: $(∂f∂x_in)")
+
     hIk = Interval{Float64}(0.0, hⱼ^k)
 
-    for i=1:(tf!.k+1)
-        for j in eachindex(∂f∂x_in[i])
-            ∂f∂x[i][j] = ∂f∂x_in[i][j]
-        end
+    for i = 1:k+1
+        ∂f∂x[i] .= ∂f∂x_in[i]
     end
+    println("∂f∂x: $(∂f∂x)")
 
     ϵInterval = Interval(-1.0, 1.0)
     verified  = false
 
     if hfixed <= 0.0
-        #println("pre while: hⱼ = $(hⱼ), hmin = $(hmin), verified = $(verified)")
+        println("pre while: hⱼ = $(hⱼ), hmin = $(hmin), verified = $(verified)")
         while ((hⱼ >= hmin) && ~verified) #&& (max_iters > iters)
-            #println("outer while: hⱼ = $(hⱼ), hmin = $(hmin), verified = $(verified)")
+            println("outer while: hⱼ = $(hⱼ), hmin = $(hmin), verified = $(verified)")
             #iters += 1
             tf!(f, X̃ⱼ, P, t)
-            @__dot__ Vⱼ = X̃ⱼ
-            for j in 2:k
+            for j = 2:k
                 @__dot__ Vⱼ += Interval{Float64}(0.0, hⱼ^(j-1))*f[j]
             end
-            #println("Vⱼ = $(Vⱼ)")
+            println("Vⱼ = $(Vⱼ)")
 
             #βⱼⱼ .= (I + Interval{Float64}(0.0, hⱼ^k).*∂f∂y[k])
             βⱼⱼ .= ∂f∂x[k+1]
@@ -106,31 +115,35 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
             mul!(βⱼᵥ, ∂f∂x[k+1], Vⱼ)
             βⱼᵥ .+= f[k+1]
             mul!(βⱼₖ, βⱼⱼ, βⱼᵥ)
-            #println("βⱼₖ: $(βⱼₖ)")
+            println("βⱼₖ: $(βⱼₖ)")
 
             #βⱼₖ .= βⱼₖ + ϵInterval*abs.(βⱼₖ)
             @__dot__ Uⱼ = Xⱼ + Vⱼ
             @__dot__ X̃ⱼ₀ = Uⱼ + hIk*(βⱼₖ + ϵInterval*abs(βⱼₖ))
+            println("Uⱼ: $(Uⱼ)")
+            println("Vⱼ: $(Vⱼ)")
+            println("X̃ⱼ₀: $(X̃ⱼ₀)")
 
             tf!(f̃, X̃ⱼ₀, P, t)
-            if contains(f̃[tf!.k], βⱼₖ, tf!.nx)
+            if contains(f̃[tf!.k + 1], βⱼₖ, tf!.nx)
                 @__dot__ X̃ⱼ = Uⱼ + hIk*f̃[k+1]
                 break
             end
             @__dot__ X̃ⱼ₀ = Uⱼ + hIk*f̃[k+1]
+            println("X̃ⱼ₀: $(X̃ⱼ₀)")
             tf!(f̃, X̃ⱼ₀, P, t)
 
             reduced = 0
             while ~verified && reduced < 2
-                #println("while start, verified = $(verified), reduced = $(reduced)")
+                println("while start, verified = $(verified), reduced = $(reduced)")
                 s = 0
-                for l = 2:k+1
-                    @__dot__ Vⱼ = X̃ⱼ₀
-                    for i in 2:l
-                        @__dot__ Vⱼ += Interval{Float64}(0.0, hⱼ^(i-1))*f[i]
+                for l = 1:k
+                    @__dot__ Vⱼ = Xⱼ
+                    for i in 1:l-1
+                        @__dot__ Vⱼ += Interval{Float64}(0.0, hⱼ^i)*f[i+1]
                     end
-                    @__dot__ X̃ⱼ  = Uⱼ + hIk*f̃[l]
-                    #println("check contains 1: X̃ⱼ = $(X̃ⱼ), X̃ⱼ₀ = $(X̃ⱼ₀)")
+                    @__dot__ X̃ⱼ  = Vⱼ + Interval{Float64}(0.0, hⱼ^l)*f̃[l+1]
+                    println("check contains 1: X̃ⱼ = $(X̃ⱼ), X̃ⱼ₀ = $(X̃ⱼ₀)")
                     if contains(X̃ⱼ, X̃ⱼ₀, tf!.nx)
                         verified = true
                         s = l
@@ -139,31 +152,29 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
                 end
 
                 if verified
-                    #println("if branch verified")
+                    println("if branch verified")
                     improving = true
                     while improving
                         tf!(f̃, X̃ⱼ, P, t)
-                        #println("next B f̃: $(f̃)")
-                        for j in 2:k
-                            X̃ⱼ₀  = Vⱼ + Interval{Float64}(0.0, hⱼ^(s-1))*f̃[j]
-                        end
-                        #println("X̃ⱼ = $(X̃ⱼ), X̃ⱼ₀ = $(X̃ⱼ₀)")
+                        println("next B f̃: $(f̃)")
+                        X̃ⱼ₀  = Vⱼ + Interval{Float64}(0.0, hⱼ^s)*f̃[s+1]
+                        println("X̃ⱼ = $(X̃ⱼ), X̃ⱼ₀ = $(X̃ⱼ₀)")
                         if improvement_condition(X̃ⱼ, X̃ⱼ₀, tf!.nx)
-                            #println("copy to...")
+                            println("copy to...")
                             copyto!(X̃ⱼ, 1, X̃ⱼ₀, 1, tf!.nx)
                         else
-                            #println("not improving")
+                            println("not improving")
                             improving = false
                         end
                     end
                 else
-                    #println("else branch verified")
+                    println("else branch verified")
                     hⱼ *= 0.8                              # times alpha value
                     hIk = Interval{Float64}(0.0, hⱼ^tf!.k)
                     reduced += 1
-                    #println("hⱼ = $(hⱼ)")
-                    #println("hIk = $(hIk)")
-                    #println("reduced = $(reduced)")
+                    println("hⱼ = $(hⱼ)")
+                    println("hIk = $(hIk)")
+                    println("reduced = $(reduced)")
                 end
             end
         end
@@ -174,7 +185,7 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
         # set X to sum of Taylor cofficients
         fill!(Vⱼ, zero(T))
         copyto!(Vⱼ, X̃ⱼ)
-        for i=2:k
+        for i = 2:k
             for j in eachindex(f̃[1])
                 Vⱼ[j] += f̃[i][j]*Interval{Float64}(0.0, hⱼ^(i-1))
             end
@@ -190,5 +201,6 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
     out.step = hⱼ
     out.confirmed = flag
     out.X .= X̃ⱼ
+    println(" ")
     nothing
 end
