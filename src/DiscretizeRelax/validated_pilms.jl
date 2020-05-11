@@ -9,7 +9,7 @@ A structure which holds an N-step parametric linear method of
 
 $(TYPEDFIELDS)
 """
-struct PLMS{N,T<:AbstractLinearMethod} <: AbstractStateContractorName
+mutable struct PLMS{N,T<:AbstractLinearMethod} <: AbstractStateContractorName
     "Time ordered from current time step 1 to (N-1)th prior time"
     times::CircularBuffer{Float64}
     "Coefficients of the PLMs method"
@@ -23,8 +23,8 @@ struct PLMS{N,T<:AbstractLinearMethod} <: AbstractStateContractorName
     φ::Vector{Vector{NTuple{N,Float64}}}
 end
 function PLMS(x::Val{N}, s::T) where {N, T<:AbstractLinearMethod}
-    c = CircularBuffer{Float64}(N)
-    fill!(c, 0.0)
+    t = CircularBuffer{Float64}(N+1)
+    fill!(t, 0.0)
     β = Vector{Float64}[]
     for i in 1:N
         push!(β, zeros(Float64,N))
@@ -37,7 +37,7 @@ function PLMS(x::Val{N}, s::T) where {N, T<:AbstractLinearMethod}
         end
         push!(φ, φin)
     end
-    PLMS{N,T}(c, zeros(Float64,N), β, zeros(Float64,N,N), zeros(Float64,N), φ)
+    PLMS{N,T}(t, zeros(Float64,N), β, zeros(Float64,N,N), zeros(Float64,N), φ)
 end
 PLMS(x::Int, s::T) where {N, T<:AbstractLinearMethod} = PLMS(Val(x),s)
 
@@ -62,7 +62,7 @@ function compute_coefficients!(x::PLMS{N, AdamsMoulton}) where N
     # set β & last step accordingly
     fill!(x.β[1], 1.0)
     for i in 2:N
-        @__dot__ x.β[i] = x.β[i-1]*(t[1] - t[i+1])/(t[2] - t[i+2])
+        @__dot__ x.β[i] = x.β[i-1]*(t[1] - t[i])/(t[2] - t[i])
     end
     hn = (t[1] - t[2])
 
@@ -85,7 +85,7 @@ function compute_coefficients!(x::PLMS{N, AdamsMoulton}) where N
     for j=2:N
         for i=1:N
             if i <= j
-                x.φ[j][i] = x.φ[j-1][i] - x.β[j-1][i+1]*x.φ[j-1][i+1]
+                x.φ[j][i] = x.φ[j-1][i] .- x.β[j-1][i+1].*x.φ[j-1][i+1]
             end
         end
     end
@@ -142,9 +142,10 @@ struct PLMsFunctor{F,N,T,S,JX,JP} <: AbstractStateContractor
     x
     "Temporary storage Float64, nx-1"
     M1x::Vector{Float64}
+    h::Float64
 end
 function PLMsFunctor(s::S, plms::PLMS{N,T}, f!::F, Jx!::JX, Jp!::JP,
-                     nx::Int, np::Int) where {F, JX, JP, S, N, T<:AbstractLinearMethod}
+                     nx::Int, np::Int, h::Float64) where {F, JX, JP, S, N, T<:AbstractLinearMethod}
     buffer_Jx = CircularBuffer{Matrix{S}}(N)
     buffer_Jp = CircularBuffer{Matrix{S}}(N)
     X = CircularBuffer{Vector{S}}(N)
@@ -163,33 +164,73 @@ function PLMsFunctor(s::S, plms::PLMS{N,T}, f!::F, Jx!::JX, Jp!::JP,
     x0 = zeros(Float64, nx)
     x = zeros(Float64, nx)
     M1x = zeros(Float64,nx)
-    PLMsFunctor{F, N,T,S,JX,JP}(plms, buffer_Jx, buffer_Jp, X, refx,
+    PLMsFunctor{F,N,T,S,JX,JP}(plms, buffer_Jx, buffer_Jp, X, refx,
                              t, P, rP, p, nx, np, f!, Jx!, Jp!, sJp, δₖ,
-                             Z, x0, x, M1x)
+                             Z, x0, x, M1x, h)
 end
 
-function state_contractor(m::PLMS{N,T}, f!::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, style, s::S) where {F,N,T,JX,JP,S}
-    PLMsFunctor(s, m, f!, Jx!, Jp!, nx, np)
+function state_contractor(m::PLMS{N,T}, f!::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, style::S, s, h::Float64) where {F,N,T,JX,JP,S}
+    println("s: $s, Jx!: $(Jx!), Jp!: $(Jp!)")
+    PLMsFunctor(style, m, f!, Jx!, Jp!, nx, np, h)
 end
 
 
-function update_coefficients!(pf::PLMsFunctor, t0::Float64)
-    pushfirst!(pf.plms.times, t0)
-    compute_coefficients!(pf.plms)
+function compute_coefficients!(pf::PLMS{1,T}) where T<:AbstractLinearMethod
+    pf.coeffs[1] = 1.0
+    nothing
+end
+
+function compute_coefficients!(pf::PLMS{2,T}) where T<:AbstractLinearMethod
+    pf.coeffs = [0.5; 0.5]
+    nothing
+end
+
+function compute_coefficients!(pf::PLMS{3,T}) where T<:AbstractLinearMethod
+    pf.coeffs = []
+    nothing
+end
+
+function compute_coefficients!(pf::PLMS{4,T}) where T<:AbstractLinearMethod
+    pf.coeffs = []
+    nothing
+end
+
+function compute_coefficients!(pf::PLMS{5,T}) where T<:AbstractLinearMethod
+    pf.coeffs = []
+    nothing
+end
+
+function update_coefficients!(pf::PLMsFunctor{F,N,T,S,JX,JP}, t0::Float64) where {F,N,T,S,JX,JP}
+    if pf.h > 0
+        compute_coefficients!(pf.plms)
+    else
+        pushfirst!(pf.plms.times, t0)
+        compute_coefficients!(pf.plms)
+    end
     nothing
 end
 
 function set_cycle_X!(pf::PLMsFunctor, Yⱼ)
+    println("Yⱼ: $(Yⱼ)")
+    println("pf.X: $(pf.X)")
+    println("pf.X.buffer: $(pf.X.buffer)")
     pf.X.first = (pf.X.first == 1 ? pf.X.length : pf.X.first - 1)
     copyto!(pf.X.buffer[pf.X.first], 1, Yⱼ, 1, pf.nx)
     nothing
 end
-eval_cycle_Jx!(pf::PLMsFunctor) = eval_cycle!(pf.Jx!, pf.buffer_Jx, first(pf.X), pf.P, first(pf.t))
+function eval_cycle_Jx!(pf::PLMsFunctor)
+    println("pf.Jx!: $(pf.Jx!)")
+    println("pf.buffer_Jx: $(pf.buffer_Jx)")
+    println("first(pf.X): $(first(pf.X))")
+    println("pf.P: $(pf.P)")
+    println("first(pf.t): $(first(pf.t))")
+    eval_cycle!(pf.Jx!, pf.buffer_Jx, first(pf.X), pf.P, first(pf.t))
+end
 eval_cycle_Jp!(pf::PLMsFunctor) = eval_cycle!(pf.Jp!, pf.buffer_Jp, first(pf.X), pf.P, first(pf.t))
 
 function compute_sum_Jp!(pf::PLMsFunctor)
     map!((x,y) -> x.*y, pf.buffer_Jp, pf.plms.coeffs, pf.buffer_Jp)
-    accumulate!(.+, pf.sJp, pf.buffer_Jp)
+    accumulate!(+, pf.sJp, pf.buffer_Jp)
     nothing
 end
 
@@ -237,10 +278,11 @@ $(TYPEDSIGNATURES)
 
 Experimental implementation of parametric linear multistep methods.
 """
-function (pf::PLMsFunctor)(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP, pval)
+function (pf::PLMsFunctor)(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP, pval, fk)
 
+    println("start of call pf.X: $(pf.X)")
     copyto!(pf.t, tbuffer)                      # copy time buffer
-    update_coefficients!(pf, tbuffer[1])   # update coefficients in linear multistep method
+    update_coefficients!(pf, tbuffer[1])        # update coefficients in linear multistep method
     set_cycle_X!(pf, Xⱼ)                        # update X, rP & P is set in relax
     eval_cycle_Jx!(pf)                          # compute Jx for new time and state (X,P,t) tuple
     eval_cycle_Jp!(pf)                          # compute Jp for new time and state (X,P,t) tuple

@@ -21,7 +21,8 @@ end
 
 struct LohnerContractor{K} <: AbstractStateContractorName end
 LohnerContractor(k::Int) = LohnerContractor{k}()
-function state_contractor(m::LohnerContractor{K}, f, Jx!, Jp!, nx, np, style, s) where K
+function state_contractor(m::LohnerContractor{K}, f, Jx!, Jp!, nx, np, style, s, h) where K
+    println("s: $s")
     LohnersFunctor(f, nx, np, Val{K}(), style, s)
 end
 state_contractor_k(m::LohnerContractor{K}) where K = K
@@ -136,9 +137,6 @@ end
 function get_jacobians!(d::LohnersFunctor{F,K,S,T,NY}, ∂f∂x::Vector{Matrix{T}},
                         ∂f∂p::Vector{Matrix{T}}, Xⱼ, P, t) where {F <: Function, K, S <: Real, T <: Real, NY}
     set_JxJp!(d.jac_tf!, Xⱼ, P, t[1])
-    println(" ")
-    println("d.jac_tf!.Jx = $(d.jac_tf!.Jx)")
-    println("d.jac_tf!.Jp = $(d.jac_tf!.Jp)")
     extract_jacobians!(d, ∂f∂x, ∂f∂p)
     nothing
 end

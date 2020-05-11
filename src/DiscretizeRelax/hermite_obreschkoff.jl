@@ -117,7 +117,7 @@ function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q}
                                                        M1xxS, M1xxSa, M1xxSb, M1xxSc, M1xxSd, M1xpS)
 end
 
-function state_contractor(m::HermiteObreschkoff{P,Q,K}, f, Jx!, Jp!, nx, np, style, s) where {P,Q,K}
+function state_contractor(m::HermiteObreschkoff{P,Q,K}, f, Jx!, Jp!, nx, np, style, s, h) where {P,Q,K}
     HermiteObreschkoffFunctor(f, nx, np, Val{P}(), Val{Q}(), Val{K}(), style, s)
 end
 state_contractor_k(m::HermiteObreschkoff{P,Q,K}) where {P,Q,K} = K

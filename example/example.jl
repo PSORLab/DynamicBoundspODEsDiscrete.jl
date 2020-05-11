@@ -4,7 +4,7 @@
 
 #
 
-#using Revise
+using Revise
 using IntervalArithmetic, TaylorSeries
 setrounding(Interval, :none)
 import Base: literal_pow, ^
@@ -50,7 +50,7 @@ function f!(dx, x, p, t)
     nothing
 end
 
-tspan = (0.0,1.00)
+tspan = (0.0, 0.1)
 #pL = [0.2; 0.1]
 #pU = 10.0*pL
 pL = [-1.0]
@@ -69,8 +69,19 @@ plot!(plt, t_vec , hi_vec, label="", linecolor = :blue, linestyle = :dashdot, lw
 =#
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
 #integrator = DiscretizeRelax(prob, DynamicBoundspODEsPILMS.LohnerContractor{4}(), h = 0.01, skip_step2 = false, relax = false)
-integrator = DiscretizeRelax(prob, HermiteObreschkoff(2,2), h = 0.01, skip_step2 = false, relax = false)
-#integrator = DiscretizeRelax(prob, PLMS(4, AdamsMoulton()), h = 0.01, skip_step2 = false, relax = false)
+# integrator = DiscretizeRelax(prob, DynamicBoundspODEsPILMS.LohnerContractor{4}(), skip_step2 = false, relax = false, step_limit = 0)
+#integrator = DiscretizeRelax(prob, HermiteObreschkoff(2,2), h = 0.01, skip_step2 = false, relax = true)
+
+function iJx!(dx, x, p, t)
+    dx[1] = -2.0*x[1]
+    nothing
+end
+function iJp!(dx, x, p, t)
+    dx[1] = one(p[1])
+    nothing
+end
+integrator = DiscretizeRelax(prob, PLMS(4, AdamsMoulton()), h = 0.01, skip_step2 = false, relax = false, Jx! = iJx!, Jp! = iJp!)
+
 ratio = rand(1)
 pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
 setall!(integrator, ParameterValue(), [0.1])
@@ -78,11 +89,13 @@ DynamicBoundsBase.relax!(integrator)
 
 d = integrator
 #@code_warntype DynamicBoundspODEsPILMS.single_step!(d.step_result, d.step_params, d.method_f!, d.set_tf!, d.Δ, d.A, d.P, d.rP, d.p)
+#=
 method_f! = d.method_f!
 @code_warntype method_f!(d.step_result.steps, d.step_result.times, d.step_result.unique_result.X, d.step_result.Xⱼ,
                             d.step_result.xⱼ, d.A, d.Δ, d.P, d.rP, d.p, d.step_result.unique_result.fk)
-using BenchmarkTools
-@btime DynamicBoundsBase.relax!($integrator)
+                            =#
+#using BenchmarkTools
+#@btime DynamicBoundsBase.relax!($integrator)
 
 t_vec = integrator.time
 lo_vec = getfield.(getindex.(integrator.storage[:],1), :lo)

@@ -28,7 +28,7 @@ Checks that an interval vector `X̃ⱼ` of length `nx` is contained in `X̃ⱼ�
 """
 function contains(X̃ⱼ::Vector{Interval{T}}, X̃ⱼ₀::Vector{Interval{T}}, nx::Int) where {T <: Real}
     flag = true
-    for i in 1:nx
+    for i = 1:nx
         if ~(X̃ⱼ[i] ⊆ X̃ⱼ₀[i])
             flag = false
             break
@@ -49,18 +49,19 @@ function existence_uniqueness!(s::StepResult{T}, tf!::TaylorFunctor!{F,K,S,T}, h
     existence_uniqueness!(s.unique_result, tf!, s.Xⱼ, s.hj, hmin, s.f, s.∂f∂x, s.∂f∂p, P, s.h, t)
     nothing
 end
+
 function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K,S,T}, Xⱼ::Vector{T},
                                hⱼ::Float64, hmin::Float64, f::Vector{Vector{T}},
                                ∂f∂x_in::Vector{Matrix{T}}, ∂f∂p_in::Vector{Matrix{T}},
                                P::Vector{T}, hfixed::Float64, t::Float64) where {F, K, S, T <: Real}
 
-    println("start existence and uniqueness")
     println(" ")
+    println("hⱼ in = $(hⱼ), Xⱼ = $(Xⱼ)")
 
     np = tf!.np
     Vⱼ = tf!.Vⱼ
     f̃ = tf!.f̃
-    println("f̃: $(f̃)")
+    #println("f̃: $(f̃)")
     X̃ⱼ₀ = tf!.X̃ⱼ₀
     X̃ⱼ = tf!.X̃ⱼ
     βⱼⱼ = tf!.βⱼⱼ
@@ -68,82 +69,77 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
     βⱼₖ = tf!.βⱼₖ
     Uⱼ = tf!.Uⱼ
     k = tf!.k
-    println("k: $(k)")
+    #println("k: $(k)")
 
-    copyto!(X̃ⱼ₀, 1, Xⱼ, 1, tf!.nx)
-    copyto!(X̃ⱼ, 1, Xⱼ, 1, tf!.nx)
+    unsafe_copyto!(X̃ⱼ₀, 1, Xⱼ, 1, tf!.nx)
+    unsafe_copyto!(X̃ⱼ, 1, Xⱼ, 1, tf!.nx)
 
-    println("X̃ⱼ₀ = $(X̃ⱼ₀)")
-    println("X̃ⱼ = $(X̃ⱼ)")
+    #println("X̃ⱼ₀ = $(X̃ⱼ₀)")
+    #println("X̃ⱼ = $(X̃ⱼ)")
 
     ∂f∂x = tf!.∂f∂x
     if hfixed > 0.0
         hⱼ = hfixed
     end
 
-    println("∂f∂x_asdsaadin: $(∂f∂x_in)")
+    #println("∂f∂x_asdsaadin: $(∂f∂x_in)")
 
     hIk = Interval{Float64}(0.0, hⱼ^k)
 
     for i = 1:k+1
         ∂f∂x[i] .= ∂f∂x_in[i]
     end
-    println("∂f∂x: $(∂f∂x)")
+    #println("∂f∂x: $(∂f∂x)")
 
     ϵInterval = Interval(-1.0, 1.0)
     verified  = false
 
     if hfixed <= 0.0
-        println("pre while: hⱼ = $(hⱼ), hmin = $(hmin), verified = $(verified)")
+        #println("pre while: hⱼ = $(hⱼ), hmin = $(hmin), verified = $(verified)")
         while ((hⱼ >= hmin) && ~verified) #&& (max_iters > iters)
-            println("outer while: hⱼ = $(hⱼ), hmin = $(hmin), verified = $(verified)")
+            #println("outer while: hⱼ = $(hⱼ), hmin = $(hmin), verified = $(verified)")
             #iters += 1
-            tf!(f, X̃ⱼ, P, t)
-            for j = 2:k
-                @__dot__ Vⱼ += Interval{Float64}(0.0, hⱼ^(j-1))*f[j]
+            tf!(f, Xⱼ, P, t)
+            fill!(Vⱼ, zero(S))
+            for i = 2:k
+                @__dot__ Vⱼ += Interval{Float64}(0.0, hⱼ^(i-1))*f[i]
             end
-            println("Vⱼ = $(Vⱼ)")
 
             #βⱼⱼ .= (I + Interval{Float64}(0.0, hⱼ^k).*∂f∂y[k])
             βⱼⱼ .= ∂f∂x[k+1]
             βⱼⱼ .*= hIk
-            for i in 1:tf!.nx
-                βⱼⱼ[i,i] += one(T)
-            end
+            βⱼⱼ += I
 
             #βⱼᵥ = f[k,:] .+ ∂f∂y[k]*Vⱼ
             mul!(βⱼᵥ, ∂f∂x[k+1], Vⱼ)
             βⱼᵥ .+= f[k+1]
             mul!(βⱼₖ, βⱼⱼ, βⱼᵥ)
-            println("βⱼₖ: $(βⱼₖ)")
+            @__dot__ βⱼₖ += ϵInterval*abs(βⱼₖ)
 
             #βⱼₖ .= βⱼₖ + ϵInterval*abs.(βⱼₖ)
             @__dot__ Uⱼ = Xⱼ + Vⱼ
-            @__dot__ X̃ⱼ₀ = Uⱼ + hIk*(βⱼₖ + ϵInterval*abs(βⱼₖ))
-            println("Uⱼ: $(Uⱼ)")
-            println("Vⱼ: $(Vⱼ)")
-            println("X̃ⱼ₀: $(X̃ⱼ₀)")
+            @__dot__ X̃ⱼ₀ = Uⱼ + hIk*βⱼₖ
 
             tf!(f̃, X̃ⱼ₀, P, t)
-            if contains(f̃[tf!.k + 1], βⱼₖ, tf!.nx)
+            if contains(f̃[k + 1], βⱼₖ, tf!.nx)
                 @__dot__ X̃ⱼ = Uⱼ + hIk*f̃[k+1]
                 break
             end
             @__dot__ X̃ⱼ₀ = Uⱼ + hIk*f̃[k+1]
-            println("X̃ⱼ₀: $(X̃ⱼ₀)")
+            #println("X̃ⱼ₀: $(X̃ⱼ₀)")
             tf!(f̃, X̃ⱼ₀, P, t)
+        #    println("f̃: $(f̃)")
 
             reduced = 0
-            while ~verified && reduced < 2
-                println("while start, verified = $(verified), reduced = $(reduced)")
-                s = 0
+            s = 0
+            while ~verified && reduced < 50
                 for l = 1:k
                     @__dot__ Vⱼ = Xⱼ
-                    for i in 1:l-1
+                    for i = 1:l-1
                         @__dot__ Vⱼ += Interval{Float64}(0.0, hⱼ^i)*f[i+1]
                     end
-                    @__dot__ X̃ⱼ  = Vⱼ + Interval{Float64}(0.0, hⱼ^l)*f̃[l+1]
-                    println("check contains 1: X̃ⱼ = $(X̃ⱼ), X̃ⱼ₀ = $(X̃ⱼ₀)")
+                    @__dot__ X̃ⱼ = Vⱼ + Interval{Float64}(0.0, hⱼ^l)*f̃[l+1]
+                    println("check 1 X̃ⱼ = $(X̃ⱼ), X̃ⱼ₀ = $(X̃ⱼ₀)")
                     if contains(X̃ⱼ, X̃ⱼ₀, tf!.nx)
                         verified = true
                         s = l
@@ -152,29 +148,27 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
                 end
 
                 if verified
-                    println("if branch verified")
+                    #println("if branch verified")
                     improving = true
                     while improving
                         tf!(f̃, X̃ⱼ, P, t)
-                        println("next B f̃: $(f̃)")
+                        #println("next B f̃: $(f̃)")
                         X̃ⱼ₀  = Vⱼ + Interval{Float64}(0.0, hⱼ^s)*f̃[s+1]
                         println("X̃ⱼ = $(X̃ⱼ), X̃ⱼ₀ = $(X̃ⱼ₀)")
                         if improvement_condition(X̃ⱼ, X̃ⱼ₀, tf!.nx)
-                            println("copy to...")
+                            #println("copy to...")
                             copyto!(X̃ⱼ, 1, X̃ⱼ₀, 1, tf!.nx)
                         else
-                            println("not improving")
+                            #println("not improving")
                             improving = false
                         end
                     end
                 else
-                    println("else branch verified")
-                    hⱼ *= 0.8                              # times alpha value
+                    #println("else branch verified")
+                    hⱼ *= 0.7
                     hIk = Interval{Float64}(0.0, hⱼ^tf!.k)
                     reduced += 1
-                    println("hⱼ = $(hⱼ)")
-                    println("hIk = $(hIk)")
-                    println("reduced = $(reduced)")
+                    println("hⱼ = $(hⱼ), reduced = $(reduced)")
                 end
             end
         end
@@ -201,6 +195,57 @@ function existence_uniqueness!(out::UniquenessResult{T}, tf!::TaylorFunctor!{F,K
     out.step = hⱼ
     out.confirmed = flag
     out.X .= X̃ⱼ
-    println(" ")
+    println("hⱼ = $(hⱼ), X̃ⱼ = $(X̃ⱼ)")
     nothing
 end
+
+#=
+"""
+$(TYPEDSIGNATURES)
+Implements a golden section search for step size
+"""
+function existence_uniquenes(s::StepResult{T}, tf!::TaylorFunctor!{F,K,S,T}, hmin::Float64, P, t) where {F, K, S, T <: Number}
+
+    np = tf!.np
+    Vⱼ = tf!.Vⱼ
+    f̃ = tf!.f̃
+    X̃ⱼ₀ = tf!.X̃ⱼ₀
+    X̃ⱼ = tf!.X̃ⱼ
+    k = tf!.k
+    iteration_limit = 50
+
+    unsafe_copyto!(X̃ⱼ₀, 1, Xⱼ, 1, tf!.nx)
+    unsafe_copyto!(X̃ⱼ, 1, Xⱼ, 1, tf!.nx)
+
+    hⱼ = (hfixed > 0.0) ? hfixed : hⱼ
+    hIk = Interval{Float64}(0.0, hⱼ^k)
+
+    # compute taylor coefficient sum
+    tf!(f̃, X̃ⱼ, P, t)
+    fill!(Vⱼ, zero(T))
+    copyto!(Vⱼ, X̃ⱼ)
+    for i = 2:k+1
+        Vⱼ .+= f̃[i]*Interval{Float64}(0.0, hⱼ^(i-1))
+    end
+    copyto!(X̃ⱼ, Vⱼ)
+
+    count = 0
+    confirmed_flag = contains(X̃ⱼ, X̃ⱼ₀, nx)
+    convergence_flag = improvement_condition(X̃ⱼ, X̃ⱼ₀, nx)
+
+    if hfixed <= 0.0 && !improvement_flag
+        while confirmed_flag && convergence_flag && count < iteration_limit
+            count += 1
+            confirmed_flag = contains(X̃ⱼ, X̃ⱼ₀, nx)
+            convergence_flag = improvement_condition(X̃ⱼ, X̃ⱼ₀, nx)
+        end
+    end
+    flag = hⱼ > hmin
+    out.fk .= f̃[k+1]
+    out.step = hⱼ
+    out.confirmed = confirmed_flag
+    out.X .= X̃ⱼ
+
+    nothing
+end
+=#

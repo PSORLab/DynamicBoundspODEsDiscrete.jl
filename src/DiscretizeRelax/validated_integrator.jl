@@ -87,8 +87,8 @@ mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: R
     new_decision_pnt::Bool
     new_decision_box::Bool
 end
-function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit = 1000,
-                         tol = 1E-5, hmin = 1E-13, relax = false, h = 0.0, skip_step2 = false) where SCN <: AbstractStateContractorName
+function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit = 1000,  tol = 1E-5, hmin = 1E-13,
+                         relax = false, h = 0.0, skip_step2 = false, Jx! = nothing, Jp! = nothing) where SCN <: AbstractStateContractorName
 
     γ = state_contractor_γ(m)::Float64
     k = state_contractor_k(m)::Int
@@ -121,18 +121,15 @@ function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit 
     fill!(Δ, zeros(T, d.nx))
 
     set_tf! = TaylorFunctor!(d.f, d.nx, d.np, Val(k), style, zero(Float64))
-    state_method = state_contractor(m, d.f, d.Jx!, d.Jp!, d.nx, d.np, style, zero(Float64))
+    state_method = state_contractor(m, d.f, Jx!, Jp!, d.nx, d.np, style, zero(Float64), h)
     #method_f! = LohnersFunctor(d.f, d.nx, d.np, Val(k), style, zero(Float64))
 
     step_result = StepResult(style, d.nx, d.np, k, h, method_steps)
     step_params = StepParams(tol, hmin, d.nx, repeat_limit, γ, k, skip_step2)
 
-    Jx! = d.Jx!
-    Jp! = d.Jp!
-
     return DiscretizeRelax{typeof(state_method), T,
                            Float64, typeof(d.f), k+1, typeof(d.x0),
-                           d.nx+d.np,typeof(Jx!), typeof(Jp!), }(d.x0, Jx!, Jp!, d.p, d.pL, d.pU, d.nx,
+                           d.nx+d.np, typeof(Jx!), typeof(Jp!)}(d.x0, Jx!, Jp!, d.p, d.pL, d.pU, d.nx,
                            d.np, d.tspan, d.tsupports, step_limit, 0, storage,
                            storage_apriori, time, support_dict, error_code, A,
                            Δ, P, rP, skip_step2, style, set_tf!, state_method,
