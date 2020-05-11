@@ -159,7 +159,7 @@ function PLMsFunctor(s::S, plms::PLMS{N,T}, f!::F, Jx!::JX, Jp!::JP,
     rP = zeros(S,np)
     p = zeros(Float64,np)
     sJp = zeros(S, nx, np)
-    δₖ = zeros(Float64, nx)
+    δₖ = zeros(S, nx)
     Z = zeros(Float64, nx)
     x0 = zeros(Float64, nx)
     x = zeros(Float64, nx)
@@ -186,17 +186,17 @@ function compute_coefficients!(pf::PLMS{2,T}) where T<:AbstractLinearMethod
 end
 
 function compute_coefficients!(pf::PLMS{3,T}) where T<:AbstractLinearMethod
-    pf.coeffs = []
+    pf.coeffs = [5.0/12.0; 2.0/3.0; -1.0/12.0]
     nothing
 end
 
 function compute_coefficients!(pf::PLMS{4,T}) where T<:AbstractLinearMethod
-    pf.coeffs = []
+    pf.coeffs = [9.0/24.0; 19.0/24.0; -5.0/24.0; 1.0/24.0]
     nothing
 end
 
 function compute_coefficients!(pf::PLMS{5,T}) where T<:AbstractLinearMethod
-    pf.coeffs = []
+    pf.coeffs = [251.0/720.0; 646.0/720.0; -264.0/720.0; 106.0/720.0; -19.0/720.0]
     nothing
 end
 
@@ -230,12 +230,24 @@ eval_cycle_Jp!(pf::PLMsFunctor) = eval_cycle!(pf.Jp!, pf.buffer_Jp, first(pf.X),
 
 function compute_sum_Jp!(pf::PLMsFunctor)
     map!((x,y) -> x.*y, pf.buffer_Jp, pf.plms.coeffs, pf.buffer_Jp)
-    accumulate!(+, pf.sJp, pf.buffer_Jp)
+    pf.sJp .= pf.buffer_Jp[1]
+    for i = 2:length(pf.buffer_Jp)
+        pf.sJp .+= pf.buffer_Jp[i]
+    end
     nothing
 end
 
-function compute_δₖ!(pf::PLMsFunctor{N,T,S,JX,JP}) where {N,T,S,JX,JP}
-    @__dot__ pf.δₖ = pf.x0 - pf.x + pf.R
+function compute_δₖ!(pf::PLMsFunctor{N,T,S,JX,JP}, fk) where {N,T,S,JX,JP}
+    println("pf.δₖ: $(pf.δₖ)")
+    println("pf.x0: $(pf.x0)")
+    println("pf.x: $(pf.x)")
+    println("fk: $(fk)")
+    println("f.M1x: $(pf.M1x)")
+    println("pf.refx: $(pf.refx)")
+    println("pf.p: $(pf.p)")
+    println("pf.t: $(pf.t)")
+    println("pf.plms.coeffs: $(pf.plms.coeffs)")
+    @__dot__ pf.δₖ = pf.x0 - pf.x + fk
     for i=1:N
         pf.f!(pf.M1x, pf.refx[i], pf.p, pf.t[i])
         @__dot__ pf.δₖ += pf.plms.coeffs[i]*pf.M1x
@@ -289,7 +301,7 @@ function (pf::PLMsFunctor)(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP
     compute_sum_Jp!(pf)                         # set pf.sJp
 
     @__dot__ pf.x0 = mid(Xⱼ)                    # set x0
-    compute_δₖ!(pf)                              # set pf.δₖ
+    compute_δₖ!(pf, fk)                          # set pf.δₖ
 
     refine_X!(pf, A, Δⱼ)                        # compute X storing to first position w/o cycling
     @__dot__ pf.x = mid(X̃ⱼ)                     # set x
