@@ -202,6 +202,7 @@ end
 
 function update_coefficients!(pf::PLMsFunctor{F,N,T,S,JX,JP}, t0::Float64) where {F,N,T,S,JX,JP}
     if pf.h > 0
+        println("ran fixed compute...")
         compute_coefficients!(pf.plms)
     else
         pushfirst!(pf.plms.times, t0)
@@ -250,7 +251,8 @@ function compute_δₖ!(pf::PLMsFunctor{N,T,S,JX,JP}, fk) where {N,T,S,JX,JP}
     @__dot__ pf.δₖ = pf.x0 - pf.x + fk
     for i=1:N
         pf.f!(pf.M1x, pf.refx[i], pf.p, pf.t[i])
-        @__dot__ pf.δₖ += pf.plms.coeffs[i]*pf.M1x
+        println("pf.M1x: $(pf.M1x)")
+        pf.δₖ += pf.plms.coeffs[i]*pf.M1x
     end
     nothing
 end
@@ -301,6 +303,7 @@ function (pf::PLMsFunctor)(hbuffer, tbuffer, X̃ⱼ, Xⱼ, xval, A, Δⱼ, P, rP
     compute_sum_Jp!(pf)                         # set pf.sJp
 
     @__dot__ pf.x0 = mid(Xⱼ)                    # set x0
+    pushfirst!(pf.refx, pf.x0)
     compute_δₖ!(pf, fk)                          # set pf.δₖ
 
     refine_X!(pf, A, Δⱼ)                        # compute X storing to first position w/o cycling
