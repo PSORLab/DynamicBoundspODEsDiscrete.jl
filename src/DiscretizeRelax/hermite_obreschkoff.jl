@@ -41,6 +41,11 @@ function HermiteObreschkoff(p::Val{P}, q::Val{Q}) where {P,Q}
 end
 HermiteObreschkoff(p::Int, q::Int) = HermiteObreschkoff(Val(p), Val(q))
 
+"""
+$(TYPEDEF)
+
+A functor used to used to compute relaxations and bounds via Hermite-Obreschkoff methods.
+"""
 mutable struct HermiteObreschkoffFunctor{F <: Function, P, Q, K, Q1, T <: Real, S <: Real, NY} <: AbstractStateContractor
     hermite_obreschkoff::HermiteObreschkoff{P, Q, K}
     lon::LohnersFunctor{F, K, T, S, NY}

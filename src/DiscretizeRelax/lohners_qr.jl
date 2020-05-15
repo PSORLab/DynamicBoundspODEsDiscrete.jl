@@ -1,5 +1,7 @@
 """
 $(TYPEDEF)
+
+A functor used in computing bounds and relaxations via Lohner's method.
 """
 mutable struct LohnersFunctor{F <: Function, K, T <: Real, S <: Real, NY} <: AbstractStateContractor
     set_tf!::TaylorFunctor!{F, K, T, S}
@@ -30,7 +32,7 @@ state_contractor_γ(m::LohnerContractor) = 1.0
 state_contractor_steps(m::LohnerContractor) = 2
 
 """
-$(TYPEDSIGNATURES)
+$(FUNCTIONNAME)
 
 An implementation of the parametric Lohner's method described in the paper in (1)
 based on the non-parametric version given in (2).

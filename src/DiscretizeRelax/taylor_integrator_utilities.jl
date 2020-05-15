@@ -295,7 +295,7 @@ mutable struct JacTaylorFunctor!{F <: Function, N, T <: Real, S <: Real, NY}
 end
 
 """
-$(TYPEDSIGNATURES)
+$(FUNCTIONNAME)
 
 A constructor for TaylorFunctor that preallocates storage for computing interval
 extensions of Taylor coefficients. The type `T` should use type `Q` for internal
@@ -352,7 +352,7 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K
 end
 
 """
-$(TYPEDSIGNATURES)
+$(FUNCTIONNAME)
 
 Defines the call to `JacTaylorFunctor!` that preallocates storage to `Taylor1`
 objects as necessary.
@@ -379,7 +379,7 @@ function (d::JacTaylorFunctor!{F,K,T,S,NY})(out::AbstractVector{Dual{Nothing,S,N
 end
 
 """
-$(TYPEDSIGNATURES)
+$(FUNCTIONNAME)
 
 Computes the Jacobian of the Taylor coefficients w.r.t. y = (x,p) storing the
 output inplace to `result`. A JacobianConfig object without tag checking, cfg,
@@ -403,7 +403,7 @@ function jacobian_taylor_coeffs!(g::JacTaylorFunctor!{F,K,T,S,NY}, X::Vector{S},
 end
 
 """
-$(TYPEDSIGNATURES)
+$(FUNCTIONNAME)
 
 Extracts the Jacobian of the Taylor coefficients w.r.t. x, `Jx`, and the
 Jacobian of the Taylor coefficients w.r.t. p, `Jp`, from `result`. The order of
@@ -445,7 +445,7 @@ mutable struct QRDenseStorage
 end
 
 """
-$(TYPEDSIGNATURES)
+$(FUNCTIONNAME)
 
 A constructor for QRDenseStorage assumes `Q` is of size `nx`-by-`nx` and of
 type `Float64`.
@@ -459,7 +459,7 @@ function QRDenseStorage(nx::Int)
 end
 
 """
-$(TYPEDSIGNATURES)
+$(FUNCTIONNAME)
 
 Computes the QR factorization of `A` of size `(nx,nx)` and then stores it to
 fields in `qst`.
@@ -471,7 +471,7 @@ function calculateQ!(qst::QRDenseStorage, A::Matrix{Float64}, nx::Int)
 end
 
 """
-$(TYPEDSIGNATURES)
+$(FUNCTIONNAME)
 
 Computes `inv(Q)` via transpose! and stores this to `qst.inverse`.
 """
@@ -499,7 +499,7 @@ function eval_cycle!(f!, cb::CircularBuffer, x, p, t)
 end
 
 """
-$(TYPEDSIGNATURES)
+$(FUNCTIONNAME)
 
 Creates preallocated storage for an array of QR factorizations.
 """
@@ -523,10 +523,21 @@ function reinitialize!(x::CircularBuffer{QRDenseStorage})
     nothing
 end
 
+"""
+$(TYPEDEF)
+
+A structure that holds the results from a uniqueness test.
+
+$(TYPEDFIELDS)
+"""
 mutable struct UniquenessResult{S <: Number}
+    "Step size"
     step::Float64
+    "Boolean that is true if result is unique"
     confirmed::Bool
+    "Output box constraints"
     X::Vector{S}
+    "k-th Taylor series coefficients"
     fk::Vector{S}
 end
 function UniquenessResult(s::S, nx::Int, np::Int) where S
@@ -535,17 +546,29 @@ function UniquenessResult(s::S, nx::Int, np::Int) where S
     UniquenessResult{S}(0.0, false, X, fk)
 end
 
+"""
+$(TYPEDEF)
+
+A structure used to resolve the results from a single step.
+
+$(TYPEDFIELDS)
+"""
 mutable struct StepResult{S <: Number}
+    "Termination status code"
     status_flag::TerminationStatusCode
     "User-specified step size (if h > 0.0)"
     h::Float64
+    "Input step size for given step (overode by h > 0.0)"
     hj::Float64
+    "Predicted output step size (overode by h > 0.0)"
     predicted_hj::Float64
+    "Computed error tolerance"
     errⱼ::Float64
     xⱼ::Vector{Float64}
     zⱼ::Vector{S}
     Xⱼ::Vector{S}
     Xapriori::Vector{S}
+    "Uniqueness result"
     unique_result::UniquenessResult{S}
     f::Vector{Vector{S}}
     ∂f∂x::Vector{Matrix{S}}

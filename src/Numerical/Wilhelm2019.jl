@@ -1,21 +1,27 @@
 """
-    $(FUNCTIONNAME)
+$(TYPEDEF)
 """
 abstract type Wilhelm2019Type end
 const W19T = Wilhelm2019Type
 
 """
-    $(FUNCTIONNAME)
+$(TYPEDEF)
+
+Use an implicit Euler style of relaxation.
 """
 struct ImpEuler <: W19T end
 
 """
-    $(FUNCTIONNAME)
+$(TYPEDEF)
+
+Use an second-order Adam's Moulton method style of relaxation.
 """
 struct AM2 <: W19T end
 
 """
-    $(FUNCTIONNAME)
+$(TYPEDEF)
+
+Use an second-order Backward Difference Formula method style of relaxation.
 """
 struct BDF2 <: W19T end
 
@@ -24,7 +30,9 @@ local_integrator(wt::AM2) = Trapezoid(autodiff = false)
 local_integrator(wt::BDF2) = ABDF2(autodiff = false)
 
 """
-    $(FUNCTIONNAME)
+$(TYPEDEF)
+
+A callback function used for the Wilhelm2019 integrator.
 """
 mutable struct CallbackH{V,F,T<:W19T} <: Function
     temp::Vector{V}
@@ -67,6 +75,8 @@ end
 
 """
 $(FUNCTIONNAME)
+
+A callback function used for the Wilhelm2019 integrator.
 """
 mutable struct CallbackHJ{F, T <: W19T} <: Function
     hj!::F
@@ -108,6 +118,8 @@ end
 
 """
 $(TYPEDEF)
+
+An integrator that bounds the numerical solution of the pODEs system.
 
 $(TYPEDFIELDS)
 """

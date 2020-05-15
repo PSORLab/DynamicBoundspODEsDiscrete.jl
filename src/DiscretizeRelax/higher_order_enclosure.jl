@@ -1,5 +1,5 @@
 """
-$(TYPEDSIGNATURES)
+$(FUNCTIONNAME)
 
 Fast check for to see if the ratio of the L∞ norm is improving in a given iteration
 using a hard-code ratio tolerance of 1.01. This is the improvement condition from
@@ -22,7 +22,7 @@ function improvement_condition(X̃ⱼ::Vector{Interval{T}}, X̃ⱼ₀::Vector{In
 end
 
 """
-$(TYPEDSIGNATURES)
+$(FUNCTIONNAME)
 
 Checks that an interval vector `X̃ⱼ` of length `nx` is contained in `X̃ⱼ₀`.
 """
@@ -38,7 +38,7 @@ function contains(X̃ⱼ::Vector{Interval{T}}, X̃ⱼ₀::Vector{Interval{T}}, n
 end
 
 """
-$(TYPEDSIGNATURES)
+$(FUNCTIONNAME)
 
 Implements the adaptive higher-order enclosure approach detailed in Nedialkov's
 dissertation (Nedialko S. Nedialkov. Computing rigorous bounds on the solution of

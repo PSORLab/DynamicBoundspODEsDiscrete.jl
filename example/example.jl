@@ -30,7 +30,7 @@ function Base.literal_pow(::typeof(^), x::Interval{T}, ::Val{N}) where {N,T<:Abs
     IntervalArithmetic.pow(x, N)
 end
 =#
-using DynamicBoundsBase, DynamicBoundspODEsPILMS, Plots, DifferentialEquations#, Cthulhu
+using DynamicBoundsBase, DynamicBoundspODEsDiscrete, Plots, DifferentialEquations#, Cthulhu
 
 #pyplot()
 println(" ")
@@ -68,10 +68,11 @@ plt = plot(t_vec , lo_vec, label="Interval Bounds -1.0", linecolor = :blue, line
 plot!(plt, t_vec , hi_vec, label="", linecolor = :blue, linestyle = :dashdot, lw=1.5)
 =#
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
-#integrator = DiscretizeRelax(prob, DynamicBoundspODEsPILMS.LohnerContractor{4}(), h = 0.01, skip_step2 = false, relax = false)
+integrator = DiscretizeRelax(prob, DynamicBoundspODEsPILMS.LohnerContractor{4}(), h = 0.01, skip_step2 = false, relax = false)
 # integrator = DiscretizeRelax(prob, DynamicBoundspODEsPILMS.LohnerContractor{4}(), skip_step2 = false, relax = false, step_limit = 0)
 #integrator = DiscretizeRelax(prob, HermiteObreschkoff(2,2), h = 0.01, skip_step2 = false, relax = true)
 
+#=
 function iJx!(dx, x, p, t)
     dx[1] = -2.0*x[1]
     nothing
@@ -81,6 +82,7 @@ function iJp!(dx, x, p, t)
     nothing
 end
 integrator = DiscretizeRelax(prob, PLMS(4, AdamsMoulton()), h = 0.01, skip_step2 = false, relax = false, Jx! = iJx!, Jp! = iJp!)
+=#
 
 ratio = rand(1)
 pstar = pL.*ratio .+ pU.*(1.0 .- ratio)

@@ -1,3 +1,10 @@
+"""
+$(TYPEDEF)
+
+A structure hold parameters for discretization and relaxation techniques.
+
+$(TYPEDFIELDS)
+"""
 struct StepParams
     "Error tolerance"
     tol::Float64
@@ -18,9 +25,7 @@ end
 """
 $(TYPEDEF)
 
-An integrator ....
-
-An elastic array is Y
+An integrator for discretize and relaxation techniques.
 
 $(TYPEDFIELDS)
 """
@@ -141,7 +146,7 @@ end
 
 
 """
-$(TYPEDSIGNATURES)
+$(FUNCTIONNAME)
 
 Estimates the local excess from as the infinity-norm of the diam of the
 kth Taylor cofficient of the prior step.
@@ -170,7 +175,7 @@ function lepus_step_size!(out::StepResult{S}, params::StepParams, k::Int, nx::In
 end
 
 """
-$(TYPEDSIGNATURES)
+$(FUNCTIONNAME)
 
 Performs a single-step of the validated integrator. Input stepsize is out.step.
 """
