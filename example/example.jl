@@ -1,9 +1,3 @@
-#  START of function ... (HOE,yadda yadda)
-# p[1] = Interval{Float64}
-# x[1] = STaylor1{6,Interval{Float64}}
-
-#
-
 using Revise
 using IntervalArithmetic, TaylorSeries
 setrounding(Interval, :none)
@@ -25,52 +19,49 @@ function ^(x::Interval{Float64}, n::Integer)  # fast integer power
     end
 end
 
-#=
-function Base.literal_pow(::typeof(^), x::Interval{T}, ::Val{N}) where {N,T<:AbstractFloat}
-    IntervalArithmetic.pow(x, N)
-end
-=#
-using DynamicBoundsBase, DynamicBoundspODEsDiscrete, Plots, DifferentialEquations#, Cthulhu
+using DynamicBoundsBase, Plots, DifferentialEquations#, Cthulhu
+using DynamicBoundspODEsDiscrete
 
-#pyplot()
 println(" ")
 println(" ------------------------------------------------------------ ")
+println(" ------------- PACKAGE EXAMPLE       ------------------------ ")
 println(" ------------------------------------------------------------ ")
-println(" ------------------------------------------------------------ ")
-
-# TODO: Fix Lohner interval test?
-# TODO: Get McCormick operator version working.
-# TODO: Fix variable step size hoe routine...
 
 x0(p) = [9.0]
 function f!(dx, x, p, t)
-    #dx[1] = -x[1]^2 + p[1]
-    #dx[1] = p[1] - x[1]^2
     dx[1] = p[1] - x[1]^2
     nothing
 end
 
-tspan = (0.0, 0.1)
-#pL = [0.2; 0.1]
-#pU = 10.0*pL
+tspan = (0.0, 0.05)
 pL = [-1.0]
 pU = [1.0]
-kval = 5
+
+prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
+
+# NONLEPUS CONTROL
+#integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{4}(), h = 0.01, skip_step2 = false, relax = true)
+#integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{4}(), h = 0.025, skip_step2 = false, relax = false)
+
+# LEPUS CONTROL
+#integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{6}(), h = 0.02,
+#                             repeat_limit = 1, skip_step2 = false, step_limit = 5, relax = false)
+
+#=
+integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{10}(), h = 0.00,
+                             repeat_limit = 1, skip_step2 = false, step_limit = 20, relax = false)
+=#
+
+
+integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.HermiteObreschkoff(2, 2), h = 0.01,
+                             repeat_limit = 1, skip_step2 = false, step_limit = 3, relax = true)
 
 
 #=
-DynamicBoundsBase.relax!(integrator)
-t_vec = integrator.time
-lo_vec = getfield.(getindex.(integrator.storage[:],1), :lo)
-hi_vec = getfield.(getindex.(integrator.storage[:],1), :hi)
-plt = plot(t_vec , lo_vec, label="Interval Bounds -1.0", linecolor = :blue, linestyle = :dashdot,
-           lw=1.5, legend=:bottomleft)
-plot!(plt, t_vec , hi_vec, label="", linecolor = :blue, linestyle = :dashdot, lw=1.5)
+integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.HermiteObreschkoff(3, 3), h = 0.01,
+                             repeat_limit = 1, skip_step2 = false, step_limit = 2, relax = false)
+println("typeof(integrator.set_tf!) = $(typeof(integrator.set_tf!))")
 =#
-prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
-integrator = DiscretizeRelax(prob, DynamicBoundspODEsPILMS.LohnerContractor{4}(), h = 0.01, skip_step2 = false, relax = false)
-# integrator = DiscretizeRelax(prob, DynamicBoundspODEsPILMS.LohnerContractor{4}(), skip_step2 = false, relax = false, step_limit = 0)
-#integrator = DiscretizeRelax(prob, HermiteObreschkoff(2,2), h = 0.01, skip_step2 = false, relax = true)
 
 #=
 function iJx!(dx, x, p, t)
@@ -86,7 +77,7 @@ integrator = DiscretizeRelax(prob, PLMS(4, AdamsMoulton()), h = 0.01, skip_step2
 
 ratio = rand(1)
 pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
-setall!(integrator, ParameterValue(), [0.1])
+setall!(integrator, ParameterValue(), [0.0])
 DynamicBoundsBase.relax!(integrator)
 
 d = integrator
@@ -100,17 +91,16 @@ method_f! = d.method_f!
 #@btime DynamicBoundsBase.relax!($integrator)
 
 t_vec = integrator.time
-lo_vec = getfield.(getindex.(integrator.storage[:],1), :lo)
-hi_vec = getfield.(getindex.(integrator.storage[:],1), :hi)
-#lo_vec = getfield.(getfield.(getindex.(integrator.storage[:],1), :Intv), :lo)
-#hi_vec = getfield.(getfield.(getindex.(integrator.storage[:],1), :Intv), :hi)
+#lo_vec = getfield.(getindex.(integrator.storage[:],1), :lo)
+#hi_vec = getfield.(getindex.(integrator.storage[:],1), :hi)
+lo_vec = getfield.(getfield.(getindex.(integrator.storage[:],1), :Intv), :lo)
+hi_vec = getfield.(getfield.(getindex.(integrator.storage[:],1), :Intv), :hi)
 
 #lo_vec = getfield.(getindex.(integrator.storage[:],1), :cv)
 #hi_vec = getfield.(getindex.(integrator.storage[:],1), :cc)
 
-plt = plot(t_vec , lo_vec, label="Interval Bounds 0.0", linecolor = :black, linestyle = :dot,
-           lw=1.5, legend=:bottomleft)
-plot!(plt, t_vec , hi_vec, label="", linecolor = :black, linestyle = :dot, lw=1.5)
+plt = plot(t_vec , lo_vec, label="Interval Bounds 0.0", marker = (:hexagon, 2, 0.6, :green), linealpha = 0.0, legend=:bottomleft)
+plot!(plt, t_vec , hi_vec, label="", linealpha = 0.0, marker = (:hexagon, 2, 0.6, :green))
 #=
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
 integrator = DiscretizeRelax(prob, h = 0.01, skip_step2 = false, k = kval)

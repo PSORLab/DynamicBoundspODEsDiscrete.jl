@@ -1,0 +1,230 @@
+# Copyright (c) 2020: Matthew Wilhelm & Matthew Stuber.
+# This work is licensed under the Creative Commons Attribution-NonCommercial-
+# ShareAlike 4.0 International License. To view a copy of this license, visit
+# http://creativecommons.org/licenses/by-nc-sa/4.0/ or send a letter to Creative
+# Commons, PO Box 1866, Mountain View, CA 94042, USA.
+#############################################################################
+# Dynamic Bounds - pODEs Discrete
+# A package for discretize and relax methods for bounding pODEs.
+# See https://github.com/PSORLab/DynamicBoundspODEsDiscrete.jl
+#############################################################################
+# src/DiscretizeRelax/method/single_step.jl
+# Defines a single step of the integation method.
+#############################################################################
+
+# """
+# LEPUS and Integration parameters.
+# """
+Base.@kwdef struct StepParams
+    tol::Float64 = 1E-5
+    hmin::Float64 = 1E-8
+    repeat_limit::Int64 = 3
+    is_adaptive::Bool = true
+    skip_step2::Bool = false
+end
+
+mutable struct StepResult{S}
+    xⱼ
+    Xⱼ
+    A::CircularBuffer{QRDenseStorage}
+    Δ::CircularBuffer{Vector{S}}
+    predicted_hj
+    time
+end
+
+mutable struct ExistStorage{F,K,S,T}
+    status_flag::TerminationStatusCode
+    hj::Float64
+    hmin::Float64
+    is_adaptive::Bool
+    ϵ::Float64
+    αfrac::Float64
+    k::Int64
+    predicted_hj::Float64
+    computed_hj::Float64
+    hj_max::Float64
+    nx::Int64
+    f_coeff::Vector{Vector{T}}
+    f_temp_PU::Vector{Vector{T}}
+    f_temp_tilde::Vector{Vector{T}}
+    f_flt::Vector{Float64}
+    hfk::Vector{T}
+    fk::Vector{T}
+    β::Vector{Float64}
+    poly_term::Vector{T}
+    Xj_0::Vector{T}
+    Xj_apriori::Vector{T}
+    Vⱼ::Vector{T}
+    Uⱼ::Vector{T}
+    Z::Vector{T}
+    P::Vector{T}
+    tf!::TaylorFunctor!{F,K,S,T}
+end
+
+function ExistStorage(tf!::TaylorFunctor!{F,K,S,T}, s::T, P, nx::Int64, np::Int64, k::Int64, h::Float64, cap::Int64) where {F,K,S,T}
+
+
+    flag = RELAXATION_NOT_CALLED
+    Xapriori = zeros(T, nx)
+    Xj_0 = zeros(T, nx)
+    Xj_apriori = zeros(T, nx)
+
+    f_coeff = Vector{T}[]
+    ftilde = Vector{T}[]
+    fPU = Vector{T}[]
+    for i in 1:(k + 1)
+        push!(f_coeff, zeros(T, nx))
+        push!(ftilde, zeros(T, nx))
+        push!(fPU, zeros(T, nx))
+    end
+
+    hfk = zeros(T, nx)
+    fk = zeros(T, nx)
+    Z = zeros(T, nx)
+
+    ϵ = 0.5
+    αfrac = 0.5
+
+    poly_term = zeros(T, nx)
+    β = zeros(Float64, nx)
+    f_flt = zeros(Float64, nx)
+    Vⱼ = zeros(T, nx)
+    Uⱼ = zeros(T, nx)
+    Z = zeros(T, nx)
+
+    return ExistStorage{F,K,S,T}(flag, h, h, (h === 0.0), ϵ, αfrac, k, h, h, Inf, nx,
+                                 f_coeff, fPU, ftilde, f_flt, hfk, fk, β, poly_term,
+                                 Xj_0, Xj_apriori, Vⱼ, Uⱼ, Z, P, tf!)
+end
+
+mutable struct ContractorStorage{S}
+    times::CircularBuffer{Float64}
+    steps::CircularBuffer{Float64}
+    Xj_0::Vector{S}
+    Xj_apriori::Vector{S}
+    xval::Vector{Float64}
+    A::CircularBuffer{QRDenseStorage}
+    Δ::CircularBuffer{Vector{S}}
+    P::Vector{S}
+    rP::Vector{S}
+    pval::Vector{Float64}
+    fk_apriori::Vector{S}
+    hj_computed::Float64
+    X_computed::Vector{S}
+    xval_computed::Vector{Float64}
+    B::Matrix{Float64}
+    γ::Float64
+end
+function ContractorStorage(style::S, nx, np, k, h, method_steps) where S
+    # add initial storage
+    Xj_0 = zeros(S, nx)
+    Xj_apriori = zeros(S, nx)
+    xval = zeros(Float64, nx)
+    xval_computed = zeros(Float64, nx)
+    P = zeros(S, np)
+    rP = zeros(S, np)
+    pval = zeros(Float64, np)
+    fk_apriori = zeros(S, nx)
+    hj_computed = 0.0
+    X_computed = zeros(S, nx)
+    xval_computed = zeros(Float64, nx)
+    B = zeros(Float64, nx, nx)
+    γ = 0.0
+
+    # add to buffer
+    times = CircularBuffer{Float64}(method_steps);  append!(times, zeros(nx))
+    steps = CircularBuffer{Float64}(method_steps);  append!(steps, zeros(nx))
+    A = qr_stack(nx, method_steps)
+    Δ = CircularBuffer{Vector{S}}(method_steps)
+    fill!(Δ, zeros(S, nx))
+
+    return ContractorStorage{S}(times, steps, Xj_0, Xj_apriori, xval, A, Δ, P,
+                                rP, pval, fk_apriori, hj_computed, X_computed, xval_computed,
+                                B, γ)
+end
+
+function set_xX!(result::StepResult{S}, contract::ContractorStorage{S}) where {S <: Number}
+    result.Xⱼ .= contract.X_computed
+    result.xⱼ .= contract.xval_computed
+    contract.Xj_0 .= contract.X_computed
+    contract.xval .= contract.xval_computed
+    return nothing
+end
+
+function excess_error(Z::Vector{S}, hj::Float64, hj_eu::Float64, γ::Float64, k::Int64, nx::Int64) where S
+    errⱼ = 0.0; dₜ = 0.0
+    for i = 1:nx
+        dₜ = (hj/hj_eu)*diam(@inbounds Z[i])
+        errⱼ = (dₜ > errⱼ) ? dₜ : errⱼ
+    end
+    γ*errⱼ
+end
+
+#"""
+#$(FUNCTIONNAME)
+#
+#Performs a single-step of the validated integrator. Input stepsize is out.step.
+#"""
+function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{T},
+                      params::StepParams, result::StepResult{T}, sc::M,
+                      j::Int64) where {M <: AbstractStateContractor, F, K, S <: Real, T}
+
+    # validate existence & uniqueness (returns if E&U cannot be shown)
+    existence_uniqueness!(exist, params, result.time, j)
+    if exist.status_flag === NUMERICAL_ERROR
+        return nothing
+    end
+
+    # copy info from existence to contractor storage
+    contract.Xj_apriori .= exist.Xj_apriori
+    contract.hj_computed = exist.computed_hj
+    hj = contract.hj_computed
+    hj_eu = hj
+    predicted_hj = 0.0
+
+    # begin contractor step
+    count = 0
+    if !params.skip_step2
+        if params.is_adaptive
+            while hj > params.hmin && count < params.repeat_limit
+                sc(contract, result)
+
+                # LEPUS STEPSIZE PREDICTION
+                errj = excess_error(exist.Z, hj, hj_eu, contract.γ, exist.k, exist.nx)
+                if errj < hj*params.tol
+                    contract.hj_computed = 0.9*hj*(0.5*hj*params.tol/errj)^(1/(exist.k-1))
+                    break
+                else
+                    hj_reduced = hj*(hj*params.tol/errj)^(1/(exist.k-1))
+                    exist.Z *= (hj_reduced/hj)^exist.k
+                    hj = hj_reduced
+                    contract.hj_computed = hj
+                end
+                count += 1
+            end
+
+            set_xX!(result, contract)::Nothing
+        else
+            # perform corrector step
+            sc(contract, result)
+
+            # updates shifts Aj+1 -> Aj and so on
+            pushfirst!(contract.A, last(contract.A))
+            pushfirst!(contract.Δ, get_Δ(sc))
+            set_xX!(result, contract)::Nothing
+        end
+    else
+        result.xⱼ .= mid.(exist.Xapriori)
+        result.Xⱼ .= exist.Xapriori
+    end
+
+    # store times and step sizes to time/step buffer
+    # and updated prediced step size
+    result.time += hj
+    result.predicted_hj = predicted_hj
+
+    exist.Xj_0 .= result.Xⱼ
+    exist.predicted_hj = contract.hj_computed
+
+    return nothing
+end
