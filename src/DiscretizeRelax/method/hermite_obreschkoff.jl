@@ -220,16 +220,12 @@ function hermite_obreschkoff_predictor!(d::HermiteObreschkoffFunctor{F,P1,Q1,K,T
 
     # update x floating point value
     d.X_predict = d.Vⱼ₊₁ + d.Rⱼ₊₁ + (Jf!_pred.Jxsto*contract.A[2].Q)*contract.Δ[1] + Jf!_pred.Jpsto*contract.rP
-    @show d.X_predict
 
     return nothing
 end
 
 function (d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY})(contract::ContractorStorage{S},
                                                           result::StepResult{S}) where {F, P1, Q1, K, T, S, NY}
-
-    println("    ")
-    println("    ")
 
     hermite_obreschkoff_predictor!(d, contract)
 
@@ -289,7 +285,6 @@ function (d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY})(contract::ContractorSt
     Jpdiff = Jf!_pred.Jpsto - Jf!_correct.Jpsto
     Cp = precond*Jpdiff
 
-    @show "contract 1", contract.Δ[1]
     X_computed = d.xval_correct + B*contract.Δ[1] + C*Uj + Cp*contract.rP + precond*δⱼ₊₁
     contract.X_computed = X_computed .∩ d.X_predict
     @__dot__ contract.xval_computed = mid(contract.X_computed)
@@ -304,12 +299,8 @@ function (d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY})(contract::ContractorSt
     Uj2 = contract.X_computed - d.xval_correct
     B2 = precond*(Jf!_pred.Jxsto*contract.A[2].Q)
     d.Δⱼ₊₁ = precond2*δⱼ₊₁ + precond2*Jpdiff*contract.rP + B2*contract.Δ[1] + Aⱼ₊₁.inv*C*Uj2
-    @show d.Δⱼ₊₁
 
     pushfirst!(contract.Δ, d.Δⱼ₊₁)
-    @show "contract 2", contract.Δ[1]
-
-    @show contract.X_computed
 
     return RELAXATION_NOT_CALLED
 end
