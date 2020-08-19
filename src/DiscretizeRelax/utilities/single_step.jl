@@ -114,6 +114,7 @@ mutable struct ContractorStorage{S}
     xval_computed::Vector{Float64}
     B::Matrix{Float64}
     γ::Float64
+    step_count::Int64
 end
 function ContractorStorage(style::S, nx, np, k, h, method_steps) where S
     # add initial storage
@@ -130,6 +131,7 @@ function ContractorStorage(style::S, nx, np, k, h, method_steps) where S
     xval_computed = zeros(Float64, nx)
     B = zeros(Float64, nx, nx)
     γ = 0.0
+    step_count = 1
 
     # add to buffer
     times = CircularBuffer{Float64}(method_steps);  append!(times, zeros(nx))
@@ -139,8 +141,8 @@ function ContractorStorage(style::S, nx, np, k, h, method_steps) where S
     fill!(Δ, zeros(S, nx))
 
     return ContractorStorage{S}(times, steps, Xj_0, Xj_apriori, xval, A, Δ, P,
-                                rP, pval, fk_apriori, hj_computed, X_computed, xval_computed,
-                                B, γ)
+                                rP, pval, fk_apriori, hj_computed, X_computed,
+                                xval_computed, B, γ, step_count)
 end
 
 function set_xX!(result::StepResult{S}, contract::ContractorStorage{S}) where {S <: Number}

@@ -30,6 +30,15 @@ mutable struct LohnersFunctor{F <: Function, K, T <: Real, S <: Real, NY} <: Abs
     Rⱼ₊₁::Vector{S}
     mRⱼ₊₁::Vector{Float64}
     Δⱼ₊₁::Vector{S}
+    Jxmat::Matrix{S}
+    Jxvec::Vector{S}
+    Jpvec::Vector{S}
+    rRⱼ₊₁::Vector{S}
+    YdRⱼ₊₁::Vector{S}
+    YJxmat::Matrix{S}
+    YJxvec::Vector{S}
+    YJpmat::Matrix{S}
+    YJpvec::Vector{S}
 end
 function LohnersFunctor(f!::F, nx::Int, np::Int, k::Val{K}, s::S, t::T) where {F, K, S <: Number, T <: Number}
     set_tf! = TaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
@@ -47,8 +56,18 @@ function LohnersFunctor(f!::F, nx::Int, np::Int, k::Val{K}, s::S, t::T) where {F
     Rⱼ₊₁ = zeros(S, nx)
     mRⱼ₊₁ = zeros(Float64, nx)
     Δⱼ₊₁ = zeros(S, nx)
+    Jxmat = zeros(S, nx, nx)
+    Jxvec = zeros(S, nx)
+    Jpvec = zeros(S, nx)
+    rRⱼ₊₁ = zeros(S, nx)
+    YdRⱼ₊₁ = zeros(S, nx)
+    YJxmat = zeros(S, nx, nx)
+    YJxvec = zeros(S, nx)
+    YJpmat = zeros(S, nx, nx)
+    YJpvec = zeros(S, nx)
     LohnersFunctor{F, K+1, T, S, nx+np}(set_tf!, real_tf!, jac_tf!, Interval{Float64}(0.0,1.0), μX, ρP,
-                                        f̃, f̃val, Vⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, Δⱼ₊₁)
+                                        f̃, f̃val, Vⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, Δⱼ₊₁, Jxmat, Jxvec, Jpvec,
+                                        rRⱼ₊₁, YdRⱼ₊₁, YJxmat, YJxvec, YJpmat, YJpvec)
 end
 
 struct LohnerContractor{K} <: AbstractStateContractorName end
@@ -106,7 +125,7 @@ function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T}, result:
         hji1 = hⱼ^i
         @__dot__ d.Vⱼ₊₁ += hji1*d.f̃val[i + 1]
     end
-    d.Vⱼ₊₁ += contract.xval
+    @__dot__ d.Vⱼ₊₁ += contract.xval
 
     # compute extensions of taylor cofficients for rhs
     μ!(d.μX, contract.Xj_0, contract.xval, d.η)
@@ -129,17 +148,25 @@ function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T}, result:
     @__dot__ contract.xval_computed = d.Vⱼ₊₁ + d.mRⱼ₊₁
 
     # update bounds on X at new time
-    @show contract.Δ[1]
-    contract.X_computed .= d.Vⱼ₊₁ + d.Rⱼ₊₁ + (Jf!.Jxsto*contract.A[2].Q)*contract.Δ[1] + Jf!.Jpsto*contract.rP
+    mul!(d.Jxmat, Jf!.Jxsto, contract.A[2].Q)
+    mul!(d.Jxvec, d.Jxmat, contract.Δ[1])
+    mul!(d.Jpvec, Jf!.Jpsto, contract.rP)
+
+    @__dot__ contract.X_computed .= d.Vⱼ₊₁ + d.Rⱼ₊₁ + d.Jxvec + d.Jpvec
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
-    Aⱼ₊₁ = contract.A[1]
-    contract.B = mid.(Jf!.Jxsto*contract.A[2].Q)
-    calculateQ!(Aⱼ₊₁, contract.B, nx)
-    calculateQinv!(Aⱼ₊₁)
+    @__dot__ contract.B = mid(d.Jxmat)
+    calculateQ!(contract.A[1], contract.B, nx)
+    calculateQinv!(contract.A[1])
 
     # update Delta
-    d.Δⱼ₊₁ .= Aⱼ₊₁.inv*(d.Rⱼ₊₁ - d.mRⱼ₊₁) + (Aⱼ₊₁.inv*(Jf!.Jxsto*contract.A[2].Q))*contract.Δ[1] + (Aⱼ₊₁.inv*Jf!.Jpsto)*contract.rP
+    @__dot__ d.rRⱼ₊₁ = d.Rⱼ₊₁ - d.mRⱼ₊₁
+    mul!(d.YdRⱼ₊₁, contract.A[1].inv, d.rRⱼ₊₁)
+    mul!(d.YJxmat, contract.A[1].inv, d.Jxmat)
+    mul!(d.YJxvec, d.YJxmat, contract.Δ[1])
+    mul!(d.YJpmat, contract.A[1].inv, Jf!.Jpsto)
+    mul!(d.YJpvec, d.YJpmat, contract.rP)
+    @__dot__ d.Δⱼ₊₁ .= d.YdRⱼ₊₁ + d.YJxvec + d.YJpvec
     pushfirst!(contract.Δ, d.Δⱼ₊₁)
 
     return RELAXATION_NOT_CALLED

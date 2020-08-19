@@ -108,6 +108,31 @@ mutable struct HermiteObreschkoffFunctor{F <: Function, Pp1, Qp1, K, T <: Real, 
     sum_p::Vector{S}
     sum_q::Vector{S}
     Δⱼ₊₁::Vector{S}
+    pred_Jxmat::Matrix{S}
+    pred_Jxvec::Vector{S}
+    pred_Jpvec::Vector{S}
+    δⱼ₊₁::Vector{S}
+    precond::Matrix{Float64}
+    precond2::Matrix{Float64}
+    correct_B::Matrix{S}
+    correct_Bvec::Vector{S}
+    correct_C::Matrix{S}
+    Inx::UniformScaling{Bool}
+    Uj::Vector{S}
+    Jpdiff::Matrix{S}
+    Cp::Matrix{S}
+    CprP::Vector{S}
+    correct_Jmid::Matrix{S}
+    Uj2::Vector{S}
+    B2::Matrix{S}
+    B2vec::Vector{S}
+    rX::Vector{S}
+    Yδⱼ₊₁::Vector{S}
+    Y2δⱼ₊₁::Vector{S}
+    Y2Jpdiff::Matrix{S}
+    Y2Jpvec::Vector{S}
+    YC::Matrix{S}
+    YUj2::Vector{S}
 end
 function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q},
                                    s::S, t::T) where {F,P,Q,S,T}
@@ -154,12 +179,47 @@ function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q}
 
     Δⱼ₊₁ = zeros(S, nx)
 
+    pred_Jxmat = zeros(S, nx, nx)
+    pred_Jxvec = zeros(S, nx)
+    pred_Jpvec = zeros(S, nx)
+
+    δⱼ₊₁ = zeros(S, nx)
+    precond = zeros(Float64, nx, nx)
+    precond2 = zeros(Float64, nx, nx)
+    correct_B = zeros(S, nx, nx)
+    correct_Bvec = zeros(S, nx)
+    correct_C = zeros(S, nx, nx)
+    Inx = I
+
+    Uj = zeros(S, nx)
+    Jpdiff = zeros(S, nx, np)
+    Cp = zeros(S, nx, np)
+    CprP = zeros(S, nx)
+
+    correct_Jmid = zeros(S, nx, nx)
+    Uj2 = zeros(S, nx)
+    B2 = zeros(S, nx, nx)
+    B2vec = zeros(S, nx)
+    rX = zeros(S, nx)
+    Yδⱼ₊₁ = zeros(S, nx)
+
+    Y2δⱼ₊₁ = zeros(S, nx)
+    Y2Jpdiff = zeros(S, nx, nx)
+    Y2Jpvec = zeros(S, nx)
+    YC = zeros(S, nx, nx)
+    YUj2 = zeros(S, nx)
+
     HermiteObreschkoffFunctor{F, P1, Q1, K+1, T, S, nx + np}(hermite_obreschkoff, η, μX, ρP, gⱼ₊₁, nx,
                                                              set_tf!_pred, real_tf!_pred, Jf!_pred, Rⱼ₊₁,
                                                              mRⱼ₊₁, f̃val_pred, f̃_pred, Vⱼ₊₁,
                                                              X_predict, q_predict, real_tf!_correct,
                                                              Jf!_correct, xval_correct, f̃val_correct,
-                                                             sum_p, sum_q, Δⱼ₊₁)
+                                                             sum_p, sum_q, Δⱼ₊₁, pred_Jxmat, pred_Jxvec,
+                                                             pred_Jpvec, δⱼ₊₁, precond, precond2,
+                                                             correct_B, correct_Bvec, correct_C, Inx,
+                                                             Uj, Jpdiff, Cp,
+                                                             CprP, correct_Jmid, Uj2, B2, B2vec, rX, Yδⱼ₊₁,
+                                                             Y2δⱼ₊₁, Y2Jpdiff, Y2Jpvec, YC, YUj2)
 end
 
 function state_contractor(m::HermiteObreschkoff, f, Jx!, Jp!, nx, np, style, s, h)
@@ -199,7 +259,7 @@ function hermite_obreschkoff_predictor!(d::HermiteObreschkoffFunctor{F,P1,Q1,K,T
         hji1 = hⱼ^i
         @__dot__ d.Vⱼ₊₁ += hji1*d.f̃val_pred[i + 1]
     end
-    d.Vⱼ₊₁ += contract.xval
+    @__dot__ d.Vⱼ₊₁ += contract.xval
 
     # compute extensions of taylor cofficients for rhs
     μ!(d.μX, contract.Xj_0, contract.xval, d.η)
@@ -219,7 +279,10 @@ function hermite_obreschkoff_predictor!(d::HermiteObreschkoffFunctor{F,P1,Q1,K,T
     end
 
     # update x floating point value
-    d.X_predict = d.Vⱼ₊₁ + d.Rⱼ₊₁ + (Jf!_pred.Jxsto*contract.A[2].Q)*contract.Δ[1] + Jf!_pred.Jpsto*contract.rP
+    mul_split!(d.pred_Jxmat, Jf!_pred.Jxsto, contract.A[2].Q, nx)
+    mul_split!(d.pred_Jxvec, d.pred_Jxmat, contract.Δ[1], nx)
+    mul_split!(d.pred_Jpvec, Jf!_pred.Jpsto, contract.rP, nx)
+    @__dot__ d.X_predict = d.Vⱼ₊₁ + d.Rⱼ₊₁ + d.pred_Jxvec + d.pred_Jpvec
 
     return nothing
 end
@@ -255,7 +318,7 @@ function (d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY})(contract::ContractorSt
         coeff = ho.cqp[i]*(-hⱼ)^(i-1)
         @__dot__ d.sum_q += coeff*d.f̃val_correct[i]
     end
-    δⱼ₊₁ = d.sum_p - d.sum_q + γ*hjk*d.f̃_pred[k + 1]
+    @__dot__ d.δⱼ₊₁ = d.sum_p - d.sum_q + γ*hjk*d.f̃_pred[k + 1]
 
     # Sj,+
     Jf!_pred = d.Jf!_pred
@@ -278,27 +341,49 @@ function (d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY})(contract::ContractorSt
         @__dot__ Jf!_correct.Jpsto += hji1*Jf!_correct.Jp[i]
     end
 
-    precond = inv(mid.(Jf!_correct.Jxsto))
-    B = precond*(Jf!_pred.Jxsto*contract.A[2].Q)
-    C = I - precond*Jf!_correct.Jxsto
-    Uj = d.X_predict - d.xval_correct
-    Jpdiff = Jf!_pred.Jpsto - Jf!_correct.Jpsto
-    Cp = precond*Jpdiff
+    @__dot__ d.precond = mid(Jf!_correct.Jxsto)
+    lu!(d.precond)
 
-    X_computed = d.xval_correct + B*contract.Δ[1] + C*Uj + Cp*contract.rP + precond*δⱼ₊₁
-    contract.X_computed = X_computed .∩ d.X_predict
+    mul_split!(d.pred_Jxmat, Jf!_pred.Jxsto, contract.A[2].Q, nx)
+    d.correct_B = d.precond\d.pred_Jxmat
+    mul_split!(d.correct_Bvec, d.correct_B, contract.Δ[1], nx)
+
+    d.correct_C = d.precond\Jf!_correct.Jxsto
+    @__dot__ d.correct_C *= -1.0
+    d.correct_C += d.Inx
+
+    @__dot__ d.rX = d.X_predict - d.xval_correct
+    mul_split!(d.Uj, d.correct_C, d.rX, nx)
+
+    @__dot__ d.Jpdiff = Jf!_pred.Jpsto - Jf!_correct.Jpsto
+    d.Cp = d.precond\d.Jpdiff
+    mul_split!(d.CprP, d.Cp, contract.rP, nx)
+
+
+    mul_split!(d.Yδⱼ₊₁, d.precond, d.δⱼ₊₁, nx)
+    @__dot__ contract.X_computed = d.xval_correct + d.correct_Bvec + d.Uj + d.CprP + d.Yδⱼ₊₁
+    @__dot__ contract.X_computed = contract.X_computed ∩ d.X_predict
     @__dot__ contract.xval_computed = mid(contract.X_computed)
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
     Aⱼ₊₁ = contract.A[1]
-    contract.B = mid.(Jf!_correct.Jxsto*contract.A[2].Q)
+    mul_split!(d.correct_Jmid, Jf!_correct.Jxsto, contract.A[2].Q, nx)
+    @__dot__ contract.B = mid(d.correct_Jmid)
     calculateQ!(Aⱼ₊₁, contract.B, nx)
     calculateQinv!(Aⱼ₊₁)
 
-    precond2 = Aⱼ₊₁.inv*precond
-    Uj2 = contract.X_computed - d.xval_correct
-    B2 = precond*(Jf!_pred.Jxsto*contract.A[2].Q)
-    d.Δⱼ₊₁ = precond2*δⱼ₊₁ + precond2*Jpdiff*contract.rP + B2*contract.Δ[1] + Aⱼ₊₁.inv*C*Uj2
+    mul_split!(d.precond2, Aⱼ₊₁.inv, d.precond, nx)
+    @__dot__ d.Uj2 = contract.X_computed - d.xval_correct
+    mul_split!(d.B2, d.precond, d.correct_Jmid, nx)
+    mul_split!(d.B2vec, d.B2, contract.Δ[1], nx)
+
+    mul_split!(d.Y2δⱼ₊₁, d.precond2, d.δⱼ₊₁, nx)
+    mul_split!(d.Y2Jpdiff, d.precond2, d.Jpdiff, nx)
+    mul_split!(d.Y2Jpvec, d.Y2Jpdiff, contract.rP, nx)
+    mul_split!(d.YC, Aⱼ₊₁.inv, d.correct_C, nx)
+    mul_split!(d.YUj2, d.YC, d.Uj2, nx)
+
+    @__dot__ d.Δⱼ₊₁ = d.Y2δⱼ₊₁ + d.Y2Jpvec + d.B2vec + d.YUj2
 
     pushfirst!(contract.Δ, d.Δⱼ₊₁)
 

@@ -1,4 +1,4 @@
-using Revise
+#using Revise
 using IntervalArithmetic, TaylorSeries
 setrounding(Interval, :none)
 import Base: literal_pow, ^
@@ -40,7 +40,7 @@ pU = [1.0]
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
 
 # NONLEPUS CONTROL
-#integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{4}(), h = 0.01, skip_step2 = false, relax = true)
+#integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{4}(), h = 0.01, skip_step2 = false, relax = false)
 #integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{4}(), h = 0.025, skip_step2 = false, relax = false)
 
 # LEPUS CONTROL
@@ -52,16 +52,18 @@ integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{1
                              repeat_limit = 1, skip_step2 = false, step_limit = 20, relax = false)
 =#
 
-
+#=
 integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.HermiteObreschkoff(2, 2), h = 0.01,
                              repeat_limit = 1, skip_step2 = false, step_limit = 3, relax = true)
-
-
-#=
-integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.HermiteObreschkoff(3, 3), h = 0.01,
-                             repeat_limit = 1, skip_step2 = false, step_limit = 2, relax = false)
-println("typeof(integrator.set_tf!) = $(typeof(integrator.set_tf!))")
 =#
+#=
+integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.AdamsMoulton(4), h = 0.01,
+                             repeat_limit = 1, skip_step2 = false, step_limit = 3, relax = false)
+=#
+
+
+integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.HermiteObreschkoff(3, 3), h = 0.01,
+                             repeat_limit = 1, skip_step2 = false, step_limit = 5, relax = false)
 
 #=
 function iJx!(dx, x, p, t)
@@ -79,6 +81,7 @@ ratio = rand(1)
 pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
 setall!(integrator, ParameterValue(), [0.0])
 DynamicBoundsBase.relax!(integrator)
+#println("alloc_num: $(alloc_num)")
 
 d = integrator
 #@code_warntype DynamicBoundspODEsPILMS.single_step!(d.step_result, d.step_params, d.method_f!, d.set_tf!, d.Δ, d.A, d.P, d.rP, d.p)
@@ -91,10 +94,10 @@ method_f! = d.method_f!
 #@btime DynamicBoundsBase.relax!($integrator)
 
 t_vec = integrator.time
-#lo_vec = getfield.(getindex.(integrator.storage[:],1), :lo)
-#hi_vec = getfield.(getindex.(integrator.storage[:],1), :hi)
-lo_vec = getfield.(getfield.(getindex.(integrator.storage[:],1), :Intv), :lo)
-hi_vec = getfield.(getfield.(getindex.(integrator.storage[:],1), :Intv), :hi)
+lo_vec = getfield.(getindex.(integrator.storage[:],1), :lo)
+hi_vec = getfield.(getindex.(integrator.storage[:],1), :hi)
+#lo_vec = getfield.(getfield.(getindex.(integrator.storage[:],1), :Intv), :lo)
+#hi_vec = getfield.(getfield.(getindex.(integrator.storage[:],1), :Intv), :hi)
 
 #lo_vec = getfield.(getindex.(integrator.storage[:],1), :cv)
 #hi_vec = getfield.(getindex.(integrator.storage[:],1), :cc)

@@ -44,6 +44,7 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
         d.exist_result.hj_max = tmax - tv
 
         d.contractor_result.steps[1] = d.exist_result.hj
+        d.contractor_result.step_count = step_number + 1
 
         # perform step size calculation and update bound information
         step_number = d.step_count + 1

@@ -2,7 +2,7 @@ module DynamicBoundspODEsDiscrete
 
 using McCormick, DocStringExtensions, DynamicBoundsBase,
       Reexport, LinearAlgebra, IntervalArithmetic, StaticArrays, TaylorSeries,
-      ElasticArrays, DataStructures
+      ElasticArrays, DataStructures, Polynomials
 #@reexport using DynamicBoundsBase
 
 using ForwardDiff: Chunk, Dual, Partials, construct_seeds, single_seed,
@@ -68,6 +68,7 @@ include("DiscretizeRelax/utilities/single_step.jl")
 include("DiscretizeRelax/method/higher_order_enclosure.jl")
 include("DiscretizeRelax/method/lohners_qr.jl")
 include("DiscretizeRelax/method/hermite_obreschkoff.jl")
+#include("DiscretizeRelax/method/pilms.jl")
 
 include("DiscretizeRelax/utilities/discretize_relax.jl")
 include("DiscretizeRelax/utilities/relax.jl")
