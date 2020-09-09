@@ -161,10 +161,10 @@ function set_JxJp!(g::JacTaylorFunctor!{F,K,T,S,NY}, X::Vector{S}, P, t) where {
     for i = 1:(g.s + 1)
         for q = 1:g.nx
             for z = 1:g.nx
-                g.Jx[i][z, q] = jac[q + g.nx*(i-1), z]
+                g.Jx[i][q, z] = jac[q + g.nx*(i-1), z]
             end
             for z = 1:g.np
-                g.Jp[i][z, q] = jac[q + g.nx*(i-1), g.nx + z]
+                g.Jp[i][q, z] = jac[q + g.nx*(i-1), g.nx + z]
             end
         end
     end

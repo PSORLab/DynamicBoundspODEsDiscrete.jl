@@ -1,3 +1,13 @@
+
+# NONLEPUS CONTROL
+#integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{4}(), h = 0.01, skip_step2 = false, relax = use_relax)
+#integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{4}(), h = 0.025, skip_step2 = false, relax = use_relax)
+
+# LEPUS CONTROL
+#integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{6}(), h = 0.02,
+#                             repeat_limit = 1, skip_step2 = false, step_limit = 5, relax = use_relax)
+
+
 #using Revise
 using IntervalArithmetic, TaylorSeries
 setrounding(Interval, :none)
@@ -27,44 +37,63 @@ println(" ------------------------------------------------------------ ")
 println(" ------------- PACKAGE EXAMPLE       ------------------------ ")
 println(" ------------------------------------------------------------ ")
 
-x0(p) = [9.0]
-function f!(dx, x, p, t)
-    dx[1] = p[1] - x[1]^2
-    nothing
-end
+use_relax = false
+lohners_type = 3
+prob_num = 1
+ticks = 100.0
+steps = 100.0
+tend = steps/ticks
 
-tspan = (0.0, 0.05)
-pL = [-1.0]
-pU = [1.0]
+if prob_num == 1
+    x0(p) = [9.0]
+    function f!(dx, x, p, t)
+        dx[1] = p[1] - x[1]^2
+        nothing
+    end
+    tspan = (0.0, tend)
+    pL = [-1.0]
+    pU = [1.0]
+
+elseif prob_num == 2
+    x0(p) = [1.2; 1.1]
+    function f!(dx, x, p, t)
+        dx[1] = p[1]*x[1]*(one(typeof(p[1])) - x[2])
+        dx[2] = p[1]*x[2]*(x[1] - one(typeof(p[1])))
+        nothing
+    end
+    tspan = (0.0, tend)
+    pL = [2.95]
+    pU = [3.05]
+end
 
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
 
-# NONLEPUS CONTROL
-#integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{4}(), h = 0.01, skip_step2 = false, relax = false)
-#integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{4}(), h = 0.025, skip_step2 = false, relax = false)
+if lohners_type == 1
+    integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{7}(), h = 1/ticks,
+                                 repeat_limit = 1, skip_step2 = false, step_limit = steps, relax = use_relax)
+elseif lohners_type == 2
+    integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.HermiteObreschkoff(3, 3), h = 1/ticks,
+                             repeat_limit = 1, skip_step2 = false, step_limit = steps, relax = use_relax)
+elseif lohners_type == 3
+    function iJx!(dx, x, p, t)
+        dx[1] = -2.0*x[1]
+        nothing
+    end
+    function iJp!(dx, x, p, t)
+        dx[1] = one(p[1])
+        nothing
+    end
+    integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.AdamsMoulton(4), h = 0.01,
+                                 skip_step2 = false, relax = false, Jx! = iJx!, Jp! = iJp!)
+end
 
-# LEPUS CONTROL
-#integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{6}(), h = 0.02,
-#                             repeat_limit = 1, skip_step2 = false, step_limit = 5, relax = false)
-
-#=
-integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{10}(), h = 0.00,
-                             repeat_limit = 1, skip_step2 = false, step_limit = 20, relax = false)
-=#
-
-#=
-integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.HermiteObreschkoff(2, 2), h = 0.01,
-                             repeat_limit = 1, skip_step2 = false, step_limit = 3, relax = true)
-=#
 #=
 integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.AdamsMoulton(4), h = 0.01,
-                             repeat_limit = 1, skip_step2 = false, step_limit = 3, relax = false)
-=#
-
+                             repeat_limit = 1, skip_step2 = false, step_limit = 3, relax = use_relax)
 
 integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.HermiteObreschkoff(3, 3), h = 0.01,
-                             repeat_limit = 1, skip_step2 = false, step_limit = 5, relax = false)
-
+                             repeat_limit = 1, skip_step2 = false, step_limit = 5, relax = use_relax)
+=#
 #=
 function iJx!(dx, x, p, t)
     dx[1] = -2.0*x[1]
@@ -94,13 +123,15 @@ method_f! = d.method_f!
 #@btime DynamicBoundsBase.relax!($integrator)
 
 t_vec = integrator.time
-lo_vec = getfield.(getindex.(integrator.storage[:],1), :lo)
-hi_vec = getfield.(getindex.(integrator.storage[:],1), :hi)
-#lo_vec = getfield.(getfield.(getindex.(integrator.storage[:],1), :Intv), :lo)
-#hi_vec = getfield.(getfield.(getindex.(integrator.storage[:],1), :Intv), :hi)
-
-#lo_vec = getfield.(getindex.(integrator.storage[:],1), :cv)
-#hi_vec = getfield.(getindex.(integrator.storage[:],1), :cc)
+if !use_relax
+    lo_vec = getfield.(getindex.(integrator.storage[:],1), :lo)
+    hi_vec = getfield.(getindex.(integrator.storage[:],1), :hi)
+else
+    lo_vec = getfield.(getfield.(getindex.(integrator.storage[:],1), :Intv), :lo)
+    hi_vec = getfield.(getfield.(getindex.(integrator.storage[:],1), :Intv), :hi)
+    #lo_vec = getfield.(getindex.(integrator.storage[:],1), :cv)
+    #hi_vec = getfield.(getindex.(integrator.storage[:],1), :cc)
+end
 
 plt = plot(t_vec , lo_vec, label="Interval Bounds 0.0", marker = (:hexagon, 2, 0.6, :green), linealpha = 0.0, legend=:bottomleft)
 plot!(plt, t_vec , hi_vec, label="", linealpha = 0.0, marker = (:hexagon, 2, 0.6, :green))

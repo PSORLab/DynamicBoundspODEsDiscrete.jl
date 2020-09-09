@@ -12,26 +12,6 @@
 # Defines functions needed to perform a hermite_obreshkoff iteration.
 #############################################################################
 
-function mul_split!(Y::Vector{R}, A::Matrix{S}, B::Vector{T}, nx) where {R,S,T}
-    if nx == 1
-        @inbounds Y[1] = A[1,1]*B[1]
-    else
-        mul!(Y, A, B)
-    end
-
-    return nothing
-end
-
-function mul_split!(Y::Matrix{R}, A::Matrix{S}, B::Matrix{T}, nx) where {R,S,T}
-    if nx == 1
-        @inbounds Y[1,1] = A[1,1]*B[1,1]
-    else
-        mul!(Y, A, B)
-    end
-
-    return nothing
-end
-
 function copy_buffer!(y::CircularBuffer{T}, x::CircularBuffer{T}) where T
     y.capacity = x.capacity
     y.first = x.first
@@ -98,7 +78,7 @@ mutable struct HermiteObreschkoffFunctor{F <: Function, Pp1, Qp1, K, T <: Real, 
     mRⱼ₊₁::Vector{T}
     f̃val_pred::Vector{Vector{T}}
     f̃_pred::Vector{Vector{S}}
-    Vⱼ₊₁::Vector{S}
+    Vⱼ₊₁::Vector{Float64}
     X_predict::Vector{S}
     q_predict::Int64
     real_tf!_correct::TaylorFunctor!{F, Qp1, T, T}
@@ -159,7 +139,7 @@ function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q}
         push!(f̃_pred, zeros(S, nx))
     end
 
-    Vⱼ₊₁ = zeros(S, nx)
+    Vⱼ₊₁ = zeros(nx)
     X_predict = zeros(S, nx)
     q_predict = P
 
@@ -204,7 +184,7 @@ function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q}
     Yδⱼ₊₁ = zeros(S, nx)
 
     Y2δⱼ₊₁ = zeros(S, nx)
-    Y2Jpdiff = zeros(S, nx, nx)
+    Y2Jpdiff = zeros(S, nx, np)
     Y2Jpvec = zeros(S, nx)
     YC = zeros(S, nx, nx)
     YUj2 = zeros(S, nx)
@@ -235,7 +215,6 @@ function hermite_obreschkoff_predictor!(d::HermiteObreschkoffFunctor{F,P1,Q1,K,T
     hⱼ = contract.hj_computed
     t = contract.times[1]
     q = d.q_predict
-    k = d.hermite_obreschkoff.k
     nx = d.nx
 
     set_tf! = d.set_tf!_pred
@@ -247,26 +226,24 @@ function hermite_obreschkoff_predictor!(d::HermiteObreschkoffFunctor{F,P1,Q1,K,T
     hjq = hⱼ^(q + 1)
     for i = 1:nx
         @inbounds d.Rⱼ₊₁[i] = hjq*d.f̃_pred[q + 2][i]
-        @inbounds d.mRⱼ₊₁[i] = mid(d.Rⱼ₊₁[i])
     end
 
     # defunes new x point... k corresponds to k - 1 since taylor
     # coefficients are zero indexed
     real_tf!(d.f̃val_pred, contract.xval, contract.pval, t)
     hji1 = 0.0
-    fill!(d.Vⱼ₊₁, 0.0)
+    @__dot__ d.Vⱼ₊₁ = contract.xval
     for i = 1:q
         hji1 = hⱼ^i
         @__dot__ d.Vⱼ₊₁ += hji1*d.f̃val_pred[i + 1]
     end
-    @__dot__ d.Vⱼ₊₁ += contract.xval
 
     # compute extensions of taylor cofficients for rhs
     μ!(d.μX, contract.Xj_0, contract.xval, d.η)
     ρ!(d.ρP, contract.P, contract.pval, d.η)
     set_JxJp!(Jf!_pred, d.μX, d.ρP, t)
-    for i = 1:(q + 1)
-        hji1 = hⱼ^(i - 1)
+    for i = 1:q
+        hji1 = hⱼ^(i-1)
         if i == 1
             fill!(Jf!_pred.Jxsto, zero(S))
             for j = 1:nx
@@ -282,13 +259,15 @@ function hermite_obreschkoff_predictor!(d::HermiteObreschkoffFunctor{F,P1,Q1,K,T
     mul_split!(d.pred_Jxmat, Jf!_pred.Jxsto, contract.A[2].Q, nx)
     mul_split!(d.pred_Jxvec, d.pred_Jxmat, contract.Δ[1], nx)
     mul_split!(d.pred_Jpvec, Jf!_pred.Jpsto, contract.rP, nx)
+
     @__dot__ d.X_predict = d.Vⱼ₊₁ + d.Rⱼ₊₁ + d.pred_Jxvec + d.pred_Jpvec
 
     return nothing
 end
 
 function (d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY})(contract::ContractorStorage{S},
-                                                          result::StepResult{S}) where {F, P1, Q1, K, T, S, NY}
+                                                          result::StepResult{S},
+                                                          count::Int) where {F, P1, Q1, K, T, S, NY}
 
     hermite_obreschkoff_predictor!(d, contract)
 
@@ -301,6 +280,7 @@ function (d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY})(contract::ContractorSt
     q = ho.q
     k = ho.k
     nx = d.nx
+    np = length(contract.pval)
 
     hⱼ = contract.hj_computed
     t = contract.times[1]
@@ -362,7 +342,10 @@ function (d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY})(contract::ContractorSt
 
     mul_split!(d.Yδⱼ₊₁, d.precond, d.δⱼ₊₁, nx)
     @__dot__ contract.X_computed = d.xval_correct + d.correct_Bvec + d.Uj + d.CprP + d.Yδⱼ₊₁
+
     @__dot__ contract.X_computed = contract.X_computed ∩ d.X_predict
+    affine_contract!(contract.X_computed, contract.P, contract.pval, nx, np)
+
     @__dot__ contract.xval_computed = mid(contract.X_computed)
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)

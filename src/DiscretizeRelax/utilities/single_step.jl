@@ -98,6 +98,7 @@ function ExistStorage(tf!::TaylorFunctor!{F,K,S,T}, s::T, P, nx::Int64, np::Int6
 end
 
 mutable struct ContractorStorage{S}
+    is_adaptive::Bool
     times::CircularBuffer{Float64}
     steps::CircularBuffer{Float64}
     Xj_0::Vector{S}
@@ -117,6 +118,7 @@ mutable struct ContractorStorage{S}
     step_count::Int64
 end
 function ContractorStorage(style::S, nx, np, k, h, method_steps) where S
+    is_adaptive = h <= 0.0
     # add initial storage
     Xj_0 = zeros(S, nx)
     Xj_apriori = zeros(S, nx)
@@ -140,7 +142,7 @@ function ContractorStorage(style::S, nx, np, k, h, method_steps) where S
     Δ = CircularBuffer{Vector{S}}(method_steps)
     fill!(Δ, zeros(S, nx))
 
-    return ContractorStorage{S}(times, steps, Xj_0, Xj_apriori, xval, A, Δ, P,
+    return ContractorStorage{S}(is_adaptive, times, steps, Xj_0, Xj_apriori, xval, A, Δ, P,
                                 rP, pval, fk_apriori, hj_computed, X_computed,
                                 xval_computed, B, γ, step_count)
 end
@@ -162,6 +164,35 @@ function excess_error(Z::Vector{S}, hj::Float64, hj_eu::Float64, γ::Float64, k:
     γ*errⱼ
 end
 
+function affine_contract!(X::Vector{Interval{Float64}}, P::Vector{Interval{Float64}},
+                          pval::Vector{Float64}, np::Int, nx::Int)
+    return nothing
+end
+
+function affine_contract!(X::Vector{MC{N,T}}, P::Vector{MC{N,T}}, pval::Vector{Float64},
+                          np::Int, nx::Int) where {N,T<:RelaxTag}
+    x_Intv_cv = 0.0
+    x_Intv_cc = 0.0
+    for i = 1:nx
+        Xt = @inbounds X[i]
+        x_Intv_cv = Xt.cv
+        x_Intv_cc = Xt.cc
+        for j = 1:np
+            p = @inbounds pval[j]
+            pL = @inbounds P[j].Intv.lo
+            pU = @inbounds P[j].Intv.hi
+            cv_gradj = Xt.cv_grad[j]
+            cc_gradj = Xt.cc_grad[j]
+            x_Intv_cv += (cv_gradj > 0.0) ? cv_gradj*(pL - p) : cv_gradj*(pU - p)
+            x_Intv_cc += (cc_gradj < 0.0) ? cc_gradj*(pL - p) : cc_gradj*(pU - p)
+        end
+        x_Intv_cv = max(x_Intv_cv, Xt.Intv.lo)
+        x_Intv_cc = min(x_Intv_cc, Xt.Intv.hi)
+        X[i] = MC{N,T}(Xt.cv, Xt.cc, Interval(x_Intv_cv, x_Intv_cc), Xt.cv_grad, Xt.cc_grad, Xt.cnst)
+    end
+    return nothing
+end
+
 #"""
 #$(FUNCTIONNAME)
 #
@@ -170,6 +201,8 @@ end
 function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{T},
                       params::StepParams, result::StepResult{T}, sc::M,
                       j::Int64) where {M <: AbstractStateContractor, F, K, S <: Real, T}
+
+    contract.is_adaptive = params.is_adaptive
 
     # validate existence & uniqueness (returns if E&U cannot be shown)
     existence_uniqueness!(exist, params, result.time, j)
@@ -189,7 +222,7 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
     if !params.skip_step2
         if params.is_adaptive
             while hj > params.hmin && count < params.repeat_limit
-                sc(contract, result)
+                sc(contract, result, count)
 
                 # LEPUS STEPSIZE PREDICTION
                 errj = excess_error(exist.Z, hj, hj_eu, contract.γ, exist.k, exist.nx)
@@ -208,7 +241,7 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
             set_xX!(result, contract)::Nothing
         else
             # perform corrector step
-            sc(contract, result)
+            sc(contract, result, 0)
 
             # updates shifts Aj+1 -> Aj and so on
             pushfirst!(contract.A, last(contract.A))

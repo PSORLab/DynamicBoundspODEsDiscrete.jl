@@ -63,7 +63,7 @@ function LohnersFunctor(f!::F, nx::Int, np::Int, k::Val{K}, s::S, t::T) where {F
     YdRⱼ₊₁ = zeros(S, nx)
     YJxmat = zeros(S, nx, nx)
     YJxvec = zeros(S, nx)
-    YJpmat = zeros(S, nx, nx)
+    YJpmat = zeros(S, nx, np)
     YJpvec = zeros(S, nx)
     LohnersFunctor{F, K+1, T, S, nx+np}(set_tf!, real_tf!, jac_tf!, Interval{Float64}(0.0,1.0), μX, ρP,
                                         f̃, f̃val, Vⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, Δⱼ₊₁, Jxmat, Jxvec, Jpvec,
@@ -93,9 +93,9 @@ ordinary initial and boundary value problems, in: J.R. Cash, I. Gladwell (Eds.),
 Computational Ordinary Differential Equations, vol. 1, Clarendon Press, 1992,
 pp. 425–436.](http://www.goldsztejn.com/old-papers/Lohner-1992.pdf)
 """
-function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T}, result::StepResult{T}) where {F <: Function,
-                                                                                                       K, S <: Real,
-                                                                                                       T <: Real, NY}
+function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T},
+                                         result::StepResult{T},
+                                         count::Int) where {F <: Function, K, S <: Real, T <: Real, NY}
 
     set_tf! = d.set_tf!
     real_tf! = d.real_tf!
@@ -103,6 +103,7 @@ function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T}, result:
 
     k = set_tf!.k
     nx = set_tf!.nx
+    np = length(contract.pval)
 
     hⱼ = contract.hj_computed
     hjk = hⱼ^k
@@ -148,11 +149,12 @@ function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T}, result:
     @__dot__ contract.xval_computed = d.Vⱼ₊₁ + d.mRⱼ₊₁
 
     # update bounds on X at new time
-    mul!(d.Jxmat, Jf!.Jxsto, contract.A[2].Q)
-    mul!(d.Jxvec, d.Jxmat, contract.Δ[1])
-    mul!(d.Jpvec, Jf!.Jpsto, contract.rP)
+    mul_split!(d.Jxmat, Jf!.Jxsto, contract.A[2].Q, nx)
+    mul_split!(d.Jxvec, d.Jxmat, contract.Δ[1], nx)
+    mul_split!(d.Jpvec, Jf!.Jpsto, contract.rP, nx)
 
-    @__dot__ contract.X_computed .= d.Vⱼ₊₁ + d.Rⱼ₊₁ + d.Jxvec + d.Jpvec
+    @__dot__ contract.X_computed = d.Vⱼ₊₁ + d.Rⱼ₊₁ + d.Jxvec + d.Jpvec
+    affine_contract!(contract.X_computed, contract.P, contract.pval, nx, np)
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
     @__dot__ contract.B = mid(d.Jxmat)
@@ -161,12 +163,13 @@ function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T}, result:
 
     # update Delta
     @__dot__ d.rRⱼ₊₁ = d.Rⱼ₊₁ - d.mRⱼ₊₁
-    mul!(d.YdRⱼ₊₁, contract.A[1].inv, d.rRⱼ₊₁)
-    mul!(d.YJxmat, contract.A[1].inv, d.Jxmat)
-    mul!(d.YJxvec, d.YJxmat, contract.Δ[1])
-    mul!(d.YJpmat, contract.A[1].inv, Jf!.Jpsto)
-    mul!(d.YJpvec, d.YJpmat, contract.rP)
-    @__dot__ d.Δⱼ₊₁ .= d.YdRⱼ₊₁ + d.YJxvec + d.YJpvec
+    mul_split!(d.YdRⱼ₊₁, contract.A[1].inv, d.rRⱼ₊₁, nx)
+    mul_split!(d.YJxmat, contract.A[1].inv, d.Jxmat, nx)
+    mul_split!(d.YJxvec, d.YJxmat, contract.Δ[1], nx)
+    mul_split!(d.YJpmat, contract.A[1].inv, Jf!.Jpsto, nx)
+    mul_split!(d.YJpvec, d.YJpmat, contract.rP, nx)
+    @__dot__ d.Δⱼ₊₁ = d.YdRⱼ₊₁ + d.YJxvec + d.YJpvec
+
     pushfirst!(contract.Δ, d.Δⱼ₊₁)
 
     return RELAXATION_NOT_CALLED
@@ -174,8 +177,8 @@ end
 
 get_Δ(lf::LohnersFunctor) = lf.Δⱼ₊₁
 function set_xX!(outX::Vector{S}, outx::Vector{Float64}, lf::LohnersFunctor) where {S <: Number}
-    outX .= lf.jac_tf!.Xⱼ₊₁
-    outx .= lf.jac_tf!.xⱼ₊₁
+    @__dot__ outX = lf.jac_tf!.Xⱼ₊₁
+    @__dot__ outx = lf.jac_tf!.xⱼ₊₁
     return nothing
 end
 
@@ -183,8 +186,8 @@ has_jacobians(d::LohnersFunctor) = true
 function extract_jacobians!(d::LohnersFunctor{F,K,S,T,NY}, ∂f∂x::Vector{Matrix{T}},
                             ∂f∂p::Vector{Matrix{T}}) where {F <: Function, K, S <: Real, T <: Real, NY}
     for i = 1:(d.set_tf!.k + 1)
-        ∂f∂x[i] .= d.jac_tf!.Jx[i]
-        ∂f∂p[i] .= d.jac_tf!.Jp[i]
+        @__dot__ ∂f∂x[i] = d.jac_tf!.Jx[i]
+        @__dot__ ∂f∂p[i] = d.jac_tf!.Jp[i]
     end
     nothing
 end
