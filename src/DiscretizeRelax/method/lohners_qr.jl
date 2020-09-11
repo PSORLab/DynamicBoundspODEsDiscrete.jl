@@ -76,8 +76,8 @@ function state_contractor(m::LohnerContractor{K}, f, Jx!, Jp!, nx, np, style, s,
     LohnersFunctor(f, nx, np, Val{K}(), style, s)
 end
 state_contractor_k(m::LohnerContractor{K}) where K = K
-state_contractor_γ(m::LohnerContractor) = 1.0
-state_contractor_steps(m::LohnerContractor) = 2
+state_contractor_γ(m::LohnerContractor{K}) where K = 1.0
+state_contractor_steps(m::LohnerContractor{K}) where K = 2
 
 """
 $(FUNCTIONNAME)
@@ -175,14 +175,16 @@ function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T},
     return RELAXATION_NOT_CALLED
 end
 
-get_Δ(lf::LohnersFunctor) = lf.Δⱼ₊₁
-function set_xX!(outX::Vector{S}, outx::Vector{Float64}, lf::LohnersFunctor) where {S <: Number}
+get_Δ(lf::LohnersFunctor{F,K,S,T,NY}) where {F <: Function, K, S <: Real, T <: Real, NY} = lf.Δⱼ₊₁
+function set_xX!(outX::Vector{S}, outx::Vector{Float64}, lf::LohnersFunctor{F,K,S,T,NY}) where {F <: Function,
+                                                                                                K, S <: Real,
+                                                                                                T <: Real, NY}
     @__dot__ outX = lf.jac_tf!.Xⱼ₊₁
     @__dot__ outx = lf.jac_tf!.xⱼ₊₁
     return nothing
 end
 
-has_jacobians(d::LohnersFunctor) = true
+has_jacobians(d::LohnersFunctor{F,K,S,T,NY}) where {F <: Function, K, S <: Real, T <: Real, NY} = true
 function extract_jacobians!(d::LohnersFunctor{F,K,S,T,NY}, ∂f∂x::Vector{Matrix{T}},
                             ∂f∂p::Vector{Matrix{T}}) where {F <: Function, K, S <: Real, T <: Real, NY}
     for i = 1:(d.set_tf!.k + 1)

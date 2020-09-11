@@ -32,8 +32,8 @@ mutable struct AMFunctor{S,NP} <: AbstractStateContractor
     c::Matrix{Float64}
     β::Vector{Float64}
     g::Vector{Float64}
-    Θ::Vector{SVector{NP,Float64}}
-    Θstar::Vector{SVector{NP,Float64}}
+    Θ::Matrix{SVector{NP,Float64}}
+    Θstar::Matrix{SVector{NP,Float64}}
     poly_buffer1::Polynomial{Float64}
     poly_buffer2::Polynomial{Float64}
     fk_apriori::Vector{Vector{S}}
@@ -83,8 +83,8 @@ function AMFunctor(f!::F, Jx!, Jp!, nx::Int, np::Int, method_step::Val{K},
     c = zeros(Float64, K + 1, K + 1)
     β = zeros(Float64, K + 1)
     g = zeros(Float64, K + 1)
-    Θ = zeros(SVector{np,Float64}, K + 1)
-    Θstar = zeros(SVector{np,Float64}, K + 1)
+    Θ = zeros(SVector{np,Float64}, K + 1, K + 1)
+    Θstar = zeros(SVector{np,Float64}, K + 1, K + 1)
 
     poly_buffer1 = Polynomial(zeros(1))
     poly_buffer2 = Polynomial(zeros(1))
@@ -94,7 +94,7 @@ function AMFunctor(f!::F, Jx!, Jp!, nx::Int, np::Int, method_step::Val{K},
     AMFunctor{S, np}(f!, Jx!, Jp!, nx, np, K, η, μX, ρP, Δⱼ₊₁,
                  fval, f̃, coeffs, Jxsto, Jpsto, Xj_delta, Dk, JxAff,
                  sum_x, sum_p, Y, Y0, precond, step_count,
-                 is_fixed, c, β, g, Φ, ϕ, poly_buffer1, poly_buffer2,
+                 is_fixed, c, β, g, Θ, Θstar, poly_buffer1, poly_buffer2,
                  fk_apriori, Rk)
 end
 
@@ -154,7 +154,7 @@ function compute_fixed_higher_coeffs!(d::AMFunctor, s::Int)
     return nothing
 end
 
-function seed_statics!(Θ::Matrix{SVector{N,Int}}, Θs::Matrix{SVector{N,Int}}) where N
+function seed_statics!(Θ::Matrix{SVector{N,Float64}}, Θs::Matrix{SVector{N,Float64}}, s::Int) where N
     for i = 1:(s+1)
         Θ[1,i] = seed_gradient(i, Val{N}())
         Θs[1,i] = seed_gradient(i, Val{N}())
@@ -174,12 +174,12 @@ function compute_adaptive_coeffs!(d::AMFunctor, h::Float64, t::Float64, s::Int)
     end
 
     # compute statics for Θ and Θstar
-    seed_statics!(d.Θ, d.Θstar)
+    seed_statics!(d.Θ, d.Θstar, s)
     for j = 1:s
         for i = 1:s
             d.Θ[j+1,i+1] = d.Θ[j,i+1] - d.Θstar[j,i]
         end
-        d.Θstar[j,n] = d.β[j]*d.Θ[j,n]
+        d.Θstar[j,s] = d.β[j]*d.Θ[j,s]
     end
     #d.Θn = # to do
     #d.Θk = # to do
@@ -198,7 +198,7 @@ function compute_adaptive_coeffs!(d::AMFunctor, h::Float64, t::Float64, s::Int)
 
     # compute coefficients
     for q = 1:s
-        d.coeffs[q] = current_step*d.g[d.method_step+1]*d.Θk[q]
+        d.coeffs[q] = current_step*d.g[s+1]*d.Θk[q]
     end
     for i = 1:s, q = 1:s
         d.coeffs[q] += current_step*d.g[i]*d.Θn[i][q]
@@ -207,28 +207,28 @@ function compute_adaptive_coeffs!(d::AMFunctor, h::Float64, t::Float64, s::Int)
     return nothing
 end
 
-function compute_coefficients!(d::AMFunctor, h::Float64, t::Float64, s::Int, adaptive_count::Int)
-    if d.is_fixed && iszero(adaptive_count)
+function compute_coefficients!(d::AMFunctor, h::Float64, t::Float64, s::Int, adaptive_count::Int, is_adaptive::Bool)
+    if !is_adaptive && iszero(adaptive_count)
         if s == 0
-            d.coeff[1] = 1.0
+            d.coeffs[1] = 1.0
         elseif s == 1
-            d.coeff[1] = 0.5
-            d.coeff[2] = 0.5
+            d.coeffs[1] = 0.5
+            d.coeffs[2] = 0.5
         elseif s == 2
-            d.coeff[1] = 5.0/12.0
-            d.coeff[2] = 2.0/3.0
-            d.coeff[3] = -1.0/12.0
+            d.coeffs[1] = 5.0/12.0
+            d.coeffs[2] = 2.0/3.0
+            d.coeffs[3] = -1.0/12.0
         elseif s == 3
-            d.coeff[1] = 9.0/24.0
-            d.coeff[2] = 19.0/24.0
-            d.coeff[3] = -5.0/24.0
-            d.coeff[4] = 1.0/24.0
+            d.coeffs[1] = 9.0/24.0
+            d.coeffs[2] = 19.0/24.0
+            d.coeffs[3] = -5.0/24.0
+            d.coeffs[4] = 1.0/24.0
         elseif s == 4
-            d.coeff[1] = 251.0/720.0
-            d.coeff[2] = 646.0/720.0
-            d.coeff[3] = -264.0/720.0
-            d.coeff[4] = 106.0/720.0
-            d.coeff[5] = -19.0/720.0
+            d.coeffs[1] = 251.0/720.0
+            d.coeffs[2] = 646.0/720.0
+            d.coeffs[3] = -264.0/720.0
+            d.coeffs[4] = 106.0/720.0
+            d.coeffs[5] = -19.0/720.0
         else
             compute_fixed_higher_coeffs!(d, s)
         end
@@ -242,17 +242,25 @@ end
 function (d::AMFunctor)(contract::ContractorStorage{T}, result::StepResult{T},
                         adaptive_count::Int) where T<:Number
 
+    @show contract.is_adaptive
+    @show d.method_step
+    @show adaptive_count
+
     h = contract.hj_computed
     t = contract.times[1]
     s = min(contract.step_count, d.method_step)
 
     # compute coefficients
-    compute_coefficients!(d,h,t,s,adaptive_count)
+    compute_coefficients!(d, h, t, s, adaptive_count, contract.is_adaptive)
 
     # compute Rk from union
-    set_tf!(d.f̃, contract.Xj_apriori, contract.P, t)
+    #set_tf!(d.f̃, contract.Xj_apriori, contract.P, t)
     if iszero(adaptive_count)
-        pushfirst!(d.fk_apriori, d.f̃[s + 1])
+        if s == d.method_step
+            pushfirst!(d.fk_apriori, contract.fk_apriori)
+        else
+            pushfirst!(d.fk_apriori, contract.fk_apriori)
+        end
         d.Rk_temp = d.fk_apriori[2]
         for i = 3:d.s
             @__dot__ d.Rk_temp = d.Rk_temp ∪ d.fk_apriori[i]
@@ -261,7 +269,7 @@ function (d::AMFunctor)(contract::ContractorStorage{T}, result::StepResult{T},
     compute_Rk!(d, h)
 
     # compute real valued rhs sum
-    @__dot__ Dk = result.xⱼ + (d.coeffs[s + 1]*h^(s + 2))*d.f̃[s + 1]
+    @__dot__ Dk = result.xⱼ + (d.coeffs[s + 1]*h^(s + 2))*contract.fk_apriori
     if iszero(adaptive_count)
         eval_cycle!(d.f!, d.fval, contract.xval, contract.pval, t)
     else

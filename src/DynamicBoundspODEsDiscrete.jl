@@ -3,7 +3,6 @@ module DynamicBoundspODEsDiscrete
 using McCormick, DocStringExtensions, DynamicBoundsBase,
       Reexport, LinearAlgebra, IntervalArithmetic, StaticArrays, TaylorSeries,
       ElasticArrays, DataStructures, Polynomials
-#@reexport using DynamicBoundsBase
 
 using ForwardDiff: Chunk, Dual, Partials, construct_seeds, single_seed,
       JacobianConfig, vector_mode_dual_eval, value, vector_mode_jacobian!,
@@ -24,16 +23,6 @@ import Base.MathConstants.golden
 export DiscretizeRelax, AdamsMoulton, BDF, LohnerContractor, HermiteObreschkoff, PLMS
 
 const DBB = DynamicBoundsBase
-
-mutable struct PrintCount
-      n::Int
-end
-PrintCount() = PrintCount(0)
-function (x::PrintCount)(s::String)
-      x.n += 1
-      println("Sig #$(x.n): "*s)
-      nothing
-end
 
 abstract type AbstractStateContractor end
 abstract type AbstractStateContractorName end

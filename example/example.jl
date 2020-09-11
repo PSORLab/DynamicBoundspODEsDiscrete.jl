@@ -38,7 +38,7 @@ println(" ------------- PACKAGE EXAMPLE       ------------------------ ")
 println(" ------------------------------------------------------------ ")
 
 use_relax = false
-lohners_type = 3
+lohners_type = 1
 prob_num = 1
 ticks = 100.0
 steps = 100.0
@@ -83,7 +83,7 @@ elseif lohners_type == 3
         dx[1] = one(p[1])
         nothing
     end
-    integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.AdamsMoulton(4), h = 0.01,
+    integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.AdamsMoulton(4), h = 1/ticks,
                                  skip_step2 = false, relax = false, Jx! = iJx!, Jp! = iJp!)
 end
 
