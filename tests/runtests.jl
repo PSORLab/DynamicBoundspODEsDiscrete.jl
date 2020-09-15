@@ -65,7 +65,7 @@ const DR = DynamicBoundspODEsDiscrete
     k = 3
     x = [0.1; 1.0]
     p = [0.2; 0.1]
-    jtf! = DR.JacTaylorFunctor!(f!, nx, np, k, Interval{Float64}(0.0), 0.0)
+    jtf! = DR.JacTaylorFunctor!(f!, nx, np, Val(k), Interval{Float64}(0.0), 0.0)
 
     xIntv = Interval{Float64}.(x)
     pIntv = Interval{Float64}.(p)
@@ -73,7 +73,7 @@ const DR = DynamicBoundspODEsDiscrete
     DR.jacobian_taylor_coeffs!(jtf!, yIntv)
 
     jac = JacobianResult(jtf!.out, yIntv).derivs[1]
-    tjac = zeros(Interval{Float64}, nx+np, nx*(k+1))
+    tjac = zeros(Interval{Float64}, nx + np, nx*(k+1))
     Jx = Matrix{Interval{Float64}}[zeros(Interval{Float64},nx,nx) for i in 1:(k+1)]
     Jp = Matrix{Interval{Float64}}[zeros(Interval{Float64},nx,np) for i in 1:(k+1)]
 
@@ -95,7 +95,7 @@ const DR = DynamicBoundspODEsDiscrete
     @test isapprox(coeff_out[2,4].hi, 0.173333, atol=1E-3)
 
     # make/evaluate interval valued Taylor cofficient functor
-    itf! = DR.TaylorFunctor!(f!, nx, np, k, zero(Interval{Float64}), zero(Float64))
+    itf! = DR.TaylorFunctor!(f!, nx, np, Val(k), zero(Interval{Float64}), zero(Float64))
     outIntv = zeros(Interval{Float64},8)
     itf!(outIntv, yIntv)
     @test isapprox(outIntv[1].hi, 0.10001, atol=1E-3)
@@ -105,7 +105,7 @@ const DR = DynamicBoundspODEsDiscrete
 
     # make/evaluate real valued Taylor cofficient functor
     y = [x; p]
-    rtf!  = DR.TaylorFunctor!(f!, nx, np, k, zero(Float64), zero(Float64))
+    rtf!  = DR.TaylorFunctor!(f!, nx, np, Val(k), zero(Float64), zero(Float64))
     out = zeros(8)
     rtf!(out, y)
     @test isapprox(outIntv[1], 0.10001, atol=1E-3)
@@ -121,8 +121,8 @@ const DR = DynamicBoundspODEsDiscrete
         nothing
     end
     eufY = [Interval{Float64}(0.5,1.5); Interval(0.0)]
-    itf_exist_unique! = DR.TaylorFunctor!(euf!, 1, 1, k, zero(Interval{Float64}), zero(Float64))
-    jtf_exist_unique! = DR.JacTaylorFunctor!(euf!, 1, 1, k, Interval{Float64}(0.0), 0.0)
+    itf_exist_unique! = DR.TaylorFunctor!(euf!, 1, 1, Val(k), zero(Interval{Float64}), zero(Float64))
+    jtf_exist_unique! = DR.JacTaylorFunctor!(euf!, 1, 1, Val(k), Interval{Float64}(0.0), 0.0)
     DR.jacobian_taylor_coeffs!(jtf_exist_unique!, eufY)
     coeff_out = zeros(Interval{Float64},1,k)
     DR.coeff_to_matrix!(coeff_out, jtf!.out, 1, k)
