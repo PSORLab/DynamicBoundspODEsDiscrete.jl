@@ -20,7 +20,7 @@ import Base.MathConstants.golden
 #import DynamicBoundsBase: relax!, integrate!
 #export Wilhelm2019, set, setall!, get, getall!, relax!, integrate!
 
-export DiscretizeRelax, AdamsMoulton, BDF, LohnerContractor, HermiteObreschkoff, PLMS
+export DiscretizeRelax, AdamsMoulton, BDF, LohnerContractor, HermiteObreschkoff
 
 const DBB = DynamicBoundsBase
 
@@ -57,7 +57,6 @@ include("DiscretizeRelax/utilities/single_step.jl")
 include("DiscretizeRelax/method/higher_order_enclosure.jl")
 include("DiscretizeRelax/method/lohners_qr.jl")
 include("DiscretizeRelax/method/hermite_obreschkoff.jl")
-include("DiscretizeRelax/method/pilms.jl")
 
 include("DiscretizeRelax/utilities/discretize_relax.jl")
 include("DiscretizeRelax/utilities/relax.jl")

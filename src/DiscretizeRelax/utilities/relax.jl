@@ -1,5 +1,7 @@
 function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY}
 
+    @show d.contractor_result.is_adaptive
+
     set_P!(d) ::Nothing         # Functor set P and P - p values for calculations
     compute_X0!(d)::Nothing     # Compute initial condition values
 
@@ -35,7 +37,9 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
     d.exist_result.hj = !is_adaptive ? d.exist_result.hj : 0.01*(tmax - d.contractor_result.times[1])
     d.exist_result.predicted_hj = d.exist_result.hj
 
-    while sign_tstep*d.time[step_number + 1] <= sign_tstep*tmax
+    @show ("starting error code", d.error_code)
+
+    while sign_tstep*d.time[step_number + 1] < sign_tstep*tmax
 
         # max step size is min of predicted, when next support point occurs,
         # or the last time step in the span
@@ -48,6 +52,7 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
 
         # perform step size calculation and update bound information
         step_number = d.step_count + 1
+        @show d.contractor_result.is_adaptive
         single_step!(d.exist_result, d.contractor_result, d.step_params,
                      d.step_result, d.method_f!, step_number)::Nothing
 
@@ -62,7 +67,11 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
         d.time[step_number + 1] = d.step_result.time
 
         # throw error if limit exceeded
-        if step_number > d.step_limit
+        @show sign_tstep*d.time[step_number + 1]
+        @show sign_tstep*tmax
+        @show sign_tstep*d.time[step_number + 1] < sign_tstep*tmax
+        @show ("iteration error code", d.error_code)
+        if (step_number > d.step_limit) && (sign_tstep*d.time[step_number + 1] < sign_tstep*tmax)
             d.error_code = LIMIT_EXCEEDED
             break
         elseif (d.exist_result.status_flag !== RELAXATION_NOT_CALLED)
@@ -76,6 +85,8 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
     resize!(d.storage, step_number)
     resize!(d.storage_apriori, step_number)
     resize!(d.time, step_number)
+
+    @show ("ending error code", d.error_code)
 
     if d.error_code === RELAXATION_NOT_CALLED
         d.error_code = COMPLETED

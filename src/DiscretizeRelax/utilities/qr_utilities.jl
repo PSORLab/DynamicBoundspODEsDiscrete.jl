@@ -1,5 +1,5 @@
 """
-$(TYPEDEF)
+QRDenseStorage
 
 Provides preallocated storage for the QR factorization, Q, and the inverse of Q.
 
@@ -15,7 +15,7 @@ mutable struct QRDenseStorage
 end
 
 """
-$(FUNCTIONNAME)
+QRDenseStorage(nx::Int)
 
 A constructor for QRDenseStorage assumes `Q` is of size `nx`-by-`nx` and of
 type `Float64`.
@@ -29,7 +29,7 @@ function QRDenseStorage(nx::Int)
 end
 
 """
-$(FUNCTIONNAME)
+calculateQ!
 
 Computes the QR factorization of `A` of size `(nx,nx)` and then stores it to
 fields in `qst`.
@@ -41,7 +41,7 @@ function calculateQ!(qst::QRDenseStorage, A::Matrix{Float64}, nx::Int)
 end
 
 """
-$(FUNCTIONNAME)
+calculateQinv!
 
 Computes `inv(Q)` via transpose! and stores this to `qst.inverse`.
 """
@@ -69,7 +69,7 @@ function eval_cycle!(f!, cb::CircularBuffer, x, p, t)
 end
 
 """
-$(FUNCTIONNAME)
+qr_stack(nx::Int, steps::Int)
 
 Creates preallocated storage for an array of QR factorizations.
 """
@@ -81,7 +81,7 @@ function qr_stack(nx::Int, steps::Int)
 end
 
 """
-$(TYPEDSIGNATURES)
+reinitialize!(x::CircularBuffer{QRDenseStorage})
 
 Sets the first QR storage to the identity matrix.
 """

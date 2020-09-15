@@ -1,10 +1,14 @@
 """
-$(TYPEDEF)
+TaylorFunctor!
 
 A function g!(out, y) that perfoms a Taylor coefficient calculation. Provides
 preallocated storage. Evaluating this function out is a vector of length nx*(s+1)
 where 1:(s+1) are the Taylor coefficients of the first component, (s+2):nx*(s+1)
-are the Taylor coefficients of the second component, and so on.
+are the Taylor coefficients of the second component, and so on. This may be
+constructed using `TaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q)`
+were type `T` should use type `Q` for internal computations. The order of the
+TaylorSeries is `k`, the right-hand side function is `g!`, `nx` is the number
+of state variables, `np` is the number of parameters.
 
 $(TYPEDFIELDS)
 """
@@ -33,11 +37,6 @@ mutable struct TaylorFunctor!{F <: Function, N, T <: Real, S <: Real}
     fnxt::Vector{Float64}
 end
 
-"""
-$(TYPEDSIGNATURES)
-
-Computes the Taylor coefficients at `y` and stores them inplace to `out`.
-"""
 function (d::TaylorFunctor!{F, K, T, S})(out::Vector{Vector{S}}, x::Vector{S},
           p::Vector{S}, t::T) where {F <: Function, K, T <: Real, S <: Real}
 
@@ -56,12 +55,6 @@ function (d::TaylorFunctor!{F, K, T, S})(out::Vector{Vector{S}}, x::Vector{S},
     return nothing
 end
 
-"""
-$(TYPEDSIGNATURES)
-
-A constructor for `TaylorFunctor` that preallocates storage for computing
-interval extensions of Taylor coefficients.
-"""
 function TaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K, T <: Number, Q <: Number}
 
     x0 = zeros(T, nx)

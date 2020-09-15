@@ -7,7 +7,17 @@ Parametric Discretize-and-Relax Methods for DynamicBounds.jl
 
 ## Summary
 This package implements a discretize-and-relax approaches to
-computing state bounds and relaxations using the DynamicBounds.jl framework. These methods discretize the time domain over into a finite number of points.
+computing state bounds and relaxations using the DynamicBounds.jl framework. These methods discretize the time domain over into a finite number of points and then compute valid
+relaxations at these time-points. Full documentation of this functionality may be found [here](link) in the DynamicBounds.jl website.
+
+## Installation
+This package currently makes use of a static Taylor series variant for computing
+Taylor series coefficients and variants thereof. The branch of TaylorSeries.jl located
+at https://github.com/mewilhel/TaylorSeries.jl should be used temporarily until this functionality has been merged into the main package. Instructions on using this branch are provided below:
+
+```julia
+using Pkg; Pkg.develop(PackageSpec(url="https://github.com/mewilhel/TaylorSeries.jl"))
+```
 
 ## References
 - Corliss, G. F., & Rihm, R. (1996). Validating an a priori enclosure using high-order Taylor series. MATHEMATICAL RESEARCH, 90, 228-238.

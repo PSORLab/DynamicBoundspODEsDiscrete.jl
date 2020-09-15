@@ -70,6 +70,9 @@ function LohnersFunctor(f!::F, nx::Int, np::Int, k::Val{K}, s::S, t::T) where {F
                                         rRⱼ₊₁, YdRⱼ₊₁, YJxmat, YJxvec, YJpmat, YJpvec)
 end
 
+"""
+$(TYPEDEF)
+"""
 struct LohnerContractor{K} <: AbstractStateContractorName end
 LohnerContractor(k::Int) = LohnerContractor{k}()
 function state_contractor(m::LohnerContractor{K}, f, Jx!, Jp!, nx, np, style, s, h) where K

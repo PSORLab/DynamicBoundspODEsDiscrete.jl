@@ -1,10 +1,14 @@
 """
-$(TYPEDEF)
+JacTaylorFunctor!
 
 A callable structure used to evaluate the Jacobian of Taylor cofficients. This
 also contains some addition fields to be used as inplace storage when computing
 and preconditioning paralleliped based methods to representing enclosure of the
-pODEs (Lohner's QR, Hermite-Obreschkoff, etc.)
+pODEs (Lohner's QR, Hermite-Obreschkoff, etc.). The constructor given by
+`JacTaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q)` may be used
+were type `T` should use type `Q` for internal computations. The order of the
+TaylorSeries is `k`, the right-hand side function is `g!`, `nx` is the number
+of state variables, `np` is the number of parameters.
 
 $(TYPEDFIELDS)
 """
@@ -53,13 +57,6 @@ mutable struct JacTaylorFunctor!{F <: Function, N, T <: Real, S <: Real, NY}
     fnxt::Vector{Float64}
 end
 
-"""
-$(FUNCTIONNAME)
-
-A constructor for TaylorFunctor that preallocates storage for computing interval
-extensions of Taylor coefficients. The type `T` should use type `Q` for internal
-computations.
-"""
 function JacTaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K, T <: Number, Q <: Number}
     x0 = zeros(T, nx)
     xd0 = zeros(Dual{Nothing, T, nx + np}, nx)
@@ -93,12 +90,6 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K
                                                              dx, taux, t, vnxt, fnxt)
 end
 
-"""
-$(FUNCTIONNAME)
-
-Defines the call to `JacTaylorFunctor!` that preallocates storage to `Taylor1`
-objects as necessary.
-"""
 function (d::JacTaylorFunctor!{F,K,T,S,NY})(out::AbstractVector{Dual{Nothing,S,NY}},
                                             y::AbstractVector{Dual{Nothing,S,NY}}) where {F <: Function,
                                                                                           K, T <: Real, S, NY}
@@ -122,7 +113,7 @@ function (d::JacTaylorFunctor!{F,K,T,S,NY})(out::AbstractVector{Dual{Nothing,S,N
 end
 
 """
-$(FUNCTIONNAME)
+jacobian_taylor_coeffs!
 
 Computes the Jacobian of the Taylor coefficients w.r.t. y = (x,p) storing the
 output inplace to `result`. A JacobianConfig object without tag checking, cfg,
@@ -146,7 +137,7 @@ function jacobian_taylor_coeffs!(g::JacTaylorFunctor!{F,K,T,S,NY}, X::Vector{S},
 end
 
 """
-$(FUNCTIONNAME)
+set_JxJp!
 
 Extracts the Jacobian of the Taylor coefficients w.r.t. x, `Jx`, and the
 Jacobian of the Taylor coefficients w.r.t. p, `Jp`, from `result`. The order of
