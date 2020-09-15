@@ -8,7 +8,7 @@ Parametric Discretize-and-Relax Methods for DynamicBounds.jl
 ## Summary
 This package implements a discretize-and-relax approaches to
 computing state bounds and relaxations using the DynamicBounds.jl framework. These methods discretize the time domain over into a finite number of points and then compute valid
-relaxations at these time-points. Full documentation of this functionality may be found [here](link) in the DynamicBounds.jl website.
+relaxations at these time-points. Full documentation of this functionality may be found [here](https://psorlab.github.io/DynamicBounds.jl/dev/pODEsDiscrete/pODEsDiscrete) in the DynamicBounds.jl website.
 
 ## Installation
 This package currently makes use of a static Taylor series variant for computing
