@@ -1,5 +1,5 @@
 # DynamicBoundspODEsDiscretize.jl
-Parametric Discretize-and-Relax Methods for DynamicBounds.jl
+Parametric Discretize-and-Relax methods within DynamicBounds.jl
 
 | **Linux/OS/Windows**                                   |        **Coverage**             |              
 |:-------------------------------------------------------:|:-------------------------------------------------------:|
