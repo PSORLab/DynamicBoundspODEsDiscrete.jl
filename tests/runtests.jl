@@ -70,29 +70,22 @@ const DR = DynamicBoundspODEsDiscrete
     xIntv = Interval{Float64}.(x)
     pIntv = Interval{Float64}.(p)
     yIntv = [xIntv; pIntv]
-    DR.jacobian_taylor_coeffs!(jtf!, yIntv)
+    DR.jacobian_taylor_coeffs!(jtf!, xIntv, pIntv, 0.0)
 
     jac = JacobianResult(jtf!.out, yIntv).derivs[1]
     tjac = zeros(Interval{Float64}, nx + np, nx*(k+1))
     Jx = Matrix{Interval{Float64}}[zeros(Interval{Float64},nx,nx) for i in 1:(k+1)]
     Jp = Matrix{Interval{Float64}}[zeros(Interval{Float64},nx,np) for i in 1:(k+1)]
 
-    DR.extract_JxJp!(Jx, Jp, jtf!.result, tjac, nx, np, k)
-    @test isapprox(Jp[2][2,1].lo, 0.4, atol=1E-3)
-    @test isapprox(Jp[2][1,2].lo, 1.0, atol=1E-3)
-    @test isapprox(Jp[4][2,1].lo, 0.0666666, atol=1E-3)
-    @test isapprox(Jp[4][1,2].lo, 0.079999, atol=1E-3)
-    @test isapprox(Jx[2][1,1].lo, 0.2, atol=1E-3)
-    @test isapprox(Jx[2][2,2].lo, 1.0, atol=1E-3)
-    @test isapprox(Jx[4][1,1].lo, 0.030666, atol=1E-3)
-    @test isapprox(Jx[4][2,2].lo, 0.1666, atol=1E-3)
-
-    coeff_out = zeros(Interval{Float64},2,4)
-    DR.coeff_to_matrix!(coeff_out, jtf!.out, nx, k)
-    @test isapprox(coeff_out[1,1].hi, 0.100001, atol=1E-3)
-    @test isapprox(coeff_out[2,2].hi, 1.039999, atol=1E-3)
-    @test isapprox(coeff_out[1,4].hi, 0.0047666, atol=1E-3)
-    @test isapprox(coeff_out[2,4].hi, 0.173333, atol=1E-3)
+    DR.set_JxJp!(jtf!, xIntv, pIntv, 0.0)
+    @test isapprox(jtf!.Jp[2][2,1].lo, 0.4, atol=1E-3)
+    @test isapprox(jtf!.Jp[2][1,2].lo, 1.0, atol=1E-3)
+    @test isapprox(jtf!.Jp[4][2,1].lo, 0.0666666, atol=1E-3)
+    @test isapprox(jtf!.Jp[4][1,2].lo, 0.079999, atol=1E-3)
+    @test isapprox(jtf!.Jx[2][1,1].lo, 0.2, atol=1E-3)
+    @test isapprox(jtf!.Jx[2][2,2].lo, 1.0, atol=1E-3)
+    @test isapprox(jtf!.Jx[4][1,1].lo, 0.030666, atol=1E-3)
+    @test isapprox(jtf!.Jx[4][2,2].lo, 0.1666, atol=1E-3)
 
     # make/evaluate interval valued Taylor cofficient functor
     itf! = DR.TaylorFunctor!(f!, nx, np, Val(k), zero(Interval{Float64}), zero(Float64))
@@ -124,6 +117,7 @@ const DR = DynamicBoundspODEsDiscrete
     itf_exist_unique! = DR.TaylorFunctor!(euf!, 1, 1, Val(k), zero(Interval{Float64}), zero(Float64))
     jtf_exist_unique! = DR.JacTaylorFunctor!(euf!, 1, 1, Val(k), Interval{Float64}(0.0), 0.0)
     DR.jacobian_taylor_coeffs!(jtf_exist_unique!, eufY)
+
     coeff_out = zeros(Interval{Float64},1,k)
     DR.coeff_to_matrix!(coeff_out, jtf!.out, 1, k)
     Jx = Matrix{Interval{Float64}}[zeros(Interval{Float64},1,1) for i in 1:4]
