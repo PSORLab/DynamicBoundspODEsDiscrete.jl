@@ -13,7 +13,7 @@
 #############################################################################
 
 """
-$(FUNCTIONNAME)
+improvement_condition
 
 Fast check for to see if the ratio of the L∞ norm is improving in a given iteration
 using a hard-code ratio tolerance of 1.01. This is the improvement condition from
@@ -36,7 +36,7 @@ function improvement_condition(X̃ⱼ::Vector{Interval{T}}, X̃ⱼ₀::Vector{In
 end
 
 """
-$(FUNCTIONNAME)
+contains
 
 Checks that an interval vector `Vⱼ` of length `nx` is contained in `Uⱼ`.
 """
@@ -62,6 +62,11 @@ function contains(Vⱼ::Vector{MC{N,T}}, Uⱼ::Vector{MC{N,T}}, nx::Int) where {
     return flag
 end
 
+"""
+calc_alpha
+
+Computes the stepsize for the adaptive step-routine.
+"""
 function calc_alpha(Vⱼ::Vector{T}, Uⱼ::Vector{T}, αfrac::Float64, nx::Int64, k::Int64) where T <: Number
     α = Inf
     for i = 1:nx
@@ -108,12 +113,13 @@ set_mag(x::Interval{Float64}) = mag(x)
 set_mag(x::MC{N,T}) where {N, T<:RelaxTag} = mag(x.Intv)
 
 """
-$(FUNCTIONNAME)
+existence_uniqueness!
 
 Implements the adaptive higher-order enclosure approach detailed in Nedialkov's
 dissertation (Nedialko S. Nedialkov. Computing rigorous bounds on the solution of
 an initial value problem for an ordinary differential equation. 1999. Universisty
-of Toronto, PhD Dissertation, Algorithm 5.1, page 73-74).
+of Toronto, PhD Dissertation, Algorithm 5.1, page 73-74). The arguments are
+`s::ExistStorage{F,K,S,T}, params::StepParams, t::Float64, j::Int64`.
 """
 function existence_uniqueness!(s::ExistStorage{F,K,S,T}, params::StepParams, t::Float64, j::Int64) where {F, K, S, T <: Number}
 

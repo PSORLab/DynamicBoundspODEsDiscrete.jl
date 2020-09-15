@@ -9,7 +9,7 @@
 # See https://github.com/PSORLab/DynamicBoundspODEsDiscrete.jl
 #############################################################################
 # src/DiscretizeRelax/utilities/fast_set_index.jl
-# Defines a method for setindex taht avoids conversion.
+# Defines a method for setindex that avoids conversion.
 #############################################################################
 
 # setindex! that avoids conversion.

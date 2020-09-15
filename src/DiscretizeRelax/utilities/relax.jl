@@ -1,6 +1,18 @@
-function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY}
+# Copyright (c) 2020: Matthew Wilhelm & Matthew Stuber.
+# This work is licensed under the Creative Commons Attribution-NonCommercial-
+# ShareAlike 4.0 International License. To view a copy of this license, visit
+# http://creativecommons.org/licenses/by-nc-sa/4.0/ or send a letter to Creative
+# Commons, PO Box 1866, Mountain View, CA 94042, USA.
+#############################################################################
+# Dynamic Bounds - pODEs Discrete
+# A package for discretize and relax methods for bounding pODEs.
+# See https://github.com/PSORLab/DynamicBoundspODEsDiscrete.jl
+#############################################################################
+# src/DiscretizeRelax/utilities/relax.jl
+# Defines the relax! routine for the DiscretizeRelax integrator.
+#############################################################################
 
-    @show d.contractor_result.is_adaptive
+function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY}
 
     set_P!(d) ::Nothing         # Functor set P and P - p values for calculations
     compute_X0!(d)::Nothing     # Compute initial condition values

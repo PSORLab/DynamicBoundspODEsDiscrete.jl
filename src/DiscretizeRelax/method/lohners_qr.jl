@@ -13,9 +13,19 @@
 #############################################################################
 
 """
-$(TYPEDEF)
+LohnersFunctor
 
-A functor used in computing bounds and relaxations via Lohner's method.
+A functor used in computing bounds and relaxations via Lohner's method. The
+implementation of the parametric Lohner's method described in the paper in (1)
+based on the non-parametric version given in (2).
+
+1. [Sahlodin, Ali M., and Benoit Chachuat. "Discretize-then-relax approach for
+convex/concave relaxations of the solutions of parametric ODEs." Applied Numerical
+Mathematics 61.7 (2011): 803-820.](https://www.sciencedirect.com/science/article/abs/pii/S0168927411000316)
+2. [R.J. Lohner, Computation of guaranteed enclosures for the solutions of
+ordinary initial and boundary value problems, in: J.R. Cash, I. Gladwell (Eds.),
+Computational Ordinary Differential Equations, vol. 1, Clarendon Press, 1992,
+pp. 425–436.](http://www.goldsztejn.com/old-papers/Lohner-1992.pdf)
 """
 mutable struct LohnersFunctor{F <: Function, K, T <: Real, S <: Real, NY} <: AbstractStateContractor
     set_tf!::TaylorFunctor!{F, K, T, S}
@@ -71,31 +81,21 @@ function LohnersFunctor(f!::F, nx::Int, np::Int, k::Val{K}, s::S, t::T) where {F
 end
 
 """
-$(TYPEDEF)
+LohnerContractor{K}
+
+An `AbstractStateContractorName` used to specify a parametric Lohners method contractor
+of order K.
 """
 struct LohnerContractor{K} <: AbstractStateContractorName end
 LohnerContractor(k::Int) = LohnerContractor{k}()
 function state_contractor(m::LohnerContractor{K}, f, Jx!, Jp!, nx, np, style, s, h) where K
     LohnersFunctor(f, nx, np, Val{K}(), style, s)
 end
+
 state_contractor_k(m::LohnerContractor{K}) where K = K
 state_contractor_γ(m::LohnerContractor{K}) where K = 1.0
 state_contractor_steps(m::LohnerContractor{K}) where K = 2
 
-"""
-$(FUNCTIONNAME)
-
-An implementation of the parametric Lohner's method described in the paper in (1)
-based on the non-parametric version given in (2).
-
-1. [Sahlodin, Ali M., and Benoit Chachuat. "Discretize-then-relax approach for
-convex/concave relaxations of the solutions of parametric ODEs." Applied Numerical
-Mathematics 61.7 (2011): 803-820.](https://www.sciencedirect.com/science/article/abs/pii/S0168927411000316)
-2. [R.J. Lohner, Computation of guaranteed enclosures for the solutions of
-ordinary initial and boundary value problems, in: J.R. Cash, I. Gladwell (Eds.),
-Computational Ordinary Differential Equations, vol. 1, Clarendon Press, 1992,
-pp. 425–436.](http://www.goldsztejn.com/old-papers/Lohner-1992.pdf)
-"""
 function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T},
                                          result::StepResult{T},
                                          count::Int) where {F <: Function, K, S <: Real, T <: Real, NY}
@@ -179,6 +179,12 @@ function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T},
 end
 
 get_Δ(lf::LohnersFunctor{F,K,S,T,NY}) where {F <: Function, K, S <: Real, T <: Real, NY} = lf.Δⱼ₊₁
+
+"""
+set_P!(d::DiscretizeRelax)
+
+Initializes the `P` and `rP` (P - p) fields of `d`.
+"""
 function set_xX!(outX::Vector{S}, outx::Vector{Float64}, lf::LohnersFunctor{F,K,S,T,NY}) where {F <: Function,
                                                                                                 K, S <: Real,
                                                                                                 T <: Real, NY}

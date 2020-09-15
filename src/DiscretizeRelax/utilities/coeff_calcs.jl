@@ -8,7 +8,7 @@
 # A package for discretize and relax methods for bounding pODEs.
 # See https://github.com/PSORLab/DynamicBoundspODEsDiscrete.jl
 #############################################################################
-# src/DiscretizeRelax/utilities/access_functions.jl
+# src/DiscretizeRelax/utilities/coeffs_calcs.jl
 # Defines functions used to compute taylor coefficients using static
 # univariate Taylor series.
 #############################################################################

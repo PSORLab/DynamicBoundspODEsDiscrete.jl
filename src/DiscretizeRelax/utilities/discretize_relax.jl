@@ -81,6 +81,7 @@ mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: R
     new_decision_pnt::Bool
     new_decision_box::Bool
 end
+
 function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit = 1000,  tol = 1E-1, hmin = 1E-13,
                          relax = false, h = 0.0, skip_step2 = false, Jx! = nothing, Jp! = nothing) where SCN <: AbstractStateContractorName
 
@@ -139,6 +140,11 @@ function DiscretizeRelax(d::ODERelaxProb; kwargs...)
     DiscretizeRelax(d, LohnerContractor{4}(); kwargs...)
 end
 
+"""
+set_P!(d::DiscretizeRelax)
+
+Initializes the `P` and `rP` (P - p) fields of `d`.
+"""
 function set_P!(d::DiscretizeRelax{M,Interval{Float64},S,F,K,X,NY}) where {M<:AbstractStateContractor, S, F, K, X, NY}
 
     @__dot__ d.P = Interval(d.pL, d.pU)
@@ -155,6 +161,12 @@ function set_P!(d::DiscretizeRelax{M,MC{N,T},S,F,K,X,NY}) where {M<:AbstractStat
     return nothing
 end
 
+"""
+compute_X0!(d::DiscretizeRelax)
+
+Initializes the circular buffer that holds `Δ` with the `out - mid(out)` at
+index 1 and a zero vector at all other indices.
+"""
 function compute_X0!(d::DiscretizeRelax)
 
     d.storage[1] .= d.x0f(d.P)
@@ -173,6 +185,12 @@ function compute_X0!(d::DiscretizeRelax)
     return nothing
 end
 
+"""
+set_Δ!
+
+Initializes the circular buffer, `Δ`, that holds `Δ_i` with the `out - mid(out)` at
+index 1 and a zero vector at all other indices.
+"""
 function set_Δ!(Δ::CircularBuffer{Vector{T}}, out::Vector{Vector{T}}) where T
 
     Δ[1] .= out[1] .- mid.(out[1])

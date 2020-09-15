@@ -9,29 +9,56 @@
 # See https://github.com/PSORLab/DynamicBoundspODEsDiscrete.jl
 #############################################################################
 # src/DiscretizeRelax/method/single_step.jl
-# Defines a single step of the integation method.
+# Defines a single step of the integration method.
 #############################################################################
 
-# """
-# LEPUS and Integration parameters.
-# """
+"""
+StepParams
+
+LEPUS and Integration parameters.
+
+$(TYPEDFIELDS)
+"""
 Base.@kwdef struct StepParams
+    "Error tolerance of integrator"
     tol::Float64 = 1E-5
+    "Minimum stepsize"
     hmin::Float64 = 1E-8
+    "Number of repetitions allowed for refinement"
     repeat_limit::Int64 = 3
+    "Indicates an adaptive stepsize is used"
     is_adaptive::Bool = true
+    "Indicates the contractor step should be skipped"
     skip_step2::Bool = false
 end
 
+"""
+StepResult{S}
+
+Results passed to the next step.
+
+$(TYPEDFIELDS)
+"""
 mutable struct StepResult{S}
+    "nominal value of the state variables"
     xⱼ
+    "relaxations/bounds of the state variables"
     Xⱼ
+    "storage for parallelepid enclosure of `xⱼ`"
     A::CircularBuffer{QRDenseStorage}
+    "storage for parallelepid enclosure of `xⱼ`"
     Δ::CircularBuffer{Vector{S}}
+    "predicted step size for next step"
     predicted_hj
+    "new time"
     time
 end
 
+"""
+ExistStorage{F,K,S,T}
+
+Storage used in the existence and uniqueness tests.
+"""
 mutable struct ExistStorage{F,K,S,T}
     status_flag::TerminationStatusCode
     hj::Float64
@@ -97,6 +124,11 @@ function ExistStorage(tf!::TaylorFunctor!{F,K,S,T}, s::T, P, nx::Int64, np::Int6
                                  Xj_0, Xj_apriori, Vⱼ, Uⱼ, Z, P, tf!)
 end
 
+"""
+ContractorStorage{S}
+
+Storage used to hold inputs to the contractor method used.
+"""
 mutable struct ContractorStorage{S}
     is_adaptive::Bool
     times::CircularBuffer{Float64}
@@ -155,6 +187,11 @@ function set_xX!(result::StepResult{S}, contract::ContractorStorage{S}) where {S
     return nothing
 end
 
+"""
+excess_error
+
+Computes the excess error using a norm-∞ of the diameter of the vectors.
+"""
 function excess_error(Z::Vector{S}, hj::Float64, hj_eu::Float64, γ::Float64, k::Int64, nx::Int64) where S
     errⱼ = 0.0; dₜ = 0.0
     for i = 1:nx
@@ -193,11 +230,11 @@ function affine_contract!(X::Vector{MC{N,T}}, P::Vector{MC{N,T}}, pval::Vector{F
     return nothing
 end
 
-#"""
-#$(FUNCTIONNAME)
-#
-#Performs a single-step of the validated integrator. Input stepsize is out.step.
-#"""
+"""
+single_step!
+
+Performs a single-step of the validated integrator. Input stepsize is out.step.
+"""
 function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{T},
                       params::StepParams, result::StepResult{T}, sc::M,
                       j::Int64) where {M <: AbstractStateContractor, F, K, S <: Real, T}

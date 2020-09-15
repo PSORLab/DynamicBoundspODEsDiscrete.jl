@@ -22,10 +22,13 @@ function copy_buffer!(y::CircularBuffer{T}, x::CircularBuffer{T}) where T
 end
 
 """
-$(TYPEDEF)
+HermiteObreschkoff
 
 A structure that stores the cofficient of the (P,Q)-Hermite-Obreschkoff method.
-(Offset due to method being zero indexed and Julia begin one indexed).
+(Offset due to method being zero indexed and Julia begin one indexed). The
+constructor `HermiteObreschkoff(p::Val{P}, q::Val{Q}) where {P, Q}` or
+`HermiteObreschkoff(p::Int, q::Int)` are used for the (P,Q)-method.
+
 $(TYPEDFIELDS)
 """
 struct HermiteObreschkoff <: AbstractStateContractorName
@@ -42,6 +45,7 @@ struct HermiteObreschkoff <: AbstractStateContractorName
     "Total order Hermite-Obreschkoff"
     k::Int64
 end
+
 function HermiteObreschkoff(p::Val{P}, q::Val{Q}) where {P, Q}
     temp_cpq = 1.0
     temp_cqp = 1.0
@@ -64,6 +68,20 @@ function HermiteObreschkoff(p::Val{P}, q::Val{Q}) where {P, Q}
 end
 HermiteObreschkoff(p::Int, q::Int) = HermiteObreschkoff(Val(p), Val(q))
 
+"""
+HermiteObreschkoffFunctor
+
+A functor used in computing bounds and relaxations via Hermite-Obreschkoff's method. The
+implementation of the parametric Hermite-Obreschkoff's method based on the non-parametric
+version given in (1).
+
+1. [Nedialkov NS, and Jackson KR. "An interval Hermite-Obreschkoff method for 
+computing rigorous bounds on the solution of an initial value problem for an
+ordinary differential equation." Reliable Computing 5.3 (1999): 289-310.](https://link.springer.com/article/10.1023/A:1009936607335)
+2. [Nedialkov NS. "Computing rigorous bounds on the solution of an
+initial value problem for an ordinary differential equation." University
+of Toronto. 2000.](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.633.9654&rep=rep1&type=pdf)
+"""
 mutable struct HermiteObreschkoffFunctor{F <: Function, Pp1, Qp1, K, T <: Real, S <: Real, NY} <: AbstractStateContractor
     hermite_obreschkoff::HermiteObreschkoff
     η::Interval{T}

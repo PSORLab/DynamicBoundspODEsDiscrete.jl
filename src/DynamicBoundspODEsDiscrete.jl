@@ -1,3 +1,17 @@
+# Copyright(c) 2020: Matthew Wilhelm & Matthew Stuber.
+# This work is licensed under the Creative Commons Attribution-NonCommercial-
+# ShareAlike 4.0 International License. To view a copy of this license, visit
+# http://creativecommons.org/licenses/by-nc-sa/4.0/ or send a letter to Creative
+# Commons, PO Box 1866, Mountain View, CA 94042, USA.
+#############################################################################
+# Dynamic Bounds - pODEs Discrete
+# A package for discretize and relax methods for bounding pODEs.
+# See https://github.com/PSORLab/DynamicBoundspODEsDiscrete.jl
+#############################################################################
+# src/DynamicBoundspODEsDiscrete.jl
+# Defines main module.
+#############################################################################
+
 module DynamicBoundspODEsDiscrete
 
 using McCormick, DocStringExtensions, DynamicBoundsBase,
@@ -22,11 +36,54 @@ import Base.MathConstants.golden
 
 export DiscretizeRelax, AdamsMoulton, BDF, LohnerContractor, HermiteObreschkoff
 
+export StepParams, StepResult, ExistStorage, ContractorStorage, reinitialize!,
+       existence_uniqueness!, improvement_condition, single_step!, set_xX!,
+       state_contractor_steps, state_contractor_γ, state_contractor_k, excess_error,
+       set_Δ!, compute_X0!, set_P!, contains, calc_alpha, mul_split!, μ!, ρ!
+
 const DBB = DynamicBoundsBase
 
 abstract type AbstractStateContractor end
+
+"""
+AbstractStateContractorName
+
+The subtypes of `AbstractStateContractorName` are used
+to specify the manner of contractor method to be used
+by `DiscretizeRelax` in the discretize and relax scheme.
+"""
 abstract type AbstractStateContractorName end
 
+"""
+state_contractor_k(d::AbstractStateContractorName)
+
+Retrieves the order of the existence test to
+be used with
+"""
+function state_contractor_k(d::AbstractStateContractorName)
+    error("No method with AbstractStateContractorName $d defined.")
+end
+
+"""
+state_contractor_γ(d::AbstractStateContractorName)
+"""
+function state_contractor_γ(d::AbstractStateContractorName)
+    error("No method with AbstractStateContractorName $d defined.")
+end
+
+"""
+state_contractor_steps(d::AbstractStateContractorName)
+"""
+function state_contractor_steps(d::AbstractStateContractorName)
+    error("No method with AbstractStateContractorName $d defined.")
+end
+
+"""
+μ!(out,xⱼ,x̂ⱼ,η)
+
+Used to compute the arguments of Jacobians (`x̂ⱼ + η(xⱼ - x̂ⱼ)`) used by the parametric Mean Value
+Theorem. The result is stored to `out`.
+"""
 function μ!(out::Vector{Interval{Float64}}, xⱼ::Vector{Interval{Float64}}, x̂ⱼ::Vector{Float64}, η::Interval{Float64})
     out .= xⱼ
     return nothing
@@ -36,6 +93,12 @@ function μ!(out::Vector{MC{N,T}}, xⱼ::Vector{MC{N,T}}, x̂ⱼ::Vector{Float64
     return nothing
 end
 
+"""
+ρ!(out,p,p̂ⱼ,η)
+
+Used to compute the arguments of Jacobians (`p̂ⱼ + η(p - p̂ⱼ)`) used by the parametric Mean Value Theorem.
+The result is stored to `out`.
+"""
 function ρ!(out::Vector{Interval{Float64}}, p::Vector{Interval{Float64}}, p̂::Vector{Float64}, η::Interval{Float64})
     out .= p
     return nothing
