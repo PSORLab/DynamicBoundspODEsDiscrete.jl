@@ -87,50 +87,50 @@ const DR = DynamicBoundspODEsDiscrete
     @test isapprox(jtf!.Jx[4][2,2].lo, 0.1666, atol=1E-3)
 
     # make/evaluate interval valued Taylor cofficient functor
-    itf! = DR.TaylorFunctor!(f!, nx, np, Val(k), zero(Interval{Float64}), zero(Float64))
-    outIntv = zeros(Interval{Float64},8)
-    itf!(outIntv, yIntv)
-    @test isapprox(outIntv[1].hi, 0.10001, atol=1E-3)
-    @test isapprox(outIntv[3].hi, 0.011001, atol=1E-3)
-    @test isapprox(outIntv[6].hi, 1.04001, atol=1E-3)
-    @test isapprox(outIntv[8].hi, 0.173334, atol=1E-3)
+    #itf! = DR.TaylorFunctor!(f!, nx, np, Val(k), zero(Interval{Float64}), zero(Float64))
+    #outIntv = zeros(Interval{Float64},8)
+    #itf!(outIntv, yIntv)
+    #@test isapprox(outIntv[1].hi, 0.10001, atol=1E-3)
+    #@test isapprox(outIntv[3].hi, 0.011001, atol=1E-3)
+    #@test isapprox(outIntv[6].hi, 1.04001, atol=1E-3)
+    #@test isapprox(outIntv[8].hi, 0.173334, atol=1E-3)
 
     # make/evaluate real valued Taylor cofficient functor
-    y = [x; p]
-    rtf!  = DR.TaylorFunctor!(f!, nx, np, Val(k), zero(Float64), zero(Float64))
-    out = zeros(8)
-    rtf!(out, y)
-    @test isapprox(outIntv[1], 0.10001, atol=1E-3)
-    @test isapprox(outIntv[3], 0.011001, atol=1E-3)
-    @test isapprox(outIntv[6], 1.04001, atol=1E-3)
-    @test isapprox(outIntv[8], 0.173334, atol=1E-3)
+    #y = [x; p]
+    #rtf!  = DR.TaylorFunctor!(f!, nx, np, Val(k), zero(Float64), zero(Float64))
+    #out = zeros(8)
+    #rtf!(out, y)
+    #@test isapprox(outIntv[1], 0.10001, atol=1E-3)
+    #@test isapprox(outIntv[3], 0.011001, atol=1E-3)
+    #@test isapprox(outIntv[6], 1.04001, atol=1E-3)
+    #@test isapprox(outIntv[8], 0.173334, atol=1E-3)
 
     # higher order existence tests
-    hⱼ = 0.001
-    hmin = 0.00001
-    function euf!(out, x, p, t)
-        out[1,1] = -x[1]
-        nothing
-    end
-    eufY = [Interval{Float64}(0.5,1.5); Interval(0.0)]
-    itf_exist_unique! = DR.TaylorFunctor!(euf!, 1, 1, Val(k), zero(Interval{Float64}), zero(Float64))
-    jtf_exist_unique! = DR.JacTaylorFunctor!(euf!, 1, 1, Val(k), Interval{Float64}(0.0), 0.0)
-    DR.jacobian_taylor_coeffs!(jtf_exist_unique!, eufY)
+    #hⱼ = 0.001
+    #hmin = 0.00001
+    #function euf!(out, x, p, t)
+    #    out[1,1] = -x[1]
+    #    nothing
+    #end
+    #eufY = [Interval{Float64}(0.5,1.5); Interval(0.0)]
+    #itf_exist_unique! = DR.TaylorFunctor!(euf!, 1, 1, Val(k), zero(Interval{Float64}), zero(Float64))
+    #jtf_exist_unique! = DR.JacTaylorFunctor!(euf!, 1, 1, Val(k), Interval{Float64}(0.0), 0.0)
+    #DR.jacobian_taylor_coeffs!(jtf_exist_unique!, eufY)
 
-    coeff_out = zeros(Interval{Float64},1,k)
-    DR.coeff_to_matrix!(coeff_out, jtf!.out, 1, k)
-    Jx = Matrix{Interval{Float64}}[zeros(Interval{Float64},1,1) for i in 1:4]
-    Jp = Matrix{Interval{Float64}}[zeros(Interval{Float64},1,1) for i in 1:4]
-    tjac = zeros(Interval{Float64}, 2, 4)
-    outIntv_exist_unique! = zeros(Interval{Float64},4)
-    itf_exist_unique!(outIntv_exist_unique!, eufY)
-    coeff_out_exist_unique! = zeros(Interval{Float64},1,k+1)
-    DR.coeff_to_matrix!(coeff_out_exist_unique!, outIntv_exist_unique!, 1, k)
-    DR.extract_JxJp!(Jx, Jp, jtf_exist_unique!.result, tjac, 1, 1, k)
-    u_result = DR.UniquenessResult(1,1)
-    DR.existence_uniqueness!(u_result, itf_exist_unique!, eufY, hⱼ, hmin,
-                             coeff_out_exist_unique!, Jx, Jp)
+    #coeff_out = zeros(Interval{Float64},1,k)
+    #DR.coeff_to_matrix!(coeff_out, jtf!.out, 1, k)
+    #Jx = Matrix{Interval{Float64}}[zeros(Interval{Float64},1,1) for i in 1:4]
+    #Jp = Matrix{Interval{Float64}}[zeros(Interval{Float64},1,1) for i in 1:4]
+    #tjac = zeros(Interval{Float64}, 2, 4)
+    #outIntv_exist_unique! = zeros(Interval{Float64},4)
+    #itf_exist_unique!(outIntv_exist_unique!, eufY)
+    #coeff_out_exist_unique! = zeros(Interval{Float64},1,k+1)
+    #DR.coeff_to_matrix!(coeff_out_exist_unique!, outIntv_exist_unique!, 1, k)
+    #DR.extract_JxJp!(Jx, Jp, jtf_exist_unique!.result, tjac, 1, 1, k)
+    #u_result = DR.UniquenessResult(1,1)
+    #DR.existence_uniqueness!(u_result, itf_exist_unique!, eufY, hⱼ, hmin,
+    #                         coeff_out_exist_unique!, Jx, Jp)
 
-    @test u_result.step == 0.001
-    @test u_result.confirmed
+    #@test u_result.step == 0.001
+    #@test u_result.confirmed
 end
