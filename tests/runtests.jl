@@ -101,14 +101,17 @@ const DR = DynamicBoundspODEsDiscrete
     @test isapprox(outIntv[4][1].hi, 0.004766666666666669, atol=1E-3)
 
     # make/evaluate real valued Taylor cofficient functor
-    #y = [x; p]
-    #rtf!  = DR.TaylorFunctor!(f!, nx, np, Val(k), zero(Float64), zero(Float64))
-    #out = zeros(8)
-    #rtf!(out, y)
-    #@test isapprox(outIntv[1], 0.10001, atol=1E-3)
-    #@test isapprox(outIntv[3], 0.011001, atol=1E-3)
-    #@test isapprox(outIntv[6], 1.04001, atol=1E-3)
-    #@test isapprox(outIntv[8], 0.173334, atol=1E-3)
+    rtf!  = DR.TaylorFunctor!(f!, nx, np, Val(k), zero(Float64), zero(Float64))
+    out = Vector{Float64}[zeros(Float64,2) for i in 1:4]
+    rtf!(out, x, p, 0.0)
+    @test isapprox(out[1][1], 0.10001, atol=1E-3)
+    @test isapprox(out[2][1], 0.11000000000000001, atol=1E-3)
+    @test isapprox(out[3][1], 0.011, atol=1E-3)
+    @test isapprox(out[4][1], 0.004766666666666668, atol=1E-3)
+    @test isapprox(out[1][2], 1.0, atol=1E-3)
+    @test isapprox(out[2][2], 1.04, atol=1E-3)
+    @test isapprox(out[3][2], 0.52, atol=1E-3)
+    @test isapprox(out[4][2], 0.17333333333333334, atol=1E-3)
 
     # higher order existence tests
     #hⱼ = 0.001
