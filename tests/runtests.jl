@@ -1,5 +1,4 @@
 #!/usr/bin/env julia
-using Revise
 using Test, DynamicBoundspODEsDiscrete, IntervalArithmetic
 using DiffResults: JacobianResult
 
