@@ -85,7 +85,7 @@ function TaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K, T
         push!(xtaylor, temp)
         push!(xaux, temp)
         push!(dx, temp)
-        push!(taux, zero(STaylor1{K,Q}))
+        push!(taux, zero(STaylor1{K+1,Q}))
     end
     #push!(xtaylor, fill(temp, nx))
     x = zeros(T, nx)

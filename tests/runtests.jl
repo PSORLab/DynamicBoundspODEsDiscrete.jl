@@ -87,13 +87,18 @@ const DR = DynamicBoundspODEsDiscrete
     @test isapprox(jtf!.Jx[4][2,2].lo, 0.1666, atol=1E-3)
 
     # make/evaluate interval valued Taylor cofficient functor
-    #itf! = DR.TaylorFunctor!(f!, nx, np, Val(k), zero(Interval{Float64}), zero(Float64))
-    #outIntv = zeros(Interval{Float64},8)
-    #itf!(outIntv, yIntv)
-    #@test isapprox(outIntv[1].hi, 0.10001, atol=1E-3)
-    #@test isapprox(outIntv[3].hi, 0.011001, atol=1E-3)
-    #@test isapprox(outIntv[6].hi, 1.04001, atol=1E-3)
-    #@test isapprox(outIntv[8].hi, 0.173334, atol=1E-3)
+    itf! = DR.TaylorFunctor!(f!, nx, np, Val(k), zero(Interval{Float64}), zero(Float64))
+    outIntv = Vector{Interval{Float64}}[zeros(Interval{Float64},2) for i in 1:4]
+    @show typeof(itf!)
+    itf!(outIntv, xIntv, pIntv, 0.0)
+    @test isapprox(outIntv[1][1].lo, 0.10001, atol=1E-3)
+    @test isapprox(outIntv[2][2].lo, 1.0399999999999998, atol=1E-3)
+    @test isapprox(outIntv[3][1].lo, 0.011, atol=1E-3)
+    @test isapprox(outIntv[4][2].lo, 0.173334, atol=1E-3)
+    @test isapprox(outIntv[1][2].hi, 1.0, atol=1E-3)
+    @test isapprox(outIntv[2][1].hi, 0.1100000000000000, atol=1E-3)
+    @test isapprox(outIntv[3][2].hi, 0.52, atol=1E-3)
+    @test isapprox(outIntv[4][1].hi, 0.004766666666666669, atol=1E-3)
 
     # make/evaluate real valued Taylor cofficient functor
     #y = [x; p]
