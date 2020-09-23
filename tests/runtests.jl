@@ -114,27 +114,27 @@ const DR = DynamicBoundspODEsDiscrete
     @test isapprox(out[4][2], 0.17333333333333334, atol=1E-3)
 
     # higher order existence tests
-    #hⱼ = 0.001
-    #hmin = 0.00001
-    #function euf!(out, x, p, t)
-    #    out[1,1] = -x[1]
-    #    nothing
-    #end
-    #eufY = [Interval{Float64}(0.5,1.5); Interval(0.0)]
-    #itf_exist_unique! = DR.TaylorFunctor!(euf!, 1, 1, Val(k), zero(Interval{Float64}), zero(Float64))
-    #jtf_exist_unique! = DR.JacTaylorFunctor!(euf!, 1, 1, Val(k), Interval{Float64}(0.0), 0.0)
-    #DR.jacobian_taylor_coeffs!(jtf_exist_unique!, eufY)
+    hⱼ = 0.001
+    hmin = 0.00001
+    function euf!(out, x, p, t)
+        out[1,1] = -x[1]^2
+        nothing
+    end
 
-    #coeff_out = zeros(Interval{Float64},1,k)
-    #DR.coeff_to_matrix!(coeff_out, jtf!.out, 1, k)
-    #Jx = Matrix{Interval{Float64}}[zeros(Interval{Float64},1,1) for i in 1:4]
-    #Jp = Matrix{Interval{Float64}}[zeros(Interval{Float64},1,1) for i in 1:4]
-    #tjac = zeros(Interval{Float64}, 2, 4)
-    #outIntv_exist_unique! = zeros(Interval{Float64},4)
-    #itf_exist_unique!(outIntv_exist_unique!, eufY)
-    #coeff_out_exist_unique! = zeros(Interval{Float64},1,k+1)
-    #DR.coeff_to_matrix!(coeff_out_exist_unique!, outIntv_exist_unique!, 1, k)
-    #DR.extract_JxJp!(Jx, Jp, jtf_exist_unique!.result, tjac, 1, 1, k)
+    jtf_exist_unique! = DR.JacTaylorFunctor!(euf!, 1, 1, Val(k), Interval{Float64}(0.0), 0.0)
+    xIntv_plus =  xIntv .+ Interval(0,1)
+    DR.jacobian_taylor_coeffs!(jtf_exist_unique!, xIntv_plus, pIntv, 0.0)
+    @test isapprox(jtf_exist_unique!.result.value[4].lo, -1.464100000000001, atol=1E-5)
+    @test isapprox(jtf_exist_unique!.result.value[4].hi, -9.999999999999999e-5, atol=1E-5)
+    @test isapprox(jtf_exist_unique!.result.derivs[1][3,1].lo, 0.03, atol=1E-5)
+    @test isapprox(jtf_exist_unique!.result.derivs[1][3,1].hi, 3.6300000000000012, atol=1E-5)
+
+    coeff_out = zeros(Interval{Float64},1,k)
+    DR.set_JxJp!(jtf_exist_unique!, xIntv_plus, pIntv, 0.0)
+    @test isapprox(jtf_exist_unique!.Jx[4][1,1].lo, -5.32401, atol=1E-5)
+    @test isapprox(jtf_exist_unique!.Jx[4][1,1].hi, -0.00399999, atol=1E-5)
+    @test jtf_exist_unique!.Jp[1][1,1].lo == jtf_exist_unique!.Jp[1][1,1].hi == 0.0
+
     #u_result = DR.UniquenessResult(1,1)
     #DR.existence_uniqueness!(u_result, itf_exist_unique!, eufY, hⱼ, hmin,
     #                         coeff_out_exist_unique!, Jx, Jp)
