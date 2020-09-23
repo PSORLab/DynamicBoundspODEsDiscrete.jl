@@ -89,7 +89,6 @@ const DR = DynamicBoundspODEsDiscrete
     # make/evaluate interval valued Taylor cofficient functor
     itf! = DR.TaylorFunctor!(f!, nx, np, Val(k), zero(Interval{Float64}), zero(Float64))
     outIntv = Vector{Interval{Float64}}[zeros(Interval{Float64},2) for i in 1:4]
-    @show typeof(itf!)
     itf!(outIntv, xIntv, pIntv, 0.0)
     @test isapprox(outIntv[1][1].lo, 0.10001, atol=1E-3)
     @test isapprox(outIntv[2][2].lo, 1.0399999999999998, atol=1E-3)
