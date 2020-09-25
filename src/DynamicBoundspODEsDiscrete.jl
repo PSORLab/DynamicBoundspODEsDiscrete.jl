@@ -16,7 +16,7 @@ module DynamicBoundspODEsDiscrete
 
 using McCormick, DocStringExtensions, DynamicBoundsBase,
       Reexport, LinearAlgebra, IntervalArithmetic, StaticArrays,
-      StaticTaylorSeries, ElasticArrays, DataStructures, Polynomials
+      TaylorSeries, Requires, ElasticArrays, DataStructures, Polynomials
 
 using ForwardDiff: Chunk, Dual, Partials, construct_seeds, single_seed,
       JacobianConfig, vector_mode_dual_eval, value, vector_mode_jacobian!,
@@ -107,6 +107,9 @@ function ρ!(out::Vector{MC{N,T}}, p::Vector{MC{N,T}}, p̂::Vector{Float64}, η:
     @__dot__ out = p̂ + η*(p - p̂)
     return nothing
 end
+
+include("StaticTaylorSeries/StaticTaylorSeries.jl")
+using .StaticTaylorSeries
 
 include("DiscretizeRelax/utilities/mul_split.jl")
 include("DiscretizeRelax/utilities/fast_set_index.jl")
