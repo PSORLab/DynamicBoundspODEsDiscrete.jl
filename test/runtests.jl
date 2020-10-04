@@ -394,9 +394,6 @@ end
 
 @testset "Lohner's Method Testset" begin
 
-    use_relax = false
-    lohners_type = 1
-    prob_num = 1
     ticks = 100.0
     steps = 100.0
     tend = steps / ticks
@@ -453,4 +450,36 @@ end
     @test isapprox(hi_vec[6], 3.5704139370767916, atol = 1E-5)
 end
 
-@testset "Hermite-Obreshkoff Testset" begin end
+@testset "Hermite-Obreshkoff Testset" begin
+
+    ticks = 100.0
+    steps = 100.0
+    tend = steps / ticks
+
+    x0(p) = [9.0]
+    function f!(dx, x, p, t)
+        dx[1] = p[1] - x[1]^2
+        nothing
+    end
+    tspan = (0.0, tend)
+    pL = [-1.0]
+    pU = [1.0]
+    prob = DBB.ODERelaxProb(f!, tspan, x0, pL, pU)
+
+    integrator = DiscretizeRelax(prob, DR.HermiteObreschkoff(3, 3),
+                                 h = 1/ticks, repeat_limit = 1,
+                                 skip_step2 = false,
+                                 step_limit = steps,
+                                 relax = false)
+
+    ratio = rand(1)
+    pstar = pL .* ratio .+ pU .* (1.0 .- ratio)
+    DBB.setall!(integrator, DBB.ParameterValue(), [0.0])
+    DBB.relax!(integrator)
+
+    lo_vec = getfield.(getindex.(integrator.storage[:], 1), :lo)
+    hi_vec = getfield.(getindex.(integrator.storage[:], 1), :hi)
+
+    @test isapprox(lo_vec[6], 6.150098100006023, atol = 1E-5)
+    @test isapprox(hi_vec[6], 6.263901898905692, atol = 1E-5)
+end
