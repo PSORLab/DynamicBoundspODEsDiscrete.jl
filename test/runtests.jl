@@ -172,6 +172,16 @@ const DR = DynamicBoundspODEsDiscrete
 
     #@test u_result.step == 0.001
     #@test u_result.confirmed
+
+    Y = [1.1 3.2; 4.0 -1.0]
+    y = [1.1; 3.2]
+    A = [1.1 3.2; 4.0 -1.0]
+    B = [1.1 3.2; 4.0 -1.0]
+    b = [1.1; -1.0]
+    mul_split!(Y, A, B, 2)
+    @test isapprox(Y[2,2], 13.8, atol=1E-5)
+    mul_split!(y, A, b, 2)
+    @test isapprox(Y[1,2], 0.3200000000000003, atol=1E-5)
 end
 
 
@@ -217,11 +227,38 @@ end
     @test DBB.supports(integrator, DBB.Value())
     @test DBB.supports(integrator, DBB.ParameterValue())
 
-    @test DBB.get(integrator, DBB.IntegratorName()) ==
-          "Discretize & Relax Integrator"
+    @test DBB.get(integrator, DBB.IntegratorName()) == "Discretize & Relax Integrator"
     @test !DBB.get(integrator, DBB.IsNumeric())
     @test DBB.get(integrator, DBB.IsSolutionSet())
-    #DBB.get(integrator, s::TerminationStatus) = t.error_code
+    @test DBB.get(integrator, DBB.TerminationStatus()) == RELAXATION_NOT_CALLED
+
+    # DBB.setall!(t::DiscretizeRelax, v::ParameterBound{Lower}, value::Vector{Float64})
+    # DBB.setall!(t::DiscretizeRelax, v::ParameterBound{Upper}, value::Vector{Float64})
+    # DBB.setall!(t::DiscretizeRelax, v::ParameterValue, value::Vector{Float64})
+    # DBB.getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Subgradient{Lower}) where {X, T <: AbstractInterval}
+    # DBB.getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Subgradient{Lower}) where {X, T <: MC}
+    # DBB.getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Subgradient{Upper}) where {X, T <: AbstractInterval}
+    # DBB.getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Subgradient{Upper}) where {X, T <: MC}
+    # DBB.getall!(out::Union{Vector{Float64}, Matrix{Float64}}, t::DiscretizeRelax{X,T}, ::Bound{Lower}) where {X, T <: AbstractInterval}
+    # DBB.getall!(out::Union{Vector{Float64}, Matrix{Float64}}, t::DiscretizeRelax{X,T}, ::Bound{Lower}) where {X, T <: MC}
+    # DBB.getall!(out::Union{Vector{Float64}, Matrix{Float64}}, t::DiscretizeRelax{X,T}, ::Bound{Upper}) where {X, T <: AbstractInterval}
+    # DBB.getall!(out::Union{Vector{Float64}, Matrix{Float64}}, t::DiscretizeRelax{X,T}, ::Bound{Upper}) where {X, T <: MC}
+    # DBB.getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Relaxation{Lower}) where {X, T <: AbstractInterval}
+    # DBB.getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Relaxation{Lower}) where {X, T <: MC}
+    # DBB.getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Relaxation{Upper}) where {X, T <: AbstractInterval}
+    # DBB.getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Relaxation{Upper}) where {X, T <: MC}
+    # DBB.getall(t::DiscretizeRelax{X,T}, ::Subgradient{Lower}) where {X, T <: AbstractInterval}
+    # DBB.getall(t::DiscretizeRelax{X,T}, ::Subgradient{Lower}) where {X, T <: MC}
+    # DBB.getall(t::DiscretizeRelax{X,T}, ::Subgradient{Upper}) where {X, T <: AbstractInterval}
+    # DBB.getall(t::DiscretizeRelax{X,T}, ::Subgradient{Upper}) where {X, T <: MC}
+    # DBB.getall(t::DiscretizeRelax{X,T}, ::Bound{Lower}) where {X, T <: AbstractInterval}
+    # DBB.getall(t::DiscretizeRelax{X,T}, ::Bound{Upper}) where {X, T <: AbstractInterval}
+    # DBB.getall(t::DiscretizeRelax{X,T}, ::Bound{Lower}) where {X, T <: MC}
+    # DBB.getall(t::DiscretizeRelax{X,T}, ::Bound{Upper}) where {X, T <: MC}
+    # DBB.getall(t::DiscretizeRelax{X,T}, ::Relaxation{Lower}) where {X, T <: AbstractInterval}
+    # DBB.getall(t::DiscretizeRelax{X,T}, ::Relaxation{Lower}) where {X, T <: MC}
+    # DBB.getall(t::DiscretizeRelax{X,T}, ::Relaxation{Upper}) where {X, T <: AbstractInterval}
+    # DBB.getall(t::DiscretizeRelax{X,T}, ::Relaxation{Upper}) where {X, T <: MC}
 end
 
 if !(VERSION < v"1.1" && testfile == "intervals.jl")
@@ -482,4 +519,7 @@ end
 
     @test isapprox(lo_vec[6], 6.150098100006023, atol = 1E-5)
     @test isapprox(hi_vec[6], 6.263901898905692, atol = 1E-5)
+end
+
+@testset "Wilhelm 2019 Integrator Testset" begin
 end

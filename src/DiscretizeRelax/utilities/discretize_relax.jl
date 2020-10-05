@@ -124,7 +124,7 @@ function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit 
     contractor_result.γ = γ
     contractor_result.P = P
     contractor_result.rP = rP
-    @show is_adaptive
+
     contractor_result.is_adaptive = is_adaptive
     step_params = StepParams(tol, hmin, repeat_limit, is_adaptive, skip_step2)
     step_result = StepResult{typeof(style)}(zeros(d.nx), zeros(typeof(style), d.nx), A, Δ, 0.0, 0.0)

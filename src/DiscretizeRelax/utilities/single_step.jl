@@ -259,7 +259,6 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
     if !params.skip_step2
         if params.is_adaptive
             while hj > params.hmin && count < params.repeat_limit
-                @show contract.is_adaptive
                 sc(contract, result, count)
 
                 # LEPUS STEPSIZE PREDICTION
