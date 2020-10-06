@@ -23,7 +23,7 @@ $(TYPEDFIELDS)
 mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY, JX, JP} <: AbstractODERelaxIntegrator
 
     # Problem description
-    "Initial Conditiion for pODEs"
+    "Initial Condition for pODEs"
     x0f::X
     "Jacobian w.r.t x"
     Jx!::JX

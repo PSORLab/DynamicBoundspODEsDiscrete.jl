@@ -184,83 +184,6 @@ const DR = DynamicBoundspODEsDiscrete
     @test isapprox(Y[1,2], 0.3200000000000003, atol=1E-5)
 end
 
-
-@testset "Discretize and Relax - Access Functions" begin
-
-    use_relax = false
-    lohners_type = 1
-    prob_num = 1
-    ticks = 100.0
-    steps = 100.0
-    tend = steps / ticks
-
-    x0(p) = [1.2; 1.1]
-    function f!(dx, x, p, t)
-        dx[1] = p[1] * x[1] * (one(typeof(p[1])) - x[2])
-        dx[2] = p[1] * x[2] * (x[1] - one(typeof(p[1])))
-        nothing
-    end
-    tspan = (0.0, tend)
-    pL = [2.95]
-    pU = [3.05]
-
-    prob = DBB.ODERelaxProb(f!, tspan, x0, pL, pU)
-
-    integrator = DiscretizeRelax(
-        prob,
-        DynamicBoundspODEsDiscrete.LohnerContractor{7}(),
-        h = 1 / ticks,
-        repeat_limit = 1,
-        skip_step2 = false,
-        step_limit = steps,
-        relax = use_relax,
-    )
-
-    @test DBB.supports(integrator, DBB.IntegratorName())
-    @test DBB.supports(integrator, DBB.Gradient())
-    @test DBB.supports(integrator, DBB.Subgradient())
-    @test DBB.supports(integrator, DBB.Bound())
-    @test DBB.supports(integrator, DBB.Relaxation())
-    @test DBB.supports(integrator, DBB.IsNumeric())
-    @test DBB.supports(integrator, DBB.IsSolutionSet())
-    @test DBB.supports(integrator, DBB.TerminationStatus())
-    @test DBB.supports(integrator, DBB.Value())
-    @test DBB.supports(integrator, DBB.ParameterValue())
-
-    @test DBB.get(integrator, DBB.IntegratorName()) == "Discretize & Relax Integrator"
-    @test !DBB.get(integrator, DBB.IsNumeric())
-    @test DBB.get(integrator, DBB.IsSolutionSet())
-    @test DBB.get(integrator, DBB.TerminationStatus()) == RELAXATION_NOT_CALLED
-
-    # DBB.setall!(t::DiscretizeRelax, v::ParameterBound{Lower}, value::Vector{Float64})
-    # DBB.setall!(t::DiscretizeRelax, v::ParameterBound{Upper}, value::Vector{Float64})
-    # DBB.setall!(t::DiscretizeRelax, v::ParameterValue, value::Vector{Float64})
-    # DBB.getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Subgradient{Lower}) where {X, T <: AbstractInterval}
-    # DBB.getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Subgradient{Lower}) where {X, T <: MC}
-    # DBB.getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Subgradient{Upper}) where {X, T <: AbstractInterval}
-    # DBB.getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Subgradient{Upper}) where {X, T <: MC}
-    # DBB.getall!(out::Union{Vector{Float64}, Matrix{Float64}}, t::DiscretizeRelax{X,T}, ::Bound{Lower}) where {X, T <: AbstractInterval}
-    # DBB.getall!(out::Union{Vector{Float64}, Matrix{Float64}}, t::DiscretizeRelax{X,T}, ::Bound{Lower}) where {X, T <: MC}
-    # DBB.getall!(out::Union{Vector{Float64}, Matrix{Float64}}, t::DiscretizeRelax{X,T}, ::Bound{Upper}) where {X, T <: AbstractInterval}
-    # DBB.getall!(out::Union{Vector{Float64}, Matrix{Float64}}, t::DiscretizeRelax{X,T}, ::Bound{Upper}) where {X, T <: MC}
-    # DBB.getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Relaxation{Lower}) where {X, T <: AbstractInterval}
-    # DBB.getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Relaxation{Lower}) where {X, T <: MC}
-    # DBB.getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Relaxation{Upper}) where {X, T <: AbstractInterval}
-    # DBB.getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::Relaxation{Upper}) where {X, T <: MC}
-    # DBB.getall(t::DiscretizeRelax{X,T}, ::Subgradient{Lower}) where {X, T <: AbstractInterval}
-    # DBB.getall(t::DiscretizeRelax{X,T}, ::Subgradient{Lower}) where {X, T <: MC}
-    # DBB.getall(t::DiscretizeRelax{X,T}, ::Subgradient{Upper}) where {X, T <: AbstractInterval}
-    # DBB.getall(t::DiscretizeRelax{X,T}, ::Subgradient{Upper}) where {X, T <: MC}
-    # DBB.getall(t::DiscretizeRelax{X,T}, ::Bound{Lower}) where {X, T <: AbstractInterval}
-    # DBB.getall(t::DiscretizeRelax{X,T}, ::Bound{Upper}) where {X, T <: AbstractInterval}
-    # DBB.getall(t::DiscretizeRelax{X,T}, ::Bound{Lower}) where {X, T <: MC}
-    # DBB.getall(t::DiscretizeRelax{X,T}, ::Bound{Upper}) where {X, T <: MC}
-    # DBB.getall(t::DiscretizeRelax{X,T}, ::Relaxation{Lower}) where {X, T <: AbstractInterval}
-    # DBB.getall(t::DiscretizeRelax{X,T}, ::Relaxation{Lower}) where {X, T <: MC}
-    # DBB.getall(t::DiscretizeRelax{X,T}, ::Relaxation{Upper}) where {X, T <: AbstractInterval}
-    # DBB.getall(t::DiscretizeRelax{X,T}, ::Relaxation{Upper}) where {X, T <: MC}
-end
-
 if !(VERSION < v"1.1" && testfile == "intervals.jl")
     using TaylorSeries, IntervalArithmetic
 
@@ -522,4 +445,108 @@ end
 end
 
 @testset "Wilhelm 2019 Integrator Testset" begin
+end
+
+@testset "Discretize and Relax - Access Functions" begin
+
+    use_relax = false
+    lohners_type = 1
+    prob_num = 1
+    ticks = 100.0
+    steps = 100.0
+    tend = steps / ticks
+
+    x0(p) = [1.2; 1.1]
+    function f!(dx, x, p, t)
+        dx[1] = p[1] * x[1] * (one(typeof(p[1])) - x[2])
+        dx[2] = p[1] * x[2] * (x[1] - one(typeof(p[1])))
+        nothing
+    end
+    tspan = (0.0, tend)
+    pL = [2.95]
+    pU = [3.05]
+
+    prob = DBB.ODERelaxProb(f!, tspan, x0, pL, pU)
+
+    integrator = DiscretizeRelax(
+        prob,
+        DynamicBoundspODEsDiscrete.LohnerContractor{7}(),
+        h = 1 / ticks,
+        repeat_limit = 1,
+        skip_step2 = false,
+        step_limit = steps,
+        relax = use_relax,
+    )
+
+    @test DBB.supports(integrator, DBB.IntegratorName())
+    @test DBB.supports(integrator, DBB.Gradient())
+    @test DBB.supports(integrator, DBB.Subgradient())
+    @test DBB.supports(integrator, DBB.Bound())
+    @test DBB.supports(integrator, DBB.Relaxation())
+    @test DBB.supports(integrator, DBB.IsNumeric())
+    @test DBB.supports(integrator, DBB.IsSolutionSet())
+    @test DBB.supports(integrator, DBB.TerminationStatus())
+    @test DBB.supports(integrator, DBB.Value())
+    @test DBB.supports(integrator, DBB.ParameterValue())
+
+    @test DBB.get(integrator, DBB.IntegratorName()) == "Discretize & Relax Integrator"
+    @test !DBB.get(integrator, DBB.IsNumeric())
+    @test DBB.get(integrator, DBB.IsSolutionSet())
+    @test DBB.get(integrator, DBB.TerminationStatus()) == RELAXATION_NOT_CALLED
+
+    DBB.set!(integrator, DBB.SupportSet(Float64[i for i in range(0.0, tend, length = 200)]))
+
+    ratio = rand(1)
+    pstar = pL .* ratio .+ pU .* (1.0 .- ratio)
+    DBB.setall!(integrator, DBB.ParameterValue(), [0.0])
+    DBB.relax!(integrator)
+
+    DBB.setall!(integrator, DBB.ParameterBound{Lower}(), [2.99])
+    DBB.setall!(integrator, DBB.ParameterBound{Upper}(), [3.01])
+
+    support_set = DBB.get(integrator, DBB.SupportSet())
+    @test support_set.s[3] == 0.02
+
+    out = Matrix{Float64}[]
+    for i in support_set.s
+        push!(out, zeros(1,1))
+    end
+    #DBB.getall!(out, integrator, DBB.Subgradient{Lower}())
+    #@test out[1][10,1] == 0.0
+
+    #DBB.getall!(out, integrator, DBB.Subgradient{Upper}())
+    #@test out[1][10,1] == 0.0
+
+    out = copy(support_set.s)
+    DBB.getall!(out, integrator, DBB.Bound{Lower}())
+    @test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
+
+    DBB.getall!(out, integrator, DBB.Bound{Upper}())
+    @test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
+
+    #=
+    DBB.getall!(out, integrator, DBB.Relaxation{Lower}())
+    @test out[10,1] == 0.0
+
+    DBB.getall!(out, integrator, DBB.Relaxation{Upper}())
+    @test out[10,1] == 0.0
+
+    out = DBB.getall(integrator, DBB.Subgradient{Lower}())
+    @test out[10,1] == 0.0
+
+    out = DBB.getall(integrator, DBB.Subgradient{Upper}())
+    @test out[10,1] == 0.0
+
+    out = DBB.getall(integrator, DBB.Bound{Lower}())
+    @test out[10,1] == 0.0
+
+    out = DBB.getall(integrator, DBB.Bound{Upper}())
+    @test out[10,1] == 0.0
+
+    out = DBB.getall(integrator, DBB.Relaxation{Lower}())
+    @test out[10,1] == 0.0
+
+    out = DBB.getall(integrator, DBB.Relaxation{Upper}())
+    @test out[10,1] == 0.0
+    =#
 end
