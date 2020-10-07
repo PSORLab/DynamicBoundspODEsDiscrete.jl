@@ -13,7 +13,6 @@
 #############################################################################
 
 DBB.supports(::DiscretizeRelax, ::DBB.IntegratorName) = true
-DBB.supports(::DiscretizeRelax, ::DBB.Gradient{T}) where {T <: AbstractBoundLoc} = true
 DBB.supports(::DiscretizeRelax, ::DBB.Subgradient{T}) where {T <: AbstractBoundLoc} = true
 DBB.supports(::DiscretizeRelax, ::DBB.Bound{T}) where {T <: AbstractBoundLoc} = true
 DBB.supports(::DiscretizeRelax, ::DBB.Relaxation{T}) where {T <: AbstractBoundLoc} = true
@@ -63,13 +62,13 @@ end
 
 
 ## Inplace integrator acccess functions
-function DBB.getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Lower}) where {X, T <: AbstractInterval}
+function DBB.getall!(out::Vector{Matrix{Float64}}, t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Lower}) where {X, T <: AbstractInterval}
     for i in 1:t.np
         fill!(out[i], 0.0)
     end
     return
 end
-function DBB.getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Lower}) where {X, T <: MC}
+function DBB.getall!(out::Vector{Matrix{Float64}}, t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Lower}) where {X, T <: MC}
     for i in 1:t.np
         @inbounds for j in eachindex(out[i])
             out[i][j] = t.storage[j].cv_grad[j]
@@ -78,14 +77,14 @@ function DBB.getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::D
     return
 end
 
-function DBB.getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Upper}) where {X, T <: AbstractInterval}
+function DBB.getall!(out::Vector{Matrix{Float64}}, t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Upper}) where {X, T <: AbstractInterval}
     for i in 1:t.np
         fill!(out[i], 0.0)
     end
     return
 end
 
-function DBB.getall!(out::Vector{Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Upper}) where {X, T <: MC}
+function DBB.getall!(out::Vector{Matrix{Float64}}, t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Upper}) where {X, T <: MC}
     for i in 1:t.np
         @inbounds for j in eachindex(out[i])
             out[i][j] = t.storage[j].cc_grad[i]
@@ -96,7 +95,7 @@ end
 
 function DBB.getall!(out::Vector{Float64}, t::DiscretizeRelax{X,T}, ::DBB.Bound{Lower}) where {X, T <: AbstractInterval}
     @inbounds for j in eachindex(out)
-        out[j] = t.storage[j][1].hi
+        out[j] = t.storage[j][1].lo
     end
     return
 end
@@ -114,7 +113,7 @@ function DBB.getall!(out::Vector{Float64}, t::DiscretizeRelax{X,T}, ::DBB.Bound{
     end
     return
 end
-function DBB.getall!(out::Array{Float64,2}, t::DiscretizeRelax{X,T}, v::DBB.Bound{Upper}) where {X, T <: AbstractInterval}
+function DBB.getall!(out::Matrix{Float64}, t::DiscretizeRelax{X,T}, v::DBB.Bound{Upper}) where {X, T <: AbstractInterval}
     for i = 1:length(t.storage)
         out[:,i] .= t.storage[i].hi
     end
@@ -123,55 +122,83 @@ end
 
 function DBB.getall!(out::Vector{Float64}, t::DiscretizeRelax{X,T}, ::DBB.Bound{Lower}) where {X, T <: MC}
     @inbounds for j in eachindex(out)
-        out[j] = t.storage[j][1].hi
+        out[j] = t.storage[j][1].Intv.lo
     end
     return
 end
 
 function DBB.getall!(out::Matrix{Float64}, t::DiscretizeRelax{X,T}, ::DBB.Bound{Lower}) where {X, T <: MC}
     for i = 1:length(t.storage)
-        @__dot__ out[:,i] = getfield(t.storage[i], :lo)
+        @__dot__ out[:,i] = getfield(getfield(t.storage[i], :Intv), :lo)
     end
     return
 end
 
 function DBB.getall!(out::Vector{Float64}, t::DiscretizeRelax{X,T}, ::DBB.Bound{Upper}) where {X, T <: MC}
     @inbounds for j in eachindex(out)
-        out[j] = t.storage[j][1].hi
+        out[j] = t.storage[j][1].Intv.hi
     end
     return
 end
-function DBB.getall!(out::Array{Float64,2}, t::DiscretizeRelax{X,T}, v::DBB.Bound{Upper}) where {X, T <: MC}
+function DBB.getall!(out::Matrix{Float64}, t::DiscretizeRelax{X,T}, v::DBB.Bound{Upper}) where {X, T <: MC}
     for i = 1:length(t.storage)
+        @__dot__ out[:,i] = getfield(getfield(t.storage[i], :Intv), :hi)
+    end
+    return
+end
+
+function DBB.getall!(out::Matrix{Float64}, t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Lower}) where {X, T <: AbstractInterval}
+    @inbounds for i in eachindex(out)
+        @__dot__ out[:,i] = getfield(t.storage[i], :lo)
+    end
+    return
+end
+
+function DBB.getall!(out::Matrix{Float64}, t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Lower}) where {X, T <: MC}
+    @inbounds for i in eachindex(out)
+        @__dot__ out[:,i] = getfield(t.storage[i], :cv)
+    end
+    return
+end
+
+function DBB.getall!(out::Vector{Float64}, t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Lower}) where {X, T <: AbstractInterval}
+    @inbounds for j in eachindex(out)
+        out[j] = t.storage[j][1].lo
+    end
+    return
+end
+
+function DBB.getall!(out::Vector{Float64}, t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Lower}) where {X, T <: MC}
+    @inbounds for j in eachindex(out)
+        out[j] = t.storage[j][1].cv
+    end
+    return
+end
+
+function DBB.getall!(out::Matrix{Float64}, t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Upper}) where {X, T <: AbstractInterval}
+    @inbounds for i in eachindex(out)
         @__dot__ out[:,i] = getfield(t.storage[i], :hi)
     end
     return
 end
 
-function DBB.getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Lower}) where {X, T <: AbstractInterval}
+function DBB.getall!(out::Matrix{Float64}, t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Upper}) where {X, T <: MC}
     @inbounds for i in eachindex(out)
-        out[i] = t.storage[i].lo
+        @__dot__ out[:,i] = getfield(t.storage[i], :cc)
     end
     return
 end
 
-function DBB.getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Lower}) where {X, T <: MC}
-    @inbounds for i in eachindex(out)
-        out[i] = t.storage[i].cv
+function DBB.getall!(out::Vector{Float64}, t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Upper}) where {X, T <: AbstractInterval}
+    @inbounds for j in eachindex(out)
+        out[j] = t.storage[j][1].hi
     end
     return
 end
 
-
-function DBB.getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Upper}) where {X, T <: AbstractInterval}
-    @inbounds for i in eachindex(out)
-        out[i] = t.storage[i].hi
-    end
-    return
-end
-function DBB.getall!(out::Union{Vector{Float64}, Array{Float64,2}}, t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Upper}) where {X, T <: MC}
-    @inbounds for i in eachindex(out)
-        out[i] = t.storage[i].cc
+function DBB.getall!(out::Vector{Float64}, t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Upper}) where {X, T <: MC}
+    @inbounds for j in eachindex(out)
+        out[j] = t.storage[j][1].cc
     end
     return
 end

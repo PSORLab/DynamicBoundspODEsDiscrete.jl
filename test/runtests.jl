@@ -479,7 +479,7 @@ end
     )
 
     @test DBB.supports(integrator, DBB.IntegratorName())
-    @test DBB.supports(integrator, DBB.Gradient())
+    @test !DBB.supports(integrator, DBB.Gradient())
     @test DBB.supports(integrator, DBB.Subgradient())
     @test DBB.supports(integrator, DBB.Bound())
     @test DBB.supports(integrator, DBB.Relaxation())
@@ -509,33 +509,33 @@ end
 
     out = Matrix{Float64}[]
     for i in support_set.s
-        push!(out, zeros(1,1))
+        push!(out, zeros(10,1))
     end
-    #DBB.getall!(out, integrator, DBB.Subgradient{Lower}())
-    #@test out[1][10,1] == 0.0
+    DBB.getall!(out, integrator, DBB.Subgradient{Lower}())
+    @test out[1][10,1] == 0.0
 
-    #DBB.getall!(out, integrator, DBB.Subgradient{Upper}())
-    #@test out[1][10,1] == 0.0
+    DBB.getall!(out, integrator, DBB.Subgradient{Upper}())
+    @test out[1][10,1] == 0.0
 
     out = copy(support_set.s)
     DBB.getall!(out, integrator, DBB.Bound{Lower}())
-    @test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
+    @test isapprox(out[10,1], 1.1507186500504751, atol=1E-8)
 
     DBB.getall!(out, integrator, DBB.Bound{Upper}())
     @test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
 
+    #DBB.getall!(out, integrator, DBB.Relaxation{Lower}())
+    #@test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
+
+    #DBB.getall(out, integrator, DBB.Relaxation{Upper}())
+    #@test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
+
     #=
-    DBB.getall!(out, integrator, DBB.Relaxation{Lower}())
-    @test out[10,1] == 0.0
-
-    DBB.getall!(out, integrator, DBB.Relaxation{Upper}())
-    @test out[10,1] == 0.0
-
     out = DBB.getall(integrator, DBB.Subgradient{Lower}())
-    @test out[10,1] == 0.0
+    @test out[1][10,1] == 0.0
 
     out = DBB.getall(integrator, DBB.Subgradient{Upper}())
-    @test out[10,1] == 0.0
+    @test out[1][10,1] == 0.0
 
     out = DBB.getall(integrator, DBB.Bound{Lower}())
     @test out[10,1] == 0.0
