@@ -205,17 +205,20 @@ end
 
 ## Out of place integrator acccess functions
 function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Lower}) where {X, T <: AbstractInterval}
-    dim1, dim2 = size(t.storage)
-    out = zeros(t.np, zeros(Float64, dim1, dim2))
-    for i in 1:t.np
-        fill!(out[i], 0.0)
+    dims = size(t.storage)
+    (length(dims) == 1) && (dims = (dims[1],1))
+    out = Matrix{Float64}[]
+    for i = 1:t.np
+        push!(out, zeros(Float64, dims[1], dims[2]))
     end
     out
 end
 function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Lower}) where {X, T <: MC}
-    dim1, dim2 = size(t.storage)
-    out = zeros(t.np, zeros(Float64, dim1, dim2))
-    for i in 1:t.np
+    dims = size(t.storage)
+    (length(dims) == 1) && (dims = (dims[1],1))
+    out = Matrix{Float64}[]
+    for i = 1:t.np
+        push!(out, zeros(Float64, dims[1], dims[2]))
         @inbounds for j in eachindex(out[i])
             out[i][j] = t.storage[j].cv_grad[j]
         end
@@ -224,18 +227,21 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Lower}) where {X,
 end
 
 function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Upper}) where {X, T <: AbstractInterval}
-    dim1, dim2 = size(t.storage)
-    out = zeros(t.np, zeros(Float64, dim1, dim2))
-    for i in 1:t.np
-        fill!(out[i], 0.0)
+    dims = size(t.storage)
+    (length(dims) == 1) && (dims = (dims[1],1))
+    out = Matrix{Float64}[]
+    for i = 1:t.np
+        push!(out, zeros(Float64, dims[1], dims[2]))
     end
     out
 end
 
 function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Upper}) where {X, T <: MC}
-    dim1, dim2 = size(t.storage)
-    out = zeros(t.np, zeros(Float64, dim1, dim2))
-    for i in 1:t.np
+    dims = size(t.storage)
+    (length(dims) == 1) && (dims = (dims[1],1))
+    out = Matrix{Float64}[]
+    for i = 1:t.np
+        push!(out, zeros(Float64, dims[1], dims[2]))
         @inbounds for j in eachindex(out[i])
             out[i][j] = t.storage[j].cc_grad[i]
         end
@@ -244,8 +250,9 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Upper}) where {X,
 end
 
 function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Bound{Lower}) where {X, T <: AbstractInterval}
-    dim1, dim2 = size(t.storage)
-    out = zeros(Float64, dim1, dim2)
+    dims = size(t.storage)
+    (length(dims) == 1) && (dims = (dims[1],1))
+    out = zeros(Float64, dims[1], dims[2])
     @inbounds for j in eachindex(out)
         out[j] = t.storage[j].lo
     end
@@ -253,8 +260,9 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Bound{Lower}) where {X, T <: 
 end
 
 function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Bound{Upper}) where {X, T <: AbstractInterval}
-    dim1, dim2 = size(t.storage)
-    out = zeros(Float64, dim1, dim2)
+    dims = size(t.storage)
+    (length(dims) == 1) && (dims = (dims[1],1))
+    out = zeros(Float64, dims[1], dims[2])
     @inbounds for j in eachindex(out)
         out[j] = t.storage[j].hi
     end
@@ -262,8 +270,9 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Bound{Upper}) where {X, T <: 
 end
 
 function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Bound{Lower}) where {X, T <: MC}
-    dim1, dim2 = size(t.storage)
-    out = zeros(Float64, dim1, dim2)
+    dims = size(t.storage)
+    (length(dims) == 1) && (dims = (dims[1],1))
+    out = zeros(Float64, dims[1], dims[2])
     @inbounds for j in eachindex(out)
         out[j] = t.storage[j].Intv.lo
     end
@@ -271,8 +280,9 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Bound{Lower}) where {X, T <: 
 end
 
 function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Bound{Upper}) where {X, T <: MC}
-    dim1, dim2 = size(t.storage)
-    out = zeros(Float64, dim1, dim2)
+    dims = size(t.storage)
+    (length(dims) == 1) && (dims = (dims[1],1))
+    out = zeros(Float64, dims[1], dims[2])
     @inbounds for j in eachindex(out)
         out[j] = t.storage[j].Intv.hi
     end
@@ -280,8 +290,9 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Bound{Upper}) where {X, T <: 
 end
 
 function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Lower}) where {X, T <: AbstractInterval}
-    dim1, dim2 = size(t.storage)
-    out = zeros(Float64, dim1, dim2)
+    dims = size(t.storage)
+    (length(dims) == 1) && (dims = (dims[1],1))
+    out = zeros(Float64, dims[1], dims[2])
     @inbounds for i in eachindex(out)
         out[i] = t.storage[i].lo
     end
@@ -289,8 +300,9 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Lower}) where {X, 
 end
 
 function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Lower}) where {X, T <: MC}
-    dim1, dim2 = size(t.storage)
-    out = zeros(Float64, dim1, dim2)
+    dims = size(t.storage)
+    (length(dims) == 1) && (dims = (dims[1],1))
+    out = zeros(Float64, dims[1], dims[2])
     @inbounds for i in eachindex(out)
         out[i] = t.storage[i].cv
     end
@@ -299,16 +311,18 @@ end
 
 
 function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Upper}) where {X, T <: AbstractInterval}
-    dim1, dim2 = size(t.storage)
-    out = zeros(Float64, dim1, dim2)
+    dims = size(t.storage)
+    (length(dims) == 1) && (dims = (dims[1],1))
+    out = zeros(Float64, dims[1], dims[2])
     @inbounds for i in eachindex(out)
         out[i] = t.storage[i].hi
     end
     out
 end
 function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Upper}) where {X, T <: MC}
-    dim1, dim2 = size(t.storage)
-    out = zeros(Float64, dim1, dim2)
+    dims = size(t.storage)
+    (length(dims) == 1) && (dims = (dims[1],1))
+    out = zeros(Float64, dims[1], dims[2])
     @inbounds for i in eachindex(out)
         out[i] = t.storage[i].cc
     end

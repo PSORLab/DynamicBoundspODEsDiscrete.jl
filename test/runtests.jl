@@ -488,6 +488,7 @@ end
     @test DBB.supports(integrator, DBB.TerminationStatus())
     @test DBB.supports(integrator, DBB.Value())
     @test DBB.supports(integrator, DBB.ParameterValue())
+    @test DBB.supports(integrator, DBB.SupportSet())
 
     @test DBB.get(integrator, DBB.IntegratorName()) == "Discretize & Relax Integrator"
     @test !DBB.get(integrator, DBB.IsNumeric())
@@ -524,29 +525,27 @@ end
     DBB.getall!(out, integrator, DBB.Bound{Upper}())
     @test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
 
-    #DBB.getall!(out, integrator, DBB.Relaxation{Lower}())
-    #@test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
+    DBB.getall!(out, integrator, DBB.Relaxation{Lower}())
+    @test isapprox(out[10,1], 1.1507186500504751, atol=1E-8)
 
-    #DBB.getall(out, integrator, DBB.Relaxation{Upper}())
-    #@test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
+    DBB.getall!(out, integrator, DBB.Relaxation{Upper}())
+    @test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
 
-    #=
     out = DBB.getall(integrator, DBB.Subgradient{Lower}())
     @test out[1][10,1] == 0.0
 
     out = DBB.getall(integrator, DBB.Subgradient{Upper}())
     @test out[1][10,1] == 0.0
 
-    out = DBB.getall(integrator, DBB.Bound{Lower}())
-    @test out[10,1] == 0.0
+    #out = DBB.getall(integrator, DBB.Bound{Lower}())
+    #@test isapprox(out[10,1], 1.1507186500504751, atol=1E-8)
 
-    out = DBB.getall(integrator, DBB.Bound{Upper}())
-    @test out[10,1] == 0.0
+    #out = DBB.getall(integrator, DBB.Bound{Upper}())
+    #@test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
 
-    out = DBB.getall(integrator, DBB.Relaxation{Lower}())
-    @test out[10,1] == 0.0
+    #out = DBB.getall(integrator, DBB.Relaxation{Lower}())
+    #@test isapprox(out[10,1], 1.1507186500504751, atol=1E-8)
 
-    out = DBB.getall(integrator, DBB.Relaxation{Upper}())
-    @test out[10,1] == 0.0
-    =#
+    #out = DBB.getall(integrator, DBB.Relaxation{Upper}())
+    #@test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
 end
