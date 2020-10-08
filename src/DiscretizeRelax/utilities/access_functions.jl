@@ -253,8 +253,10 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Bound{Lower}) where {X, T <: 
     dims = size(t.storage)
     (length(dims) == 1) && (dims = (dims[1],1))
     out = zeros(Float64, dims[1], dims[2])
-    @inbounds for j in eachindex(out)
-        out[j] = t.storage[j].lo
+    for i = 1:dims[1]
+        for j = 1:dims[2]
+            out[i, j] = t.storage[i][j].lo
+        end
     end
     out
 end
@@ -263,8 +265,10 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Bound{Upper}) where {X, T <: 
     dims = size(t.storage)
     (length(dims) == 1) && (dims = (dims[1],1))
     out = zeros(Float64, dims[1], dims[2])
-    @inbounds for j in eachindex(out)
-        out[j] = t.storage[j].hi
+    for i = 1:dims[1]
+        for j = 1:dims[2]
+            out[i, j] = t.storage[i][j].hi
+        end
     end
     out
 end
@@ -293,8 +297,10 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Lower}) where {X, 
     dims = size(t.storage)
     (length(dims) == 1) && (dims = (dims[1],1))
     out = zeros(Float64, dims[1], dims[2])
-    @inbounds for i in eachindex(out)
-        out[i] = t.storage[i].lo
+    for i = 1:dims[1]
+        for j = 1:dims[2]
+            out[i, j] = t.storage[i][j].lo
+        end
     end
     out
 end
@@ -314,8 +320,10 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Upper}) where {X, 
     dims = size(t.storage)
     (length(dims) == 1) && (dims = (dims[1],1))
     out = zeros(Float64, dims[1], dims[2])
-    @inbounds for i in eachindex(out)
-        out[i] = t.storage[i].hi
+    for i = 1:dims[1]
+        for j = 1:dims[2]
+            out[i, j] = t.storage[i][j].hi
+        end
     end
     out
 end

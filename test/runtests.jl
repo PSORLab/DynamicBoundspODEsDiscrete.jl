@@ -537,15 +537,15 @@ end
     out = DBB.getall(integrator, DBB.Subgradient{Upper}())
     @test out[1][10,1] == 0.0
 
-    #out = DBB.getall(integrator, DBB.Bound{Lower}())
-    #@test isapprox(out[10,1], 1.1507186500504751, atol=1E-8)
+    out = DBB.getall(integrator, DBB.Bound{Lower}())
+    @test isapprox(out[10,1], 1.1507186500504751, atol=1E-8)
 
-    #out = DBB.getall(integrator, DBB.Bound{Upper}())
-    #@test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
+    out = DBB.getall(integrator, DBB.Bound{Upper}())
+    @test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
 
-    #out = DBB.getall(integrator, DBB.Relaxation{Lower}())
-    #@test isapprox(out[10,1], 1.1507186500504751, atol=1E-8)
+    out = DBB.getall(integrator, DBB.Relaxation{Lower}())
+    @test isapprox(out[10,1], 1.1507186500504751, atol=1E-8)
 
-    #out = DBB.getall(integrator, DBB.Relaxation{Upper}())
-    #@test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
+    out = DBB.getall(integrator, DBB.Relaxation{Upper}())
+    @test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
 end
