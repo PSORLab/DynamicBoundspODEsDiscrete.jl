@@ -12,15 +12,6 @@
 # Defines functions needed to perform a hermite_obreshkoff iteration.
 #############################################################################
 
-function copy_buffer!(y::CircularBuffer{T}, x::CircularBuffer{T}) where T
-    y.capacity = x.capacity
-    y.first = x.first
-    y.length = x.length
-    copyto!(y.buffer, x.buffer)
-
-    return nothing
-end
-
 """
 HermiteObreschkoff
 
