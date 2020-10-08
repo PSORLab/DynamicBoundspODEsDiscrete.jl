@@ -75,7 +75,7 @@ A functor used in computing bounds and relaxations via Hermite-Obreschkoff's met
 implementation of the parametric Hermite-Obreschkoff's method based on the non-parametric
 version given in (1).
 
-1. [Nedialkov NS, and Jackson KR. "An interval Hermite-Obreschkoff method for 
+1. [Nedialkov NS, and Jackson KR. "An interval Hermite-Obreschkoff method for
 computing rigorous bounds on the solution of an initial value problem for an
 ordinary differential equation." Reliable Computing 5.3 (1999): 289-310.](https://link.springer.com/article/10.1023/A:1009936607335)
 2. [Nedialkov NS. "Computing rigorous bounds on the solution of an
@@ -391,30 +391,4 @@ function (d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY})(contract::ContractorSt
     return RELAXATION_NOT_CALLED
 end
 
-
 get_Δ(f::HermiteObreschkoffFunctor) = f.Δⱼ₊₁
-function set_x!(out::Vector{Float64}, f::HermiteObreschkoffFunctor)
-    out .= f.Jf!_correct.xⱼ₊₁
-    return nothing
-end
-function set_X!(out::Vector{S}, f::HermiteObreschkoffFunctor) where S
-    out .= f.Jf!_correct.Xⱼ₊₁
-    return nothing
-end
-
-has_jacobians(d::HermiteObreschkoffFunctor) = true
-function extract_jacobians!(d::HermiteObreschkoffFunctor, ∂f∂x::Vector{Matrix{T}},
-                            ∂f∂p::Vector{Matrix{T}}) where {T <: Real}
-    for i = 1:d.lon.set_tf!.k+1
-        ∂f∂x[i] .= d.lon.jac_tf!.Jx[i]
-        ∂f∂p[i] .= d.lon.jac_tf!.Jp[i]
-    end
-    return nothing
-end
-
-function get_jacobians!(d::HermiteObreschkoffFunctor, ∂f∂x::Vector{Matrix{T}},
-                        ∂f∂p::Vector{Matrix{T}}, Xⱼ, P, t) where {T <: Real}
-    set_JxJp!(d.lon.jac_tf!, Xⱼ, P, t[1])
-    extract_jacobians!(d, ∂f∂x, ∂f∂p)
-    return nothing
-end

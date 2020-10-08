@@ -179,32 +179,3 @@ function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T},
 end
 
 get_Δ(lf::LohnersFunctor{F,K,S,T,NY}) where {F <: Function, K, S <: Real, T <: Real, NY} = lf.Δⱼ₊₁
-
-"""
-set_P!(d::DiscretizeRelax)
-
-Initializes the `P` and `rP` (P - p) fields of `d`.
-"""
-function set_xX!(outX::Vector{S}, outx::Vector{Float64}, lf::LohnersFunctor{F,K,S,T,NY}) where {F <: Function,
-                                                                                                K, S <: Real,
-                                                                                                T <: Real, NY}
-    @__dot__ outX = lf.jac_tf!.Xⱼ₊₁
-    @__dot__ outx = lf.jac_tf!.xⱼ₊₁
-    return nothing
-end
-
-has_jacobians(d::LohnersFunctor{F,K,S,T,NY}) where {F <: Function, K, S <: Real, T <: Real, NY} = true
-function extract_jacobians!(d::LohnersFunctor{F,K,S,T,NY}, ∂f∂x::Vector{Matrix{T}},
-                            ∂f∂p::Vector{Matrix{T}}) where {F <: Function, K, S <: Real, T <: Real, NY}
-    for i = 1:(d.set_tf!.k + 1)
-        @__dot__ ∂f∂x[i] = d.jac_tf!.Jx[i]
-        @__dot__ ∂f∂p[i] = d.jac_tf!.Jp[i]
-    end
-    nothing
-end
-function get_jacobians!(d::LohnersFunctor{F,K,S,T,NY}, ∂f∂x::Vector{Matrix{T}},
-                        ∂f∂p::Vector{Matrix{T}}, Xⱼ, P, t) where {F <: Function, K, S <: Real, T <: Real, NY}
-    set_JxJp!(d.jac_tf!, Xⱼ, P, t[1])
-    extract_jacobians!(d, ∂f∂x, ∂f∂p)
-    nothing
-end
