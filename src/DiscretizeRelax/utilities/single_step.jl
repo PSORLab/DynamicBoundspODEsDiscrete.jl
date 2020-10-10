@@ -41,17 +41,17 @@ $(TYPEDFIELDS)
 """
 mutable struct StepResult{S}
     "nominal value of the state variables"
-    xⱼ
+    xⱼ::Vector{Float64}
     "relaxations/bounds of the state variables"
-    Xⱼ
+    Xⱼ::Vector{S}
     "storage for parallelepid enclosure of `xⱼ`"
     A::CircularBuffer{QRDenseStorage}
     "storage for parallelepid enclosure of `xⱼ`"
     Δ::CircularBuffer{Vector{S}}
     "predicted step size for next step"
-    predicted_hj
+    predicted_hj::Float64
     "new time"
-    time
+    time::Float64
 end
 
 """

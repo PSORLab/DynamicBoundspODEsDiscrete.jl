@@ -352,7 +352,7 @@ if !(VERSION < v"1.1" && testfile == "intervals.jl")
 end
 
 
-@testset "Lohner's Method Testset" begin
+@testset "Lohner's Method Interval Testset" begin
 
     ticks = 100.0
     steps = 100.0
@@ -360,7 +360,7 @@ end
 
     x0(p) = [9.0]
     function f!(dx, x, p, t)
-        dx[1] = p[1] - x[1]^2
+        dx[1] = p[1] - x[1]
         nothing
     end
     tspan = (0.0, tend)
@@ -386,8 +386,8 @@ end
     lo_vec = getfield.(getindex.(integrator.storage[:], 1), :lo)
     hi_vec = getfield.(getindex.(integrator.storage[:], 1), :hi)
 
-    @test isapprox(lo_vec[7], 5.802638399798364, atol = 1E-5)
-    @test isapprox(hi_vec[7], 5.885672409877501, atol = 1E-5)
+    @test isapprox(lo_vec[7], 8.32393819905948, atol = 1E-5)
+    @test isapprox(hi_vec[7], 8.459150559247592, atol = 1E-5)
 
     integrator = DiscretizeRelax(
         prob,
@@ -406,8 +406,46 @@ end
     lo_vec = getfield.(getindex.(integrator.storage[:], 1), :lo)
     hi_vec = getfield.(getindex.(integrator.storage[:], 1), :hi)
 
-    @test isapprox(lo_vec[6], 3.3824180351195783, atol = 1E-5)
-    @test isapprox(hi_vec[6], 3.5704139370767916, atol = 1E-5)
+    @test isapprox(lo_vec[6], -0.9428747342265493, atol = 1E-5)
+    @test isapprox(hi_vec[6], 1.0577327115064268, atol = 1E-5)
+end
+
+@testset "Lohner's Method MC Testset" begin
+
+    ticks = 10.0
+    steps = 10.0
+    tend = steps / ticks
+
+    x0(p) = [9.0]
+    function f!(dx, x, p, t)
+        dx[1] = p[1] - x[1]
+        nothing
+    end
+    tspan = (0.0, 0.5*tend)
+    pL = [-0.3]
+    pU = [0.3]
+    prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
+
+    integrator = DiscretizeRelax(
+        prob,
+        DynamicBoundspODEsDiscrete.LohnerContractor{7}(),
+        h = 1 / ticks,
+        repeat_limit = 1,
+        skip_step2 = false,
+        step_limit = steps,
+        relax = true,
+    )
+
+    ratio = rand(1)
+    pstar = pL .* ratio .+ pU .* (1.0 .- ratio)
+    DynamicBoundsBase.setall!(integrator, DynamicBoundsBase.ParameterValue(), [0.0])
+    DynamicBoundsBase.relax!(integrator)
+
+    lo_vec = getfield.(getfield.(getindex.(integrator.storage[:], 1), :Intv), :lo)
+    hi_vec = getfield.(getfield.(getindex.(integrator.storage[:], 1), :Intv), :hi)
+
+    @test isapprox(lo_vec[6], 4.803948215016289, atol = 1E-5)
+    @test isapprox(hi_vec[6], 5.074661233423227, atol = 1E-5)
 end
 
 @testset "Hermite-Obreshkoff Testset" begin
@@ -418,7 +456,7 @@ end
 
     x0(p) = [9.0]
     function f!(dx, x, p, t)
-        dx[1] = p[1] - x[1]^2
+        dx[1] = p[1] - x[1]
         nothing
     end
     tspan = (0.0, tend)
@@ -440,8 +478,8 @@ end
     lo_vec = getfield.(getindex.(integrator.storage[:], 1), :lo)
     hi_vec = getfield.(getindex.(integrator.storage[:], 1), :hi)
 
-    @test isapprox(lo_vec[6], 6.150098100006023, atol = 1E-5)
-    @test isapprox(hi_vec[6], 6.263901898905692, atol = 1E-5)
+    @test isapprox(lo_vec[6], 8.415170619304133, atol = 1E-5)
+    @test isapprox(hi_vec[6], 8.536590985188871, atol = 1E-5)
 end
 
 @testset "Wilhelm 2019 Integrator Testset" begin
@@ -506,7 +544,7 @@ end
     DBB.setall!(integrator, DBB.ParameterBound{Upper}(), [3.01])
 
     support_set = DBB.get(integrator, DBB.SupportSet())
-    @test support_set.s[3] == 0.02
+    @test support_set.s[3] == 0.03
 
     out = Matrix{Float64}[]
     for i in support_set.s
@@ -520,16 +558,16 @@ end
 
     out = copy(support_set.s)
     DBB.getall!(out, integrator, DBB.Bound{Lower}())
-    @test isapprox(out[10,1], 1.1507186500504751, atol=1E-8)
+    @test isapprox(out[10,1], 1.1436771853845018, atol=1E-8)
 
     DBB.getall!(out, integrator, DBB.Bound{Upper}())
-    @test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
+    @test isapprox(out[10,1], 1.1469994966584778, atol=1E-8)
 
     DBB.getall!(out, integrator, DBB.Relaxation{Lower}())
-    @test isapprox(out[10,1], 1.1507186500504751, atol=1E-8)
+    @test isapprox(out[10,1], 1.1436771853845018, atol=1E-8)
 
     DBB.getall!(out, integrator, DBB.Relaxation{Upper}())
-    @test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
+    @test isapprox(out[10,1], 1.1469994966584778, atol=1E-8)
 
     out = DBB.getall(integrator, DBB.Subgradient{Lower}())
     @test out[1][10,1] == 0.0
@@ -538,14 +576,14 @@ end
     @test out[1][10,1] == 0.0
 
     out = DBB.getall(integrator, DBB.Bound{Lower}())
-    @test isapprox(out[10,1], 1.1507186500504751, atol=1E-8)
+    @test isapprox(out[10,1], 1.1436771853845018, atol=1E-8)
 
     out = DBB.getall(integrator, DBB.Bound{Upper}())
-    @test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
+    @test isapprox(out[10,1], 1.1469994966584778, atol=1E-8)
 
     out = DBB.getall(integrator, DBB.Relaxation{Lower}())
-    @test isapprox(out[10,1], 1.1507186500504751, atol=1E-8)
+    @test isapprox(out[10,1], 1.1436771853845018, atol=1E-8)
 
     out = DBB.getall(integrator, DBB.Relaxation{Upper}())
-    @test isapprox(out[10,1], 1.1534467709985823, atol=1E-8)
+    @test isapprox(out[10,1], 1.1469994966584778, atol=1E-8)
 end
