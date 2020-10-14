@@ -260,6 +260,11 @@ if !(VERSION < v"1.1" && testfile == "intervals.jl")
         @test iterate(t1)[1] == 1.10
         @test iterate(t1)[2] == 1
         @test eachindex(t1) == 0:2
+        @test t1[:] == (1.10, 2.10, 3.10)
+        @test t1[1:2] == (2.10, 3.10)
+        @test t1[0:2:2] == (1.10, 3.10)
+        @test rem(t1, 2) == t1
+        @test mod(t1, 2) == t1
 
         t1_mod = mod(t1, 2.0)
         t2_mod = mod(t2, 2.0)
