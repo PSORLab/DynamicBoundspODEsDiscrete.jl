@@ -250,9 +250,16 @@ if !(VERSION < v"1.1" && testfile == "intervals.jl")
         # check that STaylor1 and Taylor yeild same result
         t1 = STaylor1([1.1, 2.1, 3.1])
         t2 = Taylor1([1.1, 2.1, 3.1])
-        for f in (exp, abs, log, sin, cos, sinh, cosh, mod2pi, sqrt)
+        for f in (exp, abs, log, sin, cos, sinh, cosh, mod2pi, sqrt, abs2,
+                  deg2rad, rad2deg)
             @test test_vs_Taylor1(f(t1), f(t2))
         end
+
+        @test DR.StaticTaylorSeries.get_order(t1) == 2
+        @test axes(t1) isa Tuple{}
+        @test iterate(t1)[1] == 1.10
+        @test iterate(t1)[2] == 1
+        @test eachindex(t1) == 0:2
 
         t1_mod = mod(t1, 2.0)
         t2_mod = mod(t2, 2.0)
