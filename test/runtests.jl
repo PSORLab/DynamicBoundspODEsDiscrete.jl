@@ -415,6 +415,21 @@ end
 
     @test isapprox(lo_vec[6], -0.8268165215162279, atol = 1E-5)
     @test isapprox(hi_vec[6], 1.1480990441271572, atol = 1E-5)
+
+    support_set = DBB.get(integrator, DBB.SupportSet())
+    outvec = zeros(length(support_set.s))
+
+    DBB.getall!(outvec, integrator, DBB.Bound{Lower}())
+    @test isapprox(outvec[10], -1.0104842942472434, atol=1E-8)
+
+    DBB.getall!(outvec, integrator, DBB.Bound{Upper}())
+    @test isapprox(outvec[10], 1.011181623809001, atol=1E-8)
+
+    DBB.getall!(outvec, integrator, DBB.Relaxation{Lower}())
+    @test isapprox(outvec[10], -1.0104842942472434, atol=1E-8)
+
+    DBB.getall!(outvec, integrator, DBB.Relaxation{Upper}())
+    @test isapprox(outvec[10], 1.011181623809001, atol=1E-8)
 end
 
 @testset "Lohner's Method MC Testset" begin
@@ -495,6 +510,20 @@ end
 
     out = DBB.getall(integrator, DBB.Relaxation{Upper}())
     @test isapprox(out[1,10], 8.225380667441055, atol=1E-8)
+
+    outvec = zeros(length(support_set.s))
+
+    DBB.getall!(outvec, integrator, DBB.Bound{Lower}())
+    @test isapprox(outvec[10], 8.199560023022423, atol=1E-8)
+
+    DBB.getall!(outvec, integrator, DBB.Bound{Upper}())
+    @test isapprox(outvec[10], 8.251201311859687, atol=1E-8)
+
+    DBB.getall!(outvec, integrator, DBB.Relaxation{Lower}())
+    @test isapprox(outvec[10], 8.225380667441055, atol=1E-8)
+
+    DBB.getall!(outvec, integrator, DBB.Relaxation{Upper}())
+    @test isapprox(outvec[10], 8.225380667441055, atol=1E-8)
 end
 
 @testset "Hermite-Obreshkoff Testset" begin
