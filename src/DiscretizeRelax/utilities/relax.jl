@@ -49,11 +49,11 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
     d.exist_result.predicted_hj = d.exist_result.hj
 
     for step_number = 2:(d.step_limit+2)
-        if sign_tstep*d.time[step_number] < sign_tstep*tmax
+        if sign_tstep*d.step_result.time <= sign_tstep*tmax
 
             # max step size is min of predicted, when next support point occurs,
             # or the last time step in the span
-            tv = d.time[step_number]
+            tv = d.step_result.time
             d.exist_result.hj = min(d.exist_result.hj, next_support - tv, tmax - tv)
             d.exist_result.hj_max = tmax - tv
 
@@ -80,6 +80,8 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
                 break
             end
             d.step_count += 1
+        else
+            break
         end
     end
 

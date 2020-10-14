@@ -363,7 +363,6 @@ if !(VERSION < v"1.1" && testfile == "intervals.jl")
     end
 end
 
-
 @testset "Lohner's Method Interval Testset" begin
 
     ticks = 100.0
@@ -400,10 +399,27 @@ end
 
     @test isapprox(lo_vec[7], 8.417645335842485, atol = 1E-5)
     @test isapprox(hi_vec[7], 8.534116268673994, atol = 1E-5)
+end
+
+@testset "Lohner's Method Adaptive Interval Testset" begin
+
+    ticks = 100.0
+    steps = 100.0
+    tend = steps / ticks
+
+    x0(p) = [9.0]
+    function f!(dx, x, p, t)
+        dx[1] = p[1]  - x[1]*x[1]
+        nothing
+    end
+    tspan = (0.0, tend)
+    pL = [-1.0]
+    pU = [1.0]
+    prob = DBB.ODERelaxProb(f!, tspan, x0, pL, pU)
 
     integrator = DiscretizeRelax(
         prob,
-        DR.LohnerContractor{7}(),
+        DR.LohnerContractor(7),
         repeat_limit = 1,
         skip_step2 = false,
         step_limit = steps,
@@ -418,23 +434,23 @@ end
     lo_vec = getfield.(getindex.(integrator.storage[:], 1), :lo)
     hi_vec = getfield.(getindex.(integrator.storage[:], 1), :hi)
 
-    @test isapprox(lo_vec[6], -0.8268165215162279, atol = 1E-5)
-    @test isapprox(hi_vec[6], 1.1480990441271572, atol = 1E-5)
+    @test isapprox(lo_vec[6], 3.3824180351195783, atol = 1E-5)
+    @test isapprox(hi_vec[6], 3.5704139370767916, atol = 1E-5)
 
     support_set = DBB.get(integrator, DBB.SupportSet())
     outvec = zeros(length(support_set.s))
 
     DBB.getall!(outvec, integrator, DBB.Bound{Lower}())
-    @test isapprox(outvec[10], -1.0104842942472434, atol=1E-8)
+    @test isapprox(outvec[10], 0.9746606911231538, atol=1E-8)
 
     DBB.getall!(outvec, integrator, DBB.Bound{Upper}())
-    @test isapprox(outvec[10], 1.011181623809001, atol=1E-8)
+    @test isapprox(outvec[10], 1.7009858838207106, atol=1E-8)
 
     DBB.getall!(outvec, integrator, DBB.Relaxation{Lower}())
-    @test isapprox(outvec[10], -1.0104842942472434, atol=1E-8)
+    @test isapprox(outvec[10], 0.9746606911231538, atol=1E-8)
 
     DBB.getall!(outvec, integrator, DBB.Relaxation{Upper}())
-    @test isapprox(outvec[10], 1.011181623809001, atol=1E-8)
+    @test isapprox(outvec[10], 1.7009858838207106, atol=1E-8)
 end
 
 @testset "Lohner's Method MC Testset" begin
@@ -480,10 +496,10 @@ end
         push!(out, zeros(1,length(support_set.s)))
     end
     DBB.getall!(out, integrator, DBB.Subgradient{Lower}())
-    @test out[1][1,10] == 0.08606881472877177
+    @test isapprox(out[1][1,10], 0.08606881472877183, atol=1E-8)
 
     DBB.getall!(out, integrator, DBB.Subgradient{Upper}())
-    @test out[1][1,10] == 0.08606881472877177
+    @test isapprox(out[1][1,10], 0.08606881472877183, atol=1E-8)
 
     out = zeros(1, length(support_set.s))
     DBB.getall!(out, integrator, DBB.Bound{Lower}())
@@ -499,10 +515,10 @@ end
     @test isapprox(out[1,10], 8.225380667441055, atol=1E-8) #
 
     out = DBB.getall(integrator, DBB.Subgradient{Lower}())
-    @test out[1][1,10] == 0.08606881472877177
+    @test isapprox(out[1][1,10], 0.08606881472877183, atol=1E-8)
 
     out = DBB.getall(integrator, DBB.Subgradient{Upper}())
-    @test out[1][1,10] == 0.08606881472877177
+    @test isapprox(out[1][1,10], 0.08606881472877183, atol=1E-8)
 
     out = DBB.getall(integrator, DBB.Bound{Lower}())
     @test isapprox(out[1,10], 8.199560023022423, atol=1E-8)
