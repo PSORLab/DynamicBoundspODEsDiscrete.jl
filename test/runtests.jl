@@ -266,6 +266,8 @@ if !(VERSION < v"1.1" && testfile == "intervals.jl")
         @test rem(t1, 2) == t1
         @test mod(t1, 2) == t1
 
+        @test STaylor1([1.1, 2.1, 3.1], Val(3),  Val(5)) == STaylor1([1.1, 2.1, 3.1, 0.0, 0.0, 0.0])
+
         t1_mod = mod(t1, 2.0)
         t2_mod = mod(t2, 2.0)
         @test isapprox(t1_mod[0], t2_mod[0], atol = 1E-10)

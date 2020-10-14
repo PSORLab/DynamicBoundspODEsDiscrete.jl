@@ -40,7 +40,7 @@ given `N` with constant term equal to `x`.
     end
 end
 function STaylor1(coeffs::Vector{T}, l::Val{L}, v::Val{N}) where {L,N,T<:Number}
-    STaylor1{(N+1),T}(ntuple(i -> (i > L+1) ? coeffs[i] : zero(T),  N+1))
+    STaylor1{(N+1),T}(ntuple(i -> (i < L+1) ? coeffs[i] : zero(T),  N+1))
 end
 @inline function STaylor1(coeffs::Vector{T}) where {T<:Number}
     STaylor1{length(coeffs),T}(tuple(coeffs...))
