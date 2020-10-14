@@ -47,7 +47,7 @@ tend = steps/ticks
 if prob_num == 1
     x0(p) = [9.0]
     function f!(dx, x, p, t)
-        dx[1] = p[1] - x[1]^2
+        dx[1] = p[1] - x[1]*x[1]
         nothing
     end
     tspan = (0.0, tend)
@@ -69,7 +69,7 @@ end
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
 
 if lohners_type == 1
-    integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{7}(),
+    integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{7}(), h = 1/ticks,
                                  repeat_limit = 1, skip_step2 = false, step_limit = steps, relax = false)
 elseif lohners_type == 2
     integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.HermiteObreschkoff(3, 3), h = 1/ticks,

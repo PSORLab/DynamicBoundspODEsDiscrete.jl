@@ -43,37 +43,36 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
 
     # Begin integration loop
     hlast = 0.0
-    step_number = 0
     d.step_count = 0
     is_adaptive = d.exist_result.hj <= 0.0
     d.exist_result.hj = !is_adaptive ? d.exist_result.hj : 0.01*(tmax - d.contractor_result.times[1])
     d.exist_result.predicted_hj = d.exist_result.hj
 
-    for step_number = 0:d.step_limit
-        if sign_tstep*d.time[step_number + 1] < sign_tstep*tmax
+    for step_number = 2:(d.step_limit+2)
+        if sign_tstep*d.time[step_number] < sign_tstep*tmax
 
             # max step size is min of predicted, when next support point occurs,
             # or the last time step in the span
-            tv = d.time[step_number + 1]
+            tv = d.time[step_number]
             d.exist_result.hj = min(d.exist_result.hj, next_support - tv, tmax - tv)
             d.exist_result.hj_max = tmax - tv
 
             d.contractor_result.steps[1] = d.exist_result.hj
-            d.contractor_result.step_count = step_number + 1
+            d.contractor_result.step_count = step_number
 
             # perform step size calculation and update bound information
             single_step!(d.exist_result, d.contractor_result, d.step_params,
-                         d.step_result, d.method_f!, step_number + 1)
+                         d.step_result, d.method_f!, step_number-1)
 
             # unpack storage
-            if step_number > length(d.time)
+            if step_number - 1 > length(d.time)
                 push!(d.storage, copy(d.contractor_result.X_computed))
                 push!(d.storage_apriori, copy(d.exist_result.Xapriori))
                 push!(d.time, d.contractor_result.times[1])
             end
-            copy!(d.storage[step_number + 1], d.contractor_result.X_computed)
-            copy!(d.storage_apriori[step_number + 1], d.exist_result.Xj_apriori)
-            d.time[step_number + 1] = d.step_result.time
+            copy!(d.storage[step_number], d.contractor_result.X_computed)
+            copy!(d.storage_apriori[step_number], d.exist_result.Xj_apriori)
+            d.time[step_number] = d.step_result.time
 
             # throw error if limit exceeded
             if d.exist_result.status_flag !== RELAXATION_NOT_CALLED
@@ -84,14 +83,14 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
         end
     end
 
-    if (d.step_count + 1 > d.step_limit) && (sign_tstep*d.time[d.step_count + 2] < sign_tstep*tmax)
+    if (d.step_count > d.step_limit) && (sign_tstep*d.time[d.step_count + 1] < sign_tstep*tmax)
         d.error_code = LIMIT_EXCEEDED
     end
 
     # cut out any unnecessary array elements
-    resize!(d.storage, d.step_count + 1 )
-    resize!(d.storage_apriori, d.step_count + 1 )
-    resize!(d.time, d.step_count + 1 )
+    resize!(d.storage, d.step_count)
+    resize!(d.storage_apriori, d.step_count)
+    resize!(d.time, d.step_count)
 
     if d.error_code === RELAXATION_NOT_CALLED
         d.error_code = COMPLETED
