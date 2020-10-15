@@ -5,15 +5,14 @@ function evaluate(a::STaylor1{N,T}, dx::T) where {N, T<:Number}
     end
     suma
 end
-#=
-function evaluate(a::STaylor1{N,T}, dx::S) where {N, T<:Number, S<:Number}
-    suma = a[N-1]*one(dx)
-    @inbounds for k in (N-1):-1:0
-        suma = suma*dx + a[k]
+function evaluate(a::STaylor1{N,T}, x::STaylor1{N,T}) where {N, T<:Number}
+    @inbounds suma = a[end]*one(STaylor1{N,T})
+    @inbounds for k = (N-1):-1:0
+        suma = suma*x + a[k]
     end
     suma
 end
-=#
+
 evaluate(a::STaylor1{N,T}) where {N, T<:Number} = a[0]
 
 evaluate(x::Union{Array{STaylor1{N,T}}, SubArray{STaylor1{N,T}}}, δt::S) where

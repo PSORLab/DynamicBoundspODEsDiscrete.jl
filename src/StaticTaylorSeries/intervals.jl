@@ -24,13 +24,13 @@ normalize_taylor(a::STaylor1{N,T}, I::Interval{T}, symI::Bool=true) where {N, T 
     _normalize(a, I, Val(symI))
 
 function _normalize(a::STaylor1{N,T}, I::Interval{T}, ::Val{true}) where {N, T <: Number}
-    t = STaylor1(zero(T), Val{N}())
+    t = STaylor1(one(T), Val{N-1}())
     tnew = mid(I) + t*radius(I)
     return a(tnew)
 end
 
 function _normalize(a::STaylor1{N,T}, I::Interval{T}, ::Val{false}) where {N, T <: Number}
-    t = STaylor1(zero(promote_type(S,T)), Val{N}())
+    t = STaylor1(one(T), Val{N-1}())
     tnew = inf(I) + t*diam(I)
     return a(tnew)
 end

@@ -23,8 +23,8 @@ DBB.supports(::DiscretizeRelax, ::DBB.Value) = true
 DBB.supports(::DiscretizeRelax, ::DBB.ParameterValue) = true
 DBB.supports(::DiscretizeRelax, ::DBB.SupportSet) = true
 
-DBB.get(t::DiscretizeRelax, v::DBB.IntegratorName) = "Discretize & Relax Integrator"
-DBB.get(t::DiscretizeRelax, v::DBB.IsNumeric) = false
+DBB.get(t::DiscretizeRelax, v::DBB.IntegratorName) = "Discretize & Relax Integrator" # TO DO... FIX ME
+DBB.get(t::DiscretizeRelax, v::DBB.IsNumeric) = false # TO DO... FIX ME
 DBB.get(t::DiscretizeRelax, v::DBB.IsSolutionSet) = true
 DBB.get(t::DiscretizeRelax, v::DBB.TerminationStatus) = t.error_code
 DBB.get(t::DiscretizeRelax, v::DBB.SupportSet) = DBB.SupportSet(t.time)
