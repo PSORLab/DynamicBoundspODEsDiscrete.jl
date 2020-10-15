@@ -123,13 +123,12 @@ include("DiscretizeRelax/utilities/single_step.jl")
 include("DiscretizeRelax/method/higher_order_enclosure.jl")
 include("DiscretizeRelax/method/lohners_qr.jl")
 include("DiscretizeRelax/method/hermite_obreschkoff.jl")
+include("DiscretizeRelax/method/wilhelm_2019.jl")
 
 include("DiscretizeRelax/utilities/discretize_relax.jl")
 include("DiscretizeRelax/utilities/relax.jl")
 include("DiscretizeRelax/utilities/access_functions.jl")
 
 #include("local_integration_problem.jl")
-#include("interval_contractor.jl")
-#include("Wilhelm2019.jl")
 
 end # module

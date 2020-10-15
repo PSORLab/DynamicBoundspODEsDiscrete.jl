@@ -1,3 +1,169 @@
+
+"""
+$(TYPEDEF)
+"""
+abstract type AbstractIntervalCallback end
+
+"""
+$(TYPEDEF)
+"""
+struct PICallback{FH,FJ} <:  AbstractIntervalCallback
+    h!::FH
+    hj!::FJ
+    H::Vector{Interval{Float64}}
+    J::Array{Interval{Float64},2}
+    xmid::Vector{Float64}
+    X::Vector{Interval{Float64}}
+    P::Vector{Interval{Float64}}
+    nx::Int
+end
+function PICallback(h!::FH, hj!::FJ, P::Vector{Interval{Float64}}, nx::Int) where {FH,FJ}
+    H = zeros(Interval{Float64}, nx)
+    J = zeros(Interval{Float64}, nx, nx)
+    xmid = zeros(Float64, nx)
+    X = zeros(Interval{Float64}, nx)
+    return PICallback{FH,FJ}(h!, hj!, H, J, xmid, X, P, nx)
+end
+
+function (d::PICallback{FH,FJ})() where {FH,FJ}
+    fill!(d.H, Interval{Float64}(0.0,0.0))
+    fill!(d.J, Interval{Float64}(0.0,0.0))
+    @inbounds for i in 1:d.nx
+        d.xmid[i] = 0.5*(d.X[i].lo + d.X[i].hi)
+    end
+    d.h!(d.H, d.xmid, d.P)
+    d.hj!(d.J, d.X, d.P)
+    return
+end
+
+"""
+$(TYPEDEF)
+"""
+function precondition!(d::DenseMidInv, H::Vector{Interval{Float64}}, J::Array{Interval{Float64},2})
+    for i in eachindex(J)
+        @inbounds d.Y[i] = 0.5*(J[i].lo + J[i].hi)
+    end
+    F = lu!(d.Y)
+    H .= F\H
+    J .= F\J
+    return
+end
+
+"""
+$(TYPEDEF)
+"""
+abstract type AbstractContractor end
+
+"""
+$(TYPEDEF)
+"""
+struct NewtonInterval <: AbstractContractor
+    N::Vector{Interval{Float64}}
+    Ntemp::Vector{Interval{Float64}}
+    X::Vector{Interval{Float64}}
+    Xdiv::Vector{Interval{Float64}}
+    inclusion::Vector{Bool}
+    lower_inclusion::Vector{Bool}
+    upper_inclusion::Vector{Bool}
+    kmax::Int
+    rtol::Float64
+    etol::Float64
+end
+function NewtonInterval(nx::Int; kmax::Int = 5, rtol::Float64 = 1E-6, etol::Float64 = 1E-6)
+    N = zeros(Interval{Float64}, nx)
+    Ntemp = zeros(Interval{Float64}, nx)
+    X = zeros(Interval{Float64}, nx)
+    Xdiv = zeros(Interval{Float64}, nx)
+    inclusion = fill(false, (nx,))
+    lower_inclusion = fill(false, (nx,))
+    upper_inclusion = fill(false, (nx,))
+    return NewtonInterval(N, Ntemp, X, Xdiv, inclusion, lower_inclusion,
+                          upper_inclusion, kmax, rtol, etol)
+end
+function (d::NewtonInterval)(callback::PICallback{FH,FJ}) where {FH,FJ}
+
+    ext_division_flag::Bool = false
+    exclusion_flag::Bool = false
+
+    @inbounds for i=1:callback.nx
+        S1 = zero(Interval{Float64})
+        S2 = zero(Interval{Float64})
+        @inbounds for j=1:callback.nx
+            if (j < i)
+                S1 += callback.J[i,j]*(d.X[j] - 0.5*(d.X[j].lo + d.X[j].hi))
+            elseif (j > i)
+                S2 += callback.J[i,j]*(d.X[j] - 0.5*(d.X[j].lo + d.X[j].hi))
+            end
+        end
+        @inbounds if callback.J[i,i].lo*callback.J[i,i].hi > 0.0
+            @inbounds d.N[i] = 0.5*(d.X[i].lo + d.X[i].hi) - (callback.H[i]+S1+S2)/callback.J[i,i]
+        else
+            @. d.Ntemp = d.N
+            eD, d.N[i], d.Ntemp[i] = extended_process(d.N[i], d.X[i], callback.J[i,i],
+                                                    S1+S2+callback.H[i], d.rtol)
+            if eD == 1
+                ext_division_flag = true
+                @. d.Xdiv = d.X
+                d.Xdiv[i] = d.Ntemp[i] ∩ d.X[i]
+                d.X[i] = d.N[i] ∩ d.X[i]
+                return ext_division_flag, exclusion_flag
+            end
+        end
+        @inbounds if strict_x_in_y(d.N[i], d.X[i])
+            d.inclusion[i] = true
+            d.lower_inclusion[i] = true
+            d.upper_inclusion[i] = true
+        else
+            d.inclusion[i] = false
+            d.lower_inclusion[i] = false
+            d.upper_inclusion[i] = false
+            if (d.N[i].lo > d.X[i].lo)
+                d.lower_inclusion[i] = true
+            elseif (d.N[i].hi < d.X[i].hi)
+                d.upper_inclusion[i] = true
+            end
+        end
+        @inbounds if ~isdisjoint(d.N[i], d.X[i])
+            d.X[i] = d.N[i] ∩ d.X[i]
+        else
+            return ext_division_flag, exclusion_flag
+        end
+    end
+    return ext_division_flag, exclusion_flag
+end
+
+function parametric_interval_contractor(callback!::PICallback{FH,FJ}, precond!::P,
+                                        contractor::S) where {FH,
+                                                              FJ,
+                                                              P,
+                                                              S <: AbstractContractor}
+    exclusion_flag = false
+    inclusion_flag = false
+    ext_division_flag = false
+    ext_division_num = 0
+
+    for i in eachindex(contractor.X)
+        @inbounds contractor.inclusion[i] = false
+        @inbounds contractor.lower_inclusion[i] = false
+        @inbounds contractor.upper_inclusion[i] = false
+        @inbounds contractor.X[i] = callback!.X[i]
+    end
+
+    for i=1:contractor.kmax
+        callback!()::Nothing
+        precondition!(precond!, callback!.H, callback!.J)::Nothing
+        exclusion_flag, ext_division_flag = contractor(callback!)::Tuple{Bool,Bool}
+        (exclusion_flag || ext_division_flag) && break
+        inclusion_flag = inclusion_test(inclusion_flag, contractor.inclusion,
+                                        callback!.nx)
+        for j in eachindex(callback!.X)
+            @inbounds callback!.X[j] = contractor.X[j]
+        end
+    end
+
+    return exclusion_flag, inclusion_flag, ext_division_flag
+end
+
 """
 $(TYPEDEF)
 """
@@ -116,6 +282,7 @@ function (cb::CallbackHJ{F, BDF2})(out, x, p) where F
     return
 end
 
+#=
 """
 $(TYPEDEF)
 
@@ -125,7 +292,7 @@ $(TYPEDFIELDS)
 """
 mutable struct Wilhelm2019{T <: W19T, ICB1 <: PICallback, ICB2 <: PICallback,
                            PRE, CTR <: AbstractContractor,
-                           IC <: Function, F, Z, J, PRB, N, C, AMAT} <: AbstractODERelaxIntegator
+                           IC <: Function, F, Z, J, PRB, N, C, AMAT} <: AbstractStateContractor
 
     # problem specifications
     integrator_type::T
@@ -176,7 +343,9 @@ mutable struct Wilhelm2019{T <: W19T, ICB1 <: PICallback, ICB2 <: PICallback,
     # local evaluation information
     local_problem_storage::LocalProblemStorage{N}
 end
+=#
 
+#=
 function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
 
     h! = d.f
@@ -238,7 +407,7 @@ function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
                        mc_callback1, mc_callback2, IC_relax, state_relax,
                        var_relax, param, kmax, local_problem_storage)
 end
-#=
+
 function relax!(d::Wilhelm2019)
 
     # load state relaxation bounds at support values
@@ -836,169 +1005,4 @@ function extended_process(N::Interval{Float64}, X::Interval{Float64},
         end
     end
     return 0, N, Ntemp
-end
-
-"""
-$(TYPEDEF)
-"""
-abstract type AbstractIntervalCallback end
-
-"""
-$(TYPEDEF)
-"""
-struct PICallback{FH,FJ} <:  AbstractIntervalCallback
-    h!::FH
-    hj!::FJ
-    H::Vector{Interval{Float64}}
-    J::Array{Interval{Float64},2}
-    xmid::Vector{Float64}
-    X::Vector{Interval{Float64}}
-    P::Vector{Interval{Float64}}
-    nx::Int
-end
-function PICallback(h!::FH, hj!::FJ, P::Vector{Interval{Float64}}, nx::Int) where {FH,FJ}
-    H = zeros(Interval{Float64}, nx)
-    J = zeros(Interval{Float64}, nx, nx)
-    xmid = zeros(Float64, nx)
-    X = zeros(Interval{Float64}, nx)
-    return PICallback{FH,FJ}(h!, hj!, H, J, xmid, X, P, nx)
-end
-
-function (d::PICallback{FH,FJ})() where {FH,FJ}
-    fill!(d.H, Interval{Float64}(0.0,0.0))
-    fill!(d.J, Interval{Float64}(0.0,0.0))
-    @inbounds for i in 1:d.nx
-        d.xmid[i] = 0.5*(d.X[i].lo + d.X[i].hi)
-    end
-    d.h!(d.H, d.xmid, d.P)
-    d.hj!(d.J, d.X, d.P)
-    return
-end
-
-"""
-$(TYPEDEF)
-"""
-function precondition!(d::DenseMidInv, H::Vector{Interval{Float64}}, J::Array{Interval{Float64},2})
-    for i in eachindex(J)
-        @inbounds d.Y[i] = 0.5*(J[i].lo + J[i].hi)
-    end
-    F = lu!(d.Y)
-    H .= F\H
-    J .= F\J
-    return
-end
-
-"""
-$(TYPEDEF)
-"""
-abstract type AbstractContractor end
-
-"""
-$(TYPEDEF)
-"""
-struct NewtonInterval <: AbstractContractor
-    N::Vector{Interval{Float64}}
-    Ntemp::Vector{Interval{Float64}}
-    X::Vector{Interval{Float64}}
-    Xdiv::Vector{Interval{Float64}}
-    inclusion::Vector{Bool}
-    lower_inclusion::Vector{Bool}
-    upper_inclusion::Vector{Bool}
-    kmax::Int
-    rtol::Float64
-    etol::Float64
-end
-function NewtonInterval(nx::Int; kmax::Int = 5, rtol::Float64 = 1E-6, etol::Float64 = 1E-6)
-    N = zeros(Interval{Float64}, nx)
-    Ntemp = zeros(Interval{Float64}, nx)
-    X = zeros(Interval{Float64}, nx)
-    Xdiv = zeros(Interval{Float64}, nx)
-    inclusion = fill(false, (nx,))
-    lower_inclusion = fill(false, (nx,))
-    upper_inclusion = fill(false, (nx,))
-    return NewtonInterval(N, Ntemp, X, Xdiv, inclusion, lower_inclusion,
-                          upper_inclusion, kmax, rtol, etol)
-end
-function (d::NewtonInterval)(callback::PICallback{FH,FJ}) where {FH,FJ}
-
-    ext_division_flag::Bool = false
-    exclusion_flag::Bool = false
-
-    @inbounds for i=1:callback.nx
-        S1 = zero(Interval{Float64})
-        S2 = zero(Interval{Float64})
-        @inbounds for j=1:callback.nx
-            if (j < i)
-                S1 += callback.J[i,j]*(d.X[j] - 0.5*(d.X[j].lo + d.X[j].hi))
-            elseif (j > i)
-                S2 += callback.J[i,j]*(d.X[j] - 0.5*(d.X[j].lo + d.X[j].hi))
-            end
-        end
-        @inbounds if callback.J[i,i].lo*callback.J[i,i].hi > 0.0
-            @inbounds d.N[i] = 0.5*(d.X[i].lo + d.X[i].hi) - (callback.H[i]+S1+S2)/callback.J[i,i]
-        else
-            @. d.Ntemp = d.N
-            eD, d.N[i], d.Ntemp[i] = extended_process(d.N[i], d.X[i], callback.J[i,i],
-                                                    S1+S2+callback.H[i], d.rtol)
-            if eD == 1
-                ext_division_flag = true
-                @. d.Xdiv = d.X
-                d.Xdiv[i] = d.Ntemp[i] ∩ d.X[i]
-                d.X[i] = d.N[i] ∩ d.X[i]
-                return ext_division_flag, exclusion_flag
-            end
-        end
-        @inbounds if strict_x_in_y(d.N[i], d.X[i])
-            d.inclusion[i] = true
-            d.lower_inclusion[i] = true
-            d.upper_inclusion[i] = true
-        else
-            d.inclusion[i] = false
-            d.lower_inclusion[i] = false
-            d.upper_inclusion[i] = false
-            if (d.N[i].lo > d.X[i].lo)
-                d.lower_inclusion[i] = true
-            elseif (d.N[i].hi < d.X[i].hi)
-                d.upper_inclusion[i] = true
-            end
-        end
-        @inbounds if ~isdisjoint(d.N[i], d.X[i])
-            d.X[i] = d.N[i] ∩ d.X[i]
-        else
-            return ext_division_flag, exclusion_flag
-        end
-    end
-    return ext_division_flag, exclusion_flag
-end
-
-function parametric_interval_contractor(callback!::PICallback{FH,FJ}, precond!::P,
-                                        contractor::S) where {FH,
-                                                              FJ,
-                                                              P,
-                                                              S <: AbstractContractor}
-    exclusion_flag = false
-    inclusion_flag = false
-    ext_division_flag = false
-    ext_division_num = 0
-
-    for i in eachindex(contractor.X)
-        @inbounds contractor.inclusion[i] = false
-        @inbounds contractor.lower_inclusion[i] = false
-        @inbounds contractor.upper_inclusion[i] = false
-        @inbounds contractor.X[i] = callback!.X[i]
-    end
-
-    for i=1:contractor.kmax
-        callback!()::Nothing
-        precondition!(precond!, callback!.H, callback!.J)::Nothing
-        exclusion_flag, ext_division_flag = contractor(callback!)::Tuple{Bool,Bool}
-        (exclusion_flag || ext_division_flag) && break
-        inclusion_flag = inclusion_test(inclusion_flag, contractor.inclusion,
-                                        callback!.nx)
-        for j in eachindex(callback!.X)
-            @inbounds callback!.X[j] = contractor.X[j]
-        end
-    end
-
-    return exclusion_flag, inclusion_flag, ext_division_flag
 end

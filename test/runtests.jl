@@ -616,6 +616,84 @@ end
 end
 
 @testset "Wilhelm 2019 Integrator Testset" begin
+    Y = Interval(0,5)
+    X1 = Interval(1,2)
+    X2 = Interval(-10,10)
+    X3 = Interval(0,5)
+    flag1 = DR.strict_x_in_y(X1,Y)
+    flag2 = DR.strict_x_in_y(X2,Y)
+    flag3 = DR.strict_x_in_y(X3,Y)
+    @test flag1 == true
+    @test flag2 == false
+    @test flag3 == false
+
+    A1 = Interval(0)
+    A2 = Interval(0,3)
+    A3 = Interval(-2,0)
+    A4 = Interval(-3,2)
+    ind1,B1,C1 = DR.extended_divide(A1)
+    ind2,B2,C2 = DR.extended_divide(A2)
+    ind3,B3,C3 = DR.extended_divide(A3)
+    ind4,B4,C4 = DR.extended_divide(A4)
+    @test ind1 == 0
+    @test ind2 == 1
+    @test ind3 == 2
+    @test ind4 == 3
+    @test B1 == Interval(-Inf,Inf)
+    @test 0.33333 - 1E-4 <= B2.lo <= 0.33333 + 1E-4
+    @test B2.hi == Inf
+    @test B3 == Interval(-Inf,-0.5)
+    @test B4.lo == -Inf
+    @test -0.33333 - 1E-4 <= B4.hi <= -0.33333 + 1E-4
+    @test C1 == Interval(-Inf,Inf)
+    @test C2 == Interval(Inf,Inf)
+    @test C3 == Interval(-Inf,-Inf)
+    @test C4 == Interval(0.5,Inf)
+
+    N =  Interval(-5,5)
+    X = Interval(-5,5)
+    Mii = Interval(-5,5)
+    B = Interval(-5,5)
+    rtol = 1E-4
+    indx1,box11,box12 = DR.extended_process(N,X,Mii,B,rtol)
+    Miib = Interval(0,5)
+    S1b = Interval(1,5)
+    S2b = Interval(1,5)
+    Bb = Interval(1,5)
+    indx2,box21,box22 = DR.extended_process(N,X,Mii,B,rtol)
+    Miic = Interval(-5,0)
+    S1c = Interval(1,5)
+    S2c = Interval(1,5)
+    Bc = Interval(1,5)
+    indx3,box31,box32 = DR.extended_process(N,X,Mii,B,rtol)
+    Miia = Interval(1,5)
+    S1a = Interval(1,5)
+    S2a = Interval(1,5)
+    Ba = Interval(1,5)
+    indx6,box61,box62 = DR.extended_process(N,X,Mii,B,rtol)
+    Miid = Interval(0,0)
+    S1d = Interval(1,5)
+    S2d = Interval(1,5)
+    Bd = Interval(1,5)
+    indx8,box81,box82 = DR.extended_process(N,X,Mii,B,rtol)
+
+    @test indx1 == 0
+    @test box11 == Interval(-Inf,Inf)
+    @test box12 == Interval(-5,5)
+
+    @test indx2 == 0
+    @test box21.hi > -Inf
+    @test box22 == Interval(-5,5)
+
+    @test indx3 == 0
+    @test box31.lo < Inf
+    @test box32 == Interval(-5,5)
+
+    @test indx6 == 0
+    @test box62.lo == -5.0
+    @test box61.hi == Inf
+
+    @test indx8 == 0
 end
 
 @testset "Discretize and Relax - Access Functions" begin
