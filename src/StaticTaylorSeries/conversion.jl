@@ -1,14 +1,14 @@
 # Conversion for STaylor1
 function convert(::Type{STaylor1{N,Rational{T}}}, a::STaylor1{N,S}) where {N,T<:Integer, S<:AbstractFloat}
-    STaylor1{N,T}(rationalize.(a[:]))
+    STaylor1(rationalize.(a[:]))
 end
 function convert(::Type{STaylor1{N,T}}, b::Array{T,1}) where {N,T<:Number}
     @assert N == length(b)
-    STaylor1{N,T}(b)
+    STaylor1(b)
 end
 function convert(::Type{STaylor1{N,T}}, b::Array{S,1}) where {N,T<:Number, S<:Number}
     @assert N == length(b)
-    STaylor1{N,T}(convert(Array{T,1},b))
+    STaylor1(convert(Array{T,1},b))
 end
 convert(::Type{STaylor1{N,T}}, a::STaylor1{N,T}) where {N,T<:Number} = a
 convert(::Type{STaylor1{N,T}}, b::S)  where {N, T<:Number, S<:Number} = STaylor1(convert(T,b), Val(N))

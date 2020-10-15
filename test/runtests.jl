@@ -362,6 +362,18 @@ if !(VERSION < v"1.1" && testfile == "intervals.jl")
         @test eltype(promote(STaylor1(1, Val(15)), 2)[2]) == Int
         @test eltype(promote(STaylor1(1.0, Val(15)), 1.1)[2]) == Float64
         @test eltype(promote(0, STaylor1(1.0, Val(15)))[1]) == Float64
+
+        @test promote_rule(typeof(STaylor1([1.1, 2.1])), typeof(STaylor1([1.1, 2.1]))) == STaylor1{2,Float64}
+        @test promote_rule(typeof(STaylor1([1.1, 2.1])), typeof(STaylor1([1, 2]))) == STaylor1{2,Float64}
+        @test promote_rule(typeof(STaylor1([1.1, 2.1])), typeof([1.1, 2.1])) == STaylor1{2,Float64}
+        @test promote_rule(typeof(STaylor1([1.1, 2.1])), typeof([1, 2])) == STaylor1{2,Float64}
+        @test promote_rule(typeof(STaylor1([1.1, 2.1])), typeof(1.1)) == STaylor1{2,Float64}
+        @test promote_rule(typeof(STaylor1([1.1, 2.1])), typeof(1)) == STaylor1{2,Float64}
+
+        @test convert(STaylor1{2,Float64}, [1; 2]) == STaylor1(Float64[1, 2])
+        @test convert(STaylor1{2,Float64}, [1.1; 2.1]) == STaylor1([1.1, 2.1])
+        @test convert(STaylor1{2,Float64}, [1.1; 2.1]) == STaylor1([1.1, 2.1])
+
     end
 end
 
