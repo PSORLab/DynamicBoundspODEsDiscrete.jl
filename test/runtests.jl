@@ -8,6 +8,14 @@ const DR = DynamicBoundspODEsDiscrete
 
 @testset "Discretize and Relax" begin
 
+    struct unit_test_name <: DR.AbstractStateContractorName
+    end
+
+    @test_throws ErrorException DR.state_contractor_k(unit_test_name())
+    @test_throws ErrorException DR.state_contractor_γ(unit_test_name())
+    @test_throws ErrorException DR.state_contractor_steps(unit_test_name())
+
+
     # test improvement condition for existence & uniqueness
     Yold = [Interval(1.0, 3.0); Interval(2.0, 4.0); Interval(1.0, 3.0)]
     Ynew = [Interval(1.5, 2.0); Interval(3.0, 3.5); Interval(0.5, 3.5)]
@@ -220,6 +228,8 @@ if !(VERSION < v"1.1" && testfile == "intervals.jl")
         @test zero(STaylor1([1.0, 2.0, 3.0])) == STaylor1([0.0, 0.0, 0.0])
         @test one(STaylor1([1.0, 2.0, 3.0])) == STaylor1([1.0, 0.0, 0.0])
 
+        @test_throws ArgumentError STaylor1([1.1, 2.1])/STaylor1([0.0, 2.1])
+
         @test isinf(STaylor1([Inf, 2.0, 3.0])) &&
               ~isinf(STaylor1([0.0, 0.0, 0.0]))
         @test isnan(STaylor1([NaN, 2.0, 3.0])) &&
@@ -383,6 +393,7 @@ if !(VERSION < v"1.1" && testfile == "intervals.jl")
 
         @test_nowarn Base.show(stdout, a)
         @test StaticTaylorSeries.coeffstring(a, 5) == "0.0t^4"
+        @test StaticTaylorSeries.coeffstring(a, 2) == "1.2t"
     end
 end
 
