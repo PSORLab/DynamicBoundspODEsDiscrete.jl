@@ -375,11 +375,14 @@ if !(VERSION < v"1.1" && testfile == "intervals.jl")
 
         @test convert(STaylor1{2,Float64}, [1; 2]) == STaylor1(Float64[1, 2])
         @test convert(STaylor1{2,Float64}, [1.1; 2.1]) == STaylor1([1.1, 2.1])
-        @test convert(STaylor1{2,Rational{Int64}}, Float64[0.5; 0.75]) == STaylor1([0.5, 0.75])
+        @test convert(STaylor1{2,Rational{Int64}}, STaylor1(BigFloat[0.5, 0.75])) == STaylor1([0.5, 0.75])
 
         @test isapprox(StaticTaylorSeries.normalize_taylor(STaylor1([1.1, 2.1]), Interval(1.0, 2.0))[0], 13.7, atol = 1E-8)
         @test isapprox(StaticTaylorSeries._normalize(STaylor1([1.1, 2.1]), Interval(1.0, 2.0), Val(true))[0], 13.7, atol = 1E-8)
         @test isapprox(StaticTaylorSeries._normalize(STaylor1([1.1, 2.1]), Interval(1.0, 2.0), Val(false))[0], 13.7, atol = 1E-8)
+
+        @test_nowarn Base.show(stdout, a)
+        @test StaticTaylorSeries.coeffstring(a, 5) == "0.0t^4"
     end
 end
 

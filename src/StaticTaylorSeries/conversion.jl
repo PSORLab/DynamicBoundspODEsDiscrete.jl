@@ -1,6 +1,6 @@
 # Conversion for STaylor1
 function convert(::Type{STaylor1{N,Rational{T}}}, a::STaylor1{N,S}) where {N,T<:Integer, S<:AbstractFloat}
-    STaylor1(rationalize.(a[:]))
+    STaylor1(rationalize.(a.coeffs))
 end
 function convert(::Type{STaylor1{N,T}}, b::Array{T,1}) where {N,T<:Number}
     @assert N == length(b)

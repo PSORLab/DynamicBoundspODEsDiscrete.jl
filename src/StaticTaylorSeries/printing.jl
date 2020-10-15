@@ -14,6 +14,3 @@ function print_taylor(io::IO, t::STaylor1, variable=:t)
 end
 
 Base.show(io::IO, t::STaylor1) = print_taylor(io, t)
-function Base.show(io::IO, t::STaylor1{N,T}) where {N, T<:STaylor1}
-    print_taylor(io, t, :t)
-end
