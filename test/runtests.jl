@@ -372,7 +372,7 @@ if !(VERSION < v"1.1" && testfile == "intervals.jl")
 
         @test convert(STaylor1{2,Float64}, [1; 2]) == STaylor1(Float64[1, 2])
         @test convert(STaylor1{2,Float64}, [1.1; 2.1]) == STaylor1([1.1, 2.1])
-        @test convert(STaylor1{2,Float64}, [1.1; 2.1]) == STaylor1([1.1, 2.1])
+        @test convert(STaylor1{2,Float64}, [1//2; 2//4]) == STaylor1([0.5, 0.5])
 
     end
 end
