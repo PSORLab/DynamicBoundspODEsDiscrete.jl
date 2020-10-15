@@ -247,6 +247,9 @@ if !(VERSION < v"1.1" && testfile == "intervals.jl")
               StaticTaylorSeries.evaluate(st2)[2] ==
               1.0
 
+        @test view(typeof(STaylor1([1.1, 2.1]))[STaylor1([1.1, 2.1]) STaylor1([1.1, 2.1]); STaylor1([1.1, 2.1]) STaylor1([1.1, 2.1])], :, 1)(0.0) == Float64[1.1; 1.1]
+        @test view(typeof(STaylor1([1.1, 2.1]))[STaylor1([1.1, 2.1]) STaylor1([1.1, 2.1]); STaylor1([1.1, 2.1]) STaylor1([1.1, 2.1])], :, 1)() == Float64[1.1; 1.1]
+
         # check that STaylor1 and Taylor yeild same result
         t1 = STaylor1([1.1, 2.1, 3.1])
         t2 = Taylor1([1.1, 2.1, 3.1])
@@ -372,7 +375,7 @@ if !(VERSION < v"1.1" && testfile == "intervals.jl")
 
         @test convert(STaylor1{2,Float64}, [1; 2]) == STaylor1(Float64[1, 2])
         @test convert(STaylor1{2,Float64}, [1.1; 2.1]) == STaylor1([1.1, 2.1])
-        @test convert(STaylor1{2,Float64}, [1//2; 2//4]) == STaylor1([0.5, 0.5])
+        @test convert(STaylor1{2,Rational{Int}}, [0.5; 0.75]) == STaylor1([0.5, 0.75])
 
     end
 end
