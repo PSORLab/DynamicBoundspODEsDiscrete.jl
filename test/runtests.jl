@@ -394,6 +394,8 @@ if !(VERSION < v"1.1" && testfile == "intervals.jl")
         @test_nowarn Base.show(stdout, a)
         @test StaticTaylorSeries.coeffstring(a, 5) == "0.0t^4"
         @test StaticTaylorSeries.coeffstring(a, 2) == "1.2t"
+
+        @test_throws ArgumentError abs(STaylor1([0.0, 2.1]))
     end
 end
 
