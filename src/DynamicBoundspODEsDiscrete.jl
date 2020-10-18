@@ -21,18 +21,18 @@ using McCormick, DocStringExtensions, DynamicBoundsBase,
 using ForwardDiff: Chunk, Dual, Partials, construct_seeds, single_seed,
       JacobianConfig, vector_mode_dual_eval, value, vector_mode_jacobian!,
       jacobian!
-#using DiffEqSensitivity: extract_local_sensitivities, ODEForwardSensitivityProblem
-#using OrdinaryDiffEq: ImplicitEuler, Trapezoid, ABDF2
-#using DiffEqBase: remake, AbstractODEProblem, AbstractContinuousCallback, solve
+
+using DiffEqSensitivity: extract_local_sensitivities, ODEForwardSensitivityProblem
+using DiffEqBase: remake, AbstractODEProblem, AbstractContinuousCallback, solve
+using Sundials
+
 using DiffResults: JacobianResult, MutableDiffResult
 
-import DynamicBoundsBase: relax!, set!, setall!, get, getall!, getall, relax!, supports
+import DynamicBoundsBase: relax!, set!, setall!, get, getall!, getall, relax!,
+                          integrate!, supports
 import Base: setindex!, getindex, copyto!, literal_pow
 
 import Base.MathConstants.golden
-
-#import DynamicBoundsBase: relax!, integrate!
-#export Wilhelm2019, set, setall!, get, getall!, relax!, integrate!
 
 export DiscretizeRelax, AdamsMoulton, BDF, LohnerContractor, HermiteObreschkoff
 
