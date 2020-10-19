@@ -79,6 +79,13 @@ function state_contractor_steps(d::AbstractStateContractorName)
 end
 
 """
+state_contractor_integrator(d::AbstractStateContractorName)
+"""
+function state_contractor_integrator(d::AbstractStateContractorName)
+    error("No method with AbstractStateContractorName $d defined.")
+end
+
+"""
 μ!(out,xⱼ,x̂ⱼ,η)
 
 Used to compute the arguments of Jacobians (`x̂ⱼ + η(xⱼ - x̂ⱼ)`) used by the parametric Mean Value
@@ -125,10 +132,11 @@ include("DiscretizeRelax/method/lohners_qr.jl")
 include("DiscretizeRelax/method/hermite_obreschkoff.jl")
 include("DiscretizeRelax/method/wilhelm_2019.jl")
 
+include("DiscretizeRelax/utilities/local_integration_problem.jl")
+
 include("DiscretizeRelax/utilities/discretize_relax.jl")
 include("DiscretizeRelax/utilities/relax.jl")
+include("DiscretizeRelax/utilities/integrate.jl")
 include("DiscretizeRelax/utilities/access_functions.jl")
-
-#include("local_integration_problem.jl")
 
 end # module

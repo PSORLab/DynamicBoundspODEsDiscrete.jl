@@ -217,6 +217,7 @@ end
 state_contractor_k(m::HermiteObreschkoff) = m.k
 state_contractor_γ(m::HermiteObreschkoff) = m.γ
 state_contractor_steps(m::HermiteObreschkoff) = 2
+state_contractor_integrator(m::HermiteObreschkoff) = CVODE_Adams()
 
 function hermite_obreschkoff_predictor!(d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY},
                                         contract::ContractorStorage{S}) where {F,P1,Q1,K,T,S,NY}

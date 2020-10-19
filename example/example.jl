@@ -69,7 +69,7 @@ end
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
 
 if lohners_type == 1
-    integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{7}(), h = 1/ticks,
+    integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{7}(),
                                  repeat_limit = 1, skip_step2 = false, step_limit = steps, relax = false)
 elseif lohners_type == 2
     integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.HermiteObreschkoff(3, 3), h = 1/ticks,
@@ -121,6 +121,8 @@ method_f! = d.method_f!
                             =#
 #using BenchmarkTools
 #@btime DynamicBoundsBase.relax!($integrator)
+
+integrate!(integrator)
 
 t_vec = integrator.time
 if !use_relax

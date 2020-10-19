@@ -20,7 +20,8 @@ An integrator for discretize and relaxation techniques.
 
 $(TYPEDFIELDS)
 """
-mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY, JX, JP} <: AbstractODERelaxIntegrator
+mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY, JX, JP,
+                               PRB <: AbstractODEProblem, INT, N} <: AbstractODERelaxIntegrator
 
     # Problem description
     "Initial Condition for pODEs"
@@ -80,6 +81,8 @@ mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: R
 
     new_decision_pnt::Bool
     new_decision_box::Bool
+
+    local_problem_storage::LocalProblemStorage{PRB, INT, N}
 end
 
 function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit = 1000,  tol = 1E-1, hmin = 1E-13,
@@ -129,12 +132,18 @@ function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit 
     step_params = StepParams(tol, hmin, repeat_limit, is_adaptive, skip_step2)
     step_result = StepResult{typeof(style)}(zeros(d.nx), zeros(typeof(style), d.nx), A, Δ, 0.0, 0.0)
 
-    return DiscretizeRelax{typeof(state_method), T,
-                           Float64, typeof(d.f), k+1, typeof(d.x0),
-                           d.nx+d.np, typeof(Jx!), typeof(Jp!)}(d.x0, Jx!, Jp!, d.p, d.pL, d.pU, d.nx,
-                           d.np, d.tspan, d.tsupports, step_limit, 0, storage, storage_apriori, time,
-                           support_dict, error_code, P, rP, skip_step2, style, set_tf!, state_method,
-                           exist_storage, contractor_result, step_result, step_params, true, true)
+    local_integrator = state_contractor_integrator(m)
+    local_problem_storage = LocalProblemStorage(d, local_integrator, tsupports)
+
+    return DiscretizeRelax{typeof(state_method), T, Float64, typeof(d.f), k+1,
+                           typeof(d.x0), d.nx+d.np, typeof(Jx!), typeof(Jp!),
+                           typeof(local_problem_storage.pode_problem),
+                           typeof(local_integrator), d.np}(d.x0, Jx!, Jp!, d.p,
+                           d.pL, d.pU, d.nx, d.np, d.tspan, d.tsupports,
+                           step_limit, 0, storage, storage_apriori, time,
+                           support_dict, error_code, P, rP, skip_step2, style,
+                           set_tf!, state_method, exist_storage, contractor_result,
+                           step_result, step_params, true, true, local_problem_storage)
 end
 function DiscretizeRelax(d::ODERelaxProb; kwargs...)
     DiscretizeRelax(d, LohnerContractor{4}(); kwargs...)

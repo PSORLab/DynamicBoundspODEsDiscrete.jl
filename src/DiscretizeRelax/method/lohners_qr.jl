@@ -95,6 +95,7 @@ end
 state_contractor_k(m::LohnerContractor{K}) where K = K
 state_contractor_γ(m::LohnerContractor{K}) where K = 1.0
 state_contractor_steps(m::LohnerContractor{K}) where K = 2
+state_contractor_integrator(m::LohnerContractor{K}) where K = CVODE_Adams()
 
 function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T},
                                          result::StepResult{T},
