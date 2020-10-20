@@ -26,6 +26,7 @@ DBB.supports(::DiscretizeRelax, ::DBB.ParameterValue) = true
 DBB.supports(::DiscretizeRelax, ::DBB.SupportSet) = true
 DBB.supports(::DiscretizeRelax, ::DBB.ParameterNumber) = true
 DBB.supports(::DiscretizeRelax, ::DBB.StateNumber) = true
+DBB.supports(::DiscretizeRelax, ::DBB.SupportNumber) = true
 
 DBB.get(t::DiscretizeRelax, v::DBB.IntegratorName) = "Discretize & Relax Integrator" # TO DO... FIX ME
 DBB.get(t::DiscretizeRelax, v::DBB.IsNumeric) = false # TO DO... FIX ME
@@ -34,6 +35,7 @@ DBB.get(t::DiscretizeRelax, v::DBB.TerminationStatus) = t.error_code
 DBB.get(t::DiscretizeRelax, v::DBB.SupportSet) = DBB.SupportSet(t.time)
 DBB.get(t::DiscretizeRelax, v::DBB.ParameterNumber) = t.np
 DBB.get(t::DiscretizeRelax, v::DBB.StateNumber) = t.nx
+DBB.get(t::DiscretizeRelax, v::DBB.SupportNumber) = length(t.tsupports)
 
 DBB.getall(t::DiscretizeRelax, v::DBB.ParameterBound{Lower}) = t.pL
 DBB.getall(t::DiscretizeRelax, v::DBB.ParameterBound{Upper}) = t.pU
