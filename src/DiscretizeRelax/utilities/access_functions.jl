@@ -22,8 +22,8 @@ DBB.supports(::DiscretizeRelax, ::DBB.TerminationStatus) = true
 DBB.supports(::DiscretizeRelax, ::DBB.Value) = true
 DBB.supports(::DiscretizeRelax, ::DBB.ParameterValue) = true
 DBB.supports(::DiscretizeRelax, ::DBB.SupportSet) = true
-DBB.supports(::DifferentialInequality, ::DBB.ParameterNumber) = true
-DBB.supports(::DifferentialInequality, ::DBB.StateNumber) = true
+DBB.supports(::DiscretizeRelax, ::DBB.ParameterNumber) = true
+DBB.supports(::DiscretizeRelax, ::DBB.StateNumber) = true
 
 DBB.get(t::DiscretizeRelax, v::DBB.IntegratorName) = "Discretize & Relax Integrator" # TO DO... FIX ME
 DBB.get(t::DiscretizeRelax, v::DBB.IsNumeric) = false # TO DO... FIX ME
