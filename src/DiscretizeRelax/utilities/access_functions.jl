@@ -22,12 +22,16 @@ DBB.supports(::DiscretizeRelax, ::DBB.TerminationStatus) = true
 DBB.supports(::DiscretizeRelax, ::DBB.Value) = true
 DBB.supports(::DiscretizeRelax, ::DBB.ParameterValue) = true
 DBB.supports(::DiscretizeRelax, ::DBB.SupportSet) = true
+DBB.supports(::DifferentialInequality, ::DBB.ParameterNumber) = true
+DBB.supports(::DifferentialInequality, ::DBB.StateNumber) = true
 
 DBB.get(t::DiscretizeRelax, v::DBB.IntegratorName) = "Discretize & Relax Integrator" # TO DO... FIX ME
 DBB.get(t::DiscretizeRelax, v::DBB.IsNumeric) = false # TO DO... FIX ME
 DBB.get(t::DiscretizeRelax, v::DBB.IsSolutionSet) = true
 DBB.get(t::DiscretizeRelax, v::DBB.TerminationStatus) = t.error_code
 DBB.get(t::DiscretizeRelax, v::DBB.SupportSet) = DBB.SupportSet(t.time)
+DBB.get(t::DiscretizeRelax, v::DBB.ParameterNumber) = t.np
+DBB.get(t::DiscretizeRelax, v::DBB.StateNumber) = t.nx
 
 function DBB.set!(t::DiscretizeRelax, v::DBB.SupportSet)
     t.time = v.s
