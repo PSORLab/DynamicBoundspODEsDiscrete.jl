@@ -20,6 +20,8 @@ DBB.supports(::DiscretizeRelax, ::DBB.IsNumeric) = true
 DBB.supports(::DiscretizeRelax, ::DBB.IsSolutionSet) = true
 DBB.supports(::DiscretizeRelax, ::DBB.TerminationStatus) = true
 DBB.supports(::DiscretizeRelax, ::DBB.Value) = true
+DBB.supports(::DiscretizeRelax, ::DBB.ParameterBound{Lower}) = true
+DBB.supports(::DiscretizeRelax, ::DBB.ParameterBound{Upper}) = true
 DBB.supports(::DiscretizeRelax, ::DBB.ParameterValue) = true
 DBB.supports(::DiscretizeRelax, ::DBB.SupportSet) = true
 DBB.supports(::DiscretizeRelax, ::DBB.ParameterNumber) = true
@@ -32,6 +34,9 @@ DBB.get(t::DiscretizeRelax, v::DBB.TerminationStatus) = t.error_code
 DBB.get(t::DiscretizeRelax, v::DBB.SupportSet) = DBB.SupportSet(t.time)
 DBB.get(t::DiscretizeRelax, v::DBB.ParameterNumber) = t.np
 DBB.get(t::DiscretizeRelax, v::DBB.StateNumber) = t.nx
+
+DBB.getall(t::DiscretizeRelax, v::DBB.ParameterBound{Lower}) = t.pL
+DBB.getall(t::DiscretizeRelax, v::DBB.ParameterBound{Upper}) = t.pU
 
 function DBB.set!(t::DiscretizeRelax, v::DBB.SupportSet)
     t.time = v.s
