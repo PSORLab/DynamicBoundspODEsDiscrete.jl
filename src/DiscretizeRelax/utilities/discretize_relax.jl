@@ -97,14 +97,8 @@ function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit 
     k = state_contractor_k(m)::Int
     method_steps = state_contractor_steps(m)::Int
 
-    tsupports = d.tsupports
-    if ~isempty(tsupports)
-        if (tsupports[1] == 0.0)
-            support_dict = Dict{Int,Int}(d.support_dict, 1 => 1)
-        end
-    else
-        support_dict = Dict{Int,Int}()
-    end
+    tsupports = d.support_set.s
+    support_dict = Dict{Int,Int}()
     error_code = RELAXATION_NOT_CALLED
 
     T = relax ? MC{d.np,NS} : Interval{Float64}
@@ -149,7 +143,7 @@ function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit 
                            typeof(d.x0), d.nx+d.np, typeof(Jx!), typeof(Jp!),
                            typeof(local_problem_storage.pode_problem),
                            typeof(local_integrator), d.np}(d.x0, Jx!, Jp!, d.p,
-                           d.pL, d.pU, d.nx, d.np, d.tspan, d.tsupports,
+                           d.pL, d.pU, d.nx, d.np, d.tspan, tsupports,
                            step_limit, 0, storage, storage_apriori, time,
                            support_dict, error_code, P, rP, skip_step2, style,
                            set_tf!, state_method, exist_storage, contractor_result,

@@ -30,11 +30,9 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
     tsupports = d.tsupports
     if !isempty(tsupports)
         if (tsupports[1] == 0.0)
-            next_support = tsupports[2]
             support_indx += 1
-        else
-            next_support = tsupports[1]
         end
+        next_support = tsupports[support_indx]
     end
 
     # initialize QR type storage
@@ -78,6 +76,11 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
                 stored_value_count += 1
                 d.relax_t_dict_indx[stored_value_count] = step_number
                 d.relax_t_dict_flt[d.step_result.time] = step_number
+                @show stored_value_count
+                @show d.step_result.time
+                @show step_number
+                support_indx += 1
+                next_support = tsupports[support_indx]
             end
 
             # throw error if limit exceeded
