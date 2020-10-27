@@ -78,7 +78,7 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
             if is_support_pnt
                 stored_value_count += 1
                 d.relax_t_dict_indx[stored_value_count] = step_number
-                d.relax_t_dict_flt[d.step_result.time] = step_number
+                d.relax_t_dict_flt[next_support] = step_number
                 support_indx += 1
                 if support_indx <= length(tsupports)
                     next_support = tsupports[support_indx]
@@ -106,6 +106,7 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
     resize!(d.storage, d.step_count)
     resize!(d.storage_apriori, d.step_count)
     resize!(d.time, d.step_count)
+    @show d.step_count
 
     if d.error_code === RELAXATION_NOT_CALLED
         d.error_code = COMPLETED

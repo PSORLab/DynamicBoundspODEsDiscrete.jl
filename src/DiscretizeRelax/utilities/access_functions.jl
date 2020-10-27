@@ -48,7 +48,7 @@ DBB.get(t::DiscretizeRelax, v::DBB.IntegratorName) = "Discretize & Relax Integra
 DBB.get(t::DiscretizeRelax, v::DBB.IsNumeric) = false # TO DO... FIX ME
 DBB.get(t::DiscretizeRelax, v::DBB.IsSolutionSet) = true
 DBB.get(t::DiscretizeRelax, v::DBB.TerminationStatus) = t.error_code
-DBB.get(t::DiscretizeRelax, v::DBB.SupportSet) = DBB.SupportSet(t.time)
+DBB.get(t::DiscretizeRelax, v::DBB.SupportSet) = DBB.SupportSet(t.tsupports)
 DBB.get(t::DiscretizeRelax, v::DBB.ParameterNumber) = t.np
 DBB.get(t::DiscretizeRelax, v::DBB.StateNumber) = t.nx
 DBB.get(t::DiscretizeRelax, v::DBB.SupportNumber) = length(t.tsupports)
@@ -119,6 +119,36 @@ function DBB.getall!(out::Vector{Matrix{Float64}}, t::DiscretizeRelax{X,T}, ::DB
             for k = 1:t.nx
                 out[j][k,i]= t.storage[i][k].cc_grad[j]
             end
+        end
+    end
+    return
+end
+
+function DBB.get(out::Matrix{Float64}, t::DiscretizeRelax{X,T}, v::DBB.Subgradient{Lower}) where {X, T <: AbstractInterval}
+    fill!(out, 0.0)
+    return
+end
+
+function DBB.get(out::Matrix{Float64}, t::DiscretizeRelax{X,T}, v::DBB.Subgradient{Upper}) where {X, T <: AbstractInterval}
+    fill!(out, 0.0)
+    return
+end
+
+function DBB.get(out::Matrix{Float64}, t::DiscretizeRelax{X,T}, v::DBB.Subgradient{Lower}) where {X, T <: MC}
+    val_loc = get_val_loc(t, v.index, v.time)
+    for i = 1:t.np
+        for j = 1:t.nx
+            out[j,i] = t.relax_cv_grad[j,val_loc][i]
+        end
+    end
+    return
+end
+
+function DBB.get(out::Matrix{Float64}, t::DiscretizeRelax{X,T}, v::DBB.Subgradient{Upper}) where {X, T <: MC}
+    val_loc = get_val_loc(t, v.index, v.time)
+    for i = 1:t.np
+        for j = 1:t.nx
+            out[j,i] = t.relax_cc_grad[j,val_loc][i]
         end
     end
     return
