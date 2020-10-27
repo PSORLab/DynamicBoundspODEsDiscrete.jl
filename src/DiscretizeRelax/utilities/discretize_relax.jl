@@ -84,6 +84,8 @@ mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: R
 
     relax_t_dict_indx::Dict{Int,Int}
     relax_t_dict_flt::Dict{Float64,Int}
+    local_t_dict_indx::Dict{Int,Int}
+    local_t_dict_flt::Dict{Float64,Int}
 
     local_problem_storage::LocalProblemStorage{PRB, INT, N}
 end
@@ -190,6 +192,11 @@ function compute_X0!(d::DiscretizeRelax)
 
     d.storage[1] .= d.x0f(d.P)
     d.storage_apriori[1] .= d.storage[1]
+
+    if in(d.tspan[1], d.tsupports)
+        d.relax_t_dict_indx[1] = 1
+        d.relax_t_dict_flt[d.tspan[1]] = 1
+    end
 
     d.step_result.Xⱼ .= d.storage[1]
     d.step_result.xⱼ .= mid.(d.step_result.Xⱼ)

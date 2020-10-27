@@ -47,6 +47,7 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
     is_adaptive = d.exist_result.hj <= 0.0
     d.exist_result.hj = !is_adaptive ? d.exist_result.hj : 0.01*(tmax - d.contractor_result.times[1])
     d.exist_result.predicted_hj = d.exist_result.hj
+    stored_value_count = length(d.relax_t_dict_indx)
 
     for step_number = 2:(d.step_limit+2)
         if sign_tstep*d.step_result.time <= sign_tstep*tmax
@@ -73,6 +74,11 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
             copy!(d.storage[step_number], d.contractor_result.X_computed)
             copy!(d.storage_apriori[step_number], d.exist_result.Xj_apriori)
             d.time[step_number] = d.step_result.time
+            if (d.exist_result.hj == next_support - tv)
+                stored_value_count += 1
+                d.relax_t_dict_indx[stored_value_count] = step_number
+                d.relax_t_dict_flt[d.step_result.time] = step_number
+            end
 
             # throw error if limit exceeded
             if d.exist_result.status_flag !== RELAXATION_NOT_CALLED

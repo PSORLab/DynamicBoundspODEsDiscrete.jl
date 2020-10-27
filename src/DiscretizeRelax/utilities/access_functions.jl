@@ -316,13 +316,13 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Upper}) where {X,
     out
 end
 
-function DBB.get(t::DiscretizeRelax{X,T}, ::DBB.Bound{Lower}) where {X, T <: AbstractInterval}
+function DBB.get(out::Vector{Float64}, t::DiscretizeRelax{X,T}, v::DBB.Bound{Lower}) where {X, T <: AbstractInterval}
     val_loc = get_val_loc_local(t, v.index, v.time)
     @__dot__ out = lo(t.storage[val_loc])
     return
 end
 
-function DBB.get(t::DiscretizeRelax{X,T}, ::DBB.Bound{Upper}) where {X, T <: AbstractInterval}
+function DBB.get(out::Vector{Float64}, t::DiscretizeRelax{X,T}, v::DBB.Bound{Upper}) where {X, T <: AbstractInterval}
     val_loc = get_val_loc_local(t, v.index, v.time)
     @__dot__ out = hi(t.storage[val_loc])
     return
@@ -352,13 +352,13 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Bound{Upper}) where {X, T <: 
     out
 end
 
-function DBB.get(t::DiscretizeRelax{X,T}, ::DBB.Bound{Lower}) where {X, T <: MC}
+function DBB.get(out::Vector{Float64}, t::DiscretizeRelax{X,T}, v::DBB.Bound{Lower}) where {X, T <: MC}
     val_loc = get_val_loc_local(t, v.index, v.time)
     @__dot__ out = lo(t.storage[val_loc])
     return
 end
 
-function DBB.get(t::DiscretizeRelax{X,T}, ::DBB.Bound{Upper}) where {X, T <: MC}
+function DBB.get(out::Vector{Float64}, t::DiscretizeRelax{X,T}, v::DBB.Bound{Upper}) where {X, T <: MC}
     val_loc = get_val_loc_local(t, v.index, v.time)
     @__dot__ out = hi(t.storage[val_loc])
     return
@@ -388,25 +388,25 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Bound{Upper}) where {X, T <: 
     out
 end
 
-function DBB.get(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Lower}) where {X, T <: MC}
+function DBB.get(out::Vector{Float64}, t::DiscretizeRelax{X,T}, v::DBB.Relaxation{Lower}) where {X, T <: MC}
     val_loc = get_val_loc_local(t, v.index, v.time)
     @__dot__ out = cv(t.storage[val_loc])
     return
 end
 
-function DBB.get(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Upper}) where {X, T <: MC}
+function DBB.get(out::Vector{Float64}, t::DiscretizeRelax{X,T}, v::DBB.Relaxation{Upper}) where {X, T <: MC}
     val_loc = get_val_loc_local(t, v.index, v.time)
     @__dot__ out = cc(t.storage[val_loc])
     return
 end
 
-function DBB.get(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Lower}) where {X, T <: AbstractInterval}
+function DBB.get(out::Vector{Float64}, t::DiscretizeRelax{X,T}, v::DBB.Relaxation{Lower}) where {X, T <: AbstractInterval}
     val_loc = get_val_loc_local(t, v.index, v.time)
     @__dot__ out = lo(t.storage[val_loc])
     return
 end
 
-function DBB.get(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Upper}) where {X, T <: AbstractInterval}
+function DBB.get(out::Vector{Float64}, t::DiscretizeRelax{X,T}, v::DBB.Relaxation{Upper}) where {X, T <: AbstractInterval}
     val_loc = get_val_loc_local(t, v.index, v.time)
     @__dot__ out = hi(t.storage[val_loc])
     return
