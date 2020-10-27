@@ -27,7 +27,7 @@ DBB.supports(::DiscretizeRelax, ::DBB.SupportSet) = true
 DBB.supports(::DiscretizeRelax, ::DBB.ParameterNumber) = true
 DBB.supports(::DiscretizeRelax, ::DBB.StateNumber) = true
 DBB.supports(::DiscretizeRelax, ::DBB.SupportNumber) = true
-DBB.supports(t::DiscretizeRelax, ::LocalSensitivityOn) = t.calculate_local_sensitivity
+DBB.supports(t::DiscretizeRelax, ::DBB.LocalSensitivityOn) = t.calculate_local_sensitivity
 
 function get_val_loc(t::DiscretizeRelax, index::Int64, time::Float64)
     (index <= 0 && time == -Inf) && error("Must set either index or time.")
@@ -53,9 +53,15 @@ DBB.get(t::DiscretizeRelax, v::DBB.SupportSet) = DBB.SupportSet(t.tsupports)
 DBB.get(t::DiscretizeRelax, v::DBB.ParameterNumber) = t.np
 DBB.get(t::DiscretizeRelax, v::DBB.StateNumber) = t.nx
 DBB.get(t::DiscretizeRelax, v::DBB.SupportNumber) = length(t.tsupports)
+DBB.get(t::DiscretizeRelax, v::DBB.LocalSensitivityOn) = t.calculate_local_sensitivity
 
 DBB.getall(t::DiscretizeRelax, v::DBB.ParameterBound{Lower}) = t.pL
 DBB.getall(t::DiscretizeRelax, v::DBB.ParameterBound{Upper}) = t.pU
+
+function DBB.set!(t::DiscretizeRelax, v::DBB.LocalSensitivityOn, q::Bool)
+    t.calculate_local_sensitivity = q
+    return
+end
 
 function DBB.set!(t::DiscretizeRelax, v::DBB.SupportSet)
     t.time = v.s
