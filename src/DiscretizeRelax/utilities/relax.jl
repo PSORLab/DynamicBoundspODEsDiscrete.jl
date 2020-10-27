@@ -48,20 +48,23 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
     stored_value_count = length(d.relax_t_dict_indx)
 
     for step_number = 2:(d.step_limit+2)
-        if sign_tstep*d.step_result.time <= sign_tstep*tmax
+        if (sign_tstep*d.step_result.time <= sign_tstep*tmax) &&
+           (d.exist_result.predicted_hj != 0.0)
 
             # max step size is min of predicted, when next support point occurs,
             # or the last time step in the span
             tv = d.step_result.time
             d.exist_result.hj = min(d.exist_result.hj, next_support - tv, tmax - tv)
+            hj_limit = min(next_support - tv, tmax - tv)
             d.exist_result.hj_max = tmax - tv
+            is_support_pnt = (hj_limit == next_support - tv)
 
             d.contractor_result.steps[1] = d.exist_result.hj
             d.contractor_result.step_count = step_number
 
             # perform step size calculation and update bound information
             single_step!(d.exist_result, d.contractor_result, d.step_params,
-                         d.step_result, d.method_f!, step_number-1)
+                         d.step_result, d.method_f!, step_number-1, hj_limit)
 
             # unpack storage
             if step_number - 1 > length(d.time)
@@ -72,15 +75,16 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
             copy!(d.storage[step_number], d.contractor_result.X_computed)
             copy!(d.storage_apriori[step_number], d.exist_result.Xj_apriori)
             d.time[step_number] = d.step_result.time
-            if (d.exist_result.hj == next_support - tv)
+            if is_support_pnt
                 stored_value_count += 1
                 d.relax_t_dict_indx[stored_value_count] = step_number
                 d.relax_t_dict_flt[d.step_result.time] = step_number
-                @show stored_value_count
-                @show d.step_result.time
-                @show step_number
                 support_indx += 1
-                next_support = tsupports[support_indx]
+                if support_indx <= length(tsupports)
+                    next_support = tsupports[support_indx]
+                else
+                    next_support = Inf
+                end
             end
 
             # throw error if limit exceeded

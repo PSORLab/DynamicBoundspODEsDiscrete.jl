@@ -237,7 +237,7 @@ Performs a single-step of the validated integrator. Input stepsize is out.step.
 """
 function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{T},
                       params::StepParams, result::StepResult{T}, sc::M,
-                      j::Int64) where {M <: AbstractStateContractor, F, K, S <: Real, T}
+                      j::Int64, hj_limit::Float64) where {M <: AbstractStateContractor, F, K, S <: Real, T}
 
     contract.is_adaptive = params.is_adaptive
 
@@ -249,7 +249,8 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
 
     # copy info from existence to contractor storage
     contract.Xj_apriori .= exist.Xj_apriori
-    contract.hj_computed = exist.computed_hj
+    contract.hj_computed = min(exist.computed_hj, hj_limit)
+
     hj = contract.hj_computed
     hj_eu = hj
     predicted_hj = 0.0
@@ -260,7 +261,6 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
         if params.is_adaptive
             while hj > params.hmin && count < params.repeat_limit
                 sc(contract, result, count)
-
                 # LEPUS STEPSIZE PREDICTION
                 errj = excess_error(exist.Z, hj, hj_eu, contract.γ, exist.k, exist.nx)
                 if errj < hj*params.tol
