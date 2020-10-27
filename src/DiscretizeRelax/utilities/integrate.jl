@@ -4,21 +4,32 @@
 # http://creativecommons.org/licenses/by-nc-sa/4.0/ or send a letter to Creative
 # Commons, PO Box 1866, Mountain View, CA 94042, USA.
 #############################################################################
-# Dynamic Bounds - pODEs Discrete
-# A package for discretize and relax methods for bounding pODEs.
-# See https://github.com/PSORLab/DynamicBoundspODEsDiscrete.jl
+# DynamicBoundspODEIneq.jl
+# See https://github.com/PSORLab/DynamicBoundspODEIneq.jl
 #############################################################################
-# src/DiscretizeRelax/utilities/integrate.jl
+# src/integrate.jl
 # Code used to integrate but not relax the underlying parametric ODE system.
 #############################################################################
-function integrate!(d::DiscretizeRelax)
+
+function integrate!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY}
 
     d.local_problem_storage.pduals .= seed_duals(view(d.p, 1:d.np))
     d.local_problem_storage.x0duals .= d.x0f(d.local_problem_storage.pduals)
-    for i = 1:d.np
+    if !d.calculate_local_sensitivity
+        if length(d.local_problem_storage.x0local) != d.nx
+            resize!(d.local_problem_storage.x0local, d.nx)
+        end
+    else
+        if length(d.local_problem_storage.x0local) != d.nx*(d.np + 1)
+            resize!(d.local_problem_storage.x0local, d.nx*(d.np + 1))
+        end
+    end
+    for i = 1:d.nx
         d.local_problem_storage.x0local[i] = d.local_problem_storage.x0duals[i].value
-        for j = 1:d.nx
-            d.local_problem_storage.x0local[(j + d.np + (i-1)*d.nx)] = d.local_problem_storage.x0duals[i].partials[j]
+        if d.calculate_local_sensitivity
+            for j = 1:N
+                d.local_problem_storage.x0local[(j + d.nx + (i-1)*d.nx)] = d.local_problem_storage.x0duals[i].partials[j]
+            end
         end
     end
     d.local_problem_storage.pode_problem = remake(d.local_problem_storage.pode_problem,
@@ -34,15 +45,54 @@ function integrate!(d::DiscretizeRelax)
                          abstol = d.local_problem_storage.abstol, reltol=d.local_problem_storage.reltol)
     end
 
-    x, dxdp = extract_local_sensitivities(solution)
-    new_length = size(x,2)
+    new_length = length(solution.t)
+    if d.calculate_local_sensitivity
+        x, dxdp = extract_local_sensitivities(solution)
+    else
+        x = solution.u
+    end
+
     resize!(d.local_problem_storage.pode_x, d.nx, new_length)
     resize!(d.local_problem_storage.integrator_t, new_length)
-    d.local_problem_storage.integrator_t .= solution.t
-    d.local_problem_storage.pode_x .= x
-    for i = 1:d.np
-        resize!(d.local_problem_storage.pode_dxdp[i], d.nx, new_length)
-        d.local_problem_storage.pode_dxdp[i] .= dxdp[i]
+    prior_length = length(d.local_problem_storage.integrator_t)
+    if new_length == prior_length
+        d.local_problem_storage.integrator_t .= solution.t
+    else
+        d.local_problem_storage.integrator_t = solution.t
     end
+
+    for i = 1:new_length
+        d.local_problem_storage.pode_x[:,i] .= x[i]
+    end
+    if d.calculate_local_sensitivity
+        for i = 1:d.np
+            resize!(d.local_problem_storage.pode_dxdp[i], d.nx, new_length)
+            d.local_problem_storage.pode_dxdp[i] .= dxdp[i]
+        end
+    end
+
+    empty!(d.local_t_dict_flt)
+    empty!(d.local_t_dict_indx)
+
+    for (tindx, t) in enumerate(solution.t)
+        d.local_t_dict_flt[t] = tindx
+    end
+
+    if !isempty(d.local_problem_storage.user_t)
+        next_support_time = d.local_problem_storage.user_t[1]
+        supports_left = length(d.local_problem_storage.user_t)
+        loc_count = 1
+        for (tindx, t) in enumerate(solution.t)
+            if t == next_support_time
+                d.local_t_dict_indx[loc_count] = tindx
+                loc_count += 1
+                supports_left -= 1
+                if supports_left > 0
+                    next_support_time = d.local_problem_storage.user_t[loc_count]
+                end
+            end
+        end
+    end
+
     return
 end

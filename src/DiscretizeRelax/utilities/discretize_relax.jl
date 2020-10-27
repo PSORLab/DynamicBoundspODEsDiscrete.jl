@@ -139,7 +139,8 @@ function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit 
 
     calculate_local_sensitivity = false
     local_integrator = state_contractor_integrator(m)
-    local_problem_storage = LocalProblemStorage(d, local_integrator, tsupports)
+    local_problem_storage = LocalProblemStorage(d, local_integrator,
+                                                tsupports, calculate_local_sensitivity)
 
     return DiscretizeRelax{typeof(state_method), T, Float64, typeof(d.f), k+1,
                            typeof(d.x0), d.nx+d.np, typeof(Jx!), typeof(Jp!),
