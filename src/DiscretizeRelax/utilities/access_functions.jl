@@ -27,6 +27,7 @@ DBB.supports(::DiscretizeRelax, ::DBB.SupportSet) = true
 DBB.supports(::DiscretizeRelax, ::DBB.ParameterNumber) = true
 DBB.supports(::DiscretizeRelax, ::DBB.StateNumber) = true
 DBB.supports(::DiscretizeRelax, ::DBB.SupportNumber) = true
+DBB.supports(t::DiscretizeRelax, ::LocalSensitivityOn) = t.calculate_local_sensitivity
 
 function get_val_loc(t::DiscretizeRelax, index::Int64, time::Float64)
     (index <= 0 && time == -Inf) && error("Must set either index or time.")

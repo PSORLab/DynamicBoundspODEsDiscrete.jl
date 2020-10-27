@@ -106,7 +106,6 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
     resize!(d.storage, d.step_count)
     resize!(d.storage_apriori, d.step_count)
     resize!(d.time, d.step_count)
-    @show d.step_count
 
     if d.error_code === RELAXATION_NOT_CALLED
         d.error_code = COMPLETED

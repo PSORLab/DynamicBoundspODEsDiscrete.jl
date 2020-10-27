@@ -87,6 +87,7 @@ mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: R
     local_t_dict_indx::Dict{Int,Int}
     local_t_dict_flt::Dict{Float64,Int}
 
+    calculate_local_sensitivity::Bool
     local_problem_storage::LocalProblemStorage{PRB, INT, N}
 end
 
@@ -136,6 +137,7 @@ function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit 
     local_t_dict_indx = Dict{Int,Int}()
     local_t_dict_flt = Dict{Float64,Int}()
 
+    calculate_local_sensitivity = false
     local_integrator = state_contractor_integrator(m)
     local_problem_storage = LocalProblemStorage(d, local_integrator, tsupports)
 
@@ -149,7 +151,8 @@ function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit 
                            set_tf!, state_method, exist_storage, contractor_result,
                            step_result, step_params, true, true,
                            relax_t_dict_indx, relax_t_dict_flt, local_t_dict_indx,
-                           local_t_dict_flt, local_problem_storage)
+                           local_t_dict_flt, calculate_local_sensitivity,
+                           local_problem_storage)
 end
 function DiscretizeRelax(d::ODERelaxProb; kwargs...)
     DiscretizeRelax(d, LohnerContractor{4}(); kwargs...)
