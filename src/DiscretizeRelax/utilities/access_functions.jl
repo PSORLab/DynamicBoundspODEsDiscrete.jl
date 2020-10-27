@@ -28,6 +28,14 @@ DBB.supports(::DiscretizeRelax, ::DBB.ParameterNumber) = true
 DBB.supports(::DiscretizeRelax, ::DBB.StateNumber) = true
 DBB.supports(::DiscretizeRelax, ::DBB.SupportNumber) = true
 
+function get_val_loc(t::DifferentialInequality, index::Int64, time::Float64)
+    (index <= 0 && time == -Inf) && error("Must set either index or time.")
+    if index > 0
+        return t.relax_t_dict_indx[index]
+    end
+    t.relax_t_dict_flt[time]
+end
+
 DBB.get(t::DiscretizeRelax, v::DBB.IntegratorName) = "Discretize & Relax Integrator" # TO DO... FIX ME
 DBB.get(t::DiscretizeRelax, v::DBB.IsNumeric) = false # TO DO... FIX ME
 DBB.get(t::DiscretizeRelax, v::DBB.IsSolutionSet) = true
@@ -300,6 +308,18 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Upper}) where {X,
     out
 end
 
+function DBB.get(t::DiscretizeRelax{X,T}, ::DBB.Bound{Lower}) where {X, T <: AbstractInterval}
+    val_loc = get_val_loc_local(t, v.index, v.time)
+    @__dot__ out = lo(t.storage[val_loc])
+    return
+end
+
+function DBB.get(t::DiscretizeRelax{X,T}, ::DBB.Bound{Upper}) where {X, T <: AbstractInterval}
+    val_loc = get_val_loc_local(t, v.index, v.time)
+    @__dot__ out = hi(t.storage[val_loc])
+    return
+end
+
 function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Bound{Lower}) where {X, T <: AbstractInterval}
     dims = size(t.storage)
     (length(dims) == 1) && (dims = (dims[1],1))
@@ -322,6 +342,18 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Bound{Upper}) where {X, T <: 
         end
     end
     out
+end
+
+function DBB.get(t::DiscretizeRelax{X,T}, ::DBB.Bound{Lower}) where {X, T <: MC}
+    val_loc = get_val_loc_local(t, v.index, v.time)
+    @__dot__ out = lo(t.storage[val_loc])
+    return
+end
+
+function DBB.get(t::DiscretizeRelax{X,T}, ::DBB.Bound{Upper}) where {X, T <: MC}
+    val_loc = get_val_loc_local(t, v.index, v.time)
+    @__dot__ out = hi(t.storage[val_loc])
+    return
 end
 
 function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Bound{Lower}) where {X, T <: MC}
@@ -348,6 +380,30 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Bound{Upper}) where {X, T <: 
     out
 end
 
+function DBB.get(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Lower}) where {X, T <: MC}
+    val_loc = get_val_loc_local(t, v.index, v.time)
+    @__dot__ out = cv(t.storage[val_loc])
+    return
+end
+
+function DBB.get(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Upper}) where {X, T <: MC}
+    val_loc = get_val_loc_local(t, v.index, v.time)
+    @__dot__ out = cc(t.storage[val_loc])
+    return
+end
+
+function DBB.get(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Lower}) where {X, T <: AbstractInterval}
+    val_loc = get_val_loc_local(t, v.index, v.time)
+    @__dot__ out = lo(t.storage[val_loc])
+    return
+end
+
+function DBB.get(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Upper}) where {X, T <: AbstractInterval}
+    val_loc = get_val_loc_local(t, v.index, v.time)
+    @__dot__ out = hi(t.storage[val_loc])
+    return
+end
+
 function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Lower}) where {X, T <: AbstractInterval}
     dims = size(t.storage)
     (length(dims) == 1) && (dims = (dims[1],1))
@@ -371,7 +427,6 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Lower}) where {X, 
     end
     out
 end
-
 
 function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Upper}) where {X, T <: AbstractInterval}
     dims = size(t.storage)
