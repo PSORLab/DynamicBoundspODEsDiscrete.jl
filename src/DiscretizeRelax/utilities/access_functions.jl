@@ -28,12 +28,20 @@ DBB.supports(::DiscretizeRelax, ::DBB.ParameterNumber) = true
 DBB.supports(::DiscretizeRelax, ::DBB.StateNumber) = true
 DBB.supports(::DiscretizeRelax, ::DBB.SupportNumber) = true
 
-function get_val_loc(t::DifferentialInequality, index::Int64, time::Float64)
+function get_val_loc(t::DiscretizeRelax, index::Int64, time::Float64)
     (index <= 0 && time == -Inf) && error("Must set either index or time.")
     if index > 0
         return t.relax_t_dict_indx[index]
     end
     t.relax_t_dict_flt[time]
+end
+
+function get_val_loc_local(t::DiscretizeRelax, index::Int64, time::Float64)
+    (index <= 0 && time == -Inf) && error("Must set either index or time.")
+    if index > 0
+        return t.local_t_dict_indx[index]
+    end
+    t.local_t_dict_flt[time]
 end
 
 DBB.get(t::DiscretizeRelax, v::DBB.IntegratorName) = "Discretize & Relax Integrator" # TO DO... FIX ME

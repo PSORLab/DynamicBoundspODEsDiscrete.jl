@@ -82,6 +82,9 @@ mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: R
     new_decision_pnt::Bool
     new_decision_box::Bool
 
+    relax_t_dict_indx::Dict{Int,Int}
+    relax_t_dict_flt::Dict{Float64,Int}
+
     local_problem_storage::LocalProblemStorage{PRB, INT, N}
 end
 
@@ -132,6 +135,11 @@ function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit 
     step_params = StepParams(tol, hmin, repeat_limit, is_adaptive, skip_step2)
     step_result = StepResult{typeof(style)}(zeros(d.nx), zeros(typeof(style), d.nx), A, Δ, 0.0, 0.0)
 
+    relax_t_dict_indx = Dict{Int,Int}()
+    relax_t_dict_flt = Dict{Float64,Int}()
+    local_t_dict_indx = Dict{Int,Int}()
+    local_t_dict_flt = Dict{Float64,Int}()
+
     local_integrator = state_contractor_integrator(m)
     local_problem_storage = LocalProblemStorage(d, local_integrator, tsupports)
 
@@ -143,7 +151,9 @@ function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit 
                            step_limit, 0, storage, storage_apriori, time,
                            support_dict, error_code, P, rP, skip_step2, style,
                            set_tf!, state_method, exist_storage, contractor_result,
-                           step_result, step_params, true, true, local_problem_storage)
+                           step_result, step_params, true, true,
+                           relax_t_dict_indx, relax_t_dict_flt, local_t_dict_indx,
+                           local_t_dict_flt, local_problem_storage)
 end
 function DiscretizeRelax(d::ODERelaxProb; kwargs...)
     DiscretizeRelax(d, LohnerContractor{4}(); kwargs...)
