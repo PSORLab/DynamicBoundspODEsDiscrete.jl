@@ -15,8 +15,12 @@
 function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY}
 
     # reset relax!
-    fill!(d.storage, zeros(T, d.nx))
-    fill!(d.storage_apriori, zeros(T, d.nx))
+    for i = 1:length(d.storage)
+        fill!(d.storage[i], zero(T))
+    end
+    for i = 1:length(d.storage_apriori)
+        fill!(d.storage_apriori[i], zero(T))
+    end
     fill!(d.time, 0.0)
     empty!(d.relax_t_dict_indx)
     empty!(d.relax_t_dict_flt)
@@ -77,11 +81,11 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
             # unpack storage
             if step_number - 1 > length(d.time)
                 push!(d.storage, copy(d.contractor_result.X_computed))
-                push!(d.storage_apriori, copy(d.exist_result.Xapriori))
+                push!(d.storage_apriori, copy(d.exist_result.Xj_apriori))
                 push!(d.time, d.contractor_result.times[1])
             else
-                copy!(d.storage[step_number], d.contractor_result.X_computed)
-                copy!(d.storage_apriori[step_number], d.exist_result.Xj_apriori)
+                copyto!(d.storage[step_number], d.contractor_result.X_computed)
+                copyto!(d.storage_apriori[step_number], d.exist_result.Xj_apriori)
                 d.time[step_number] = d.step_result.time
             end
             if is_support_pnt

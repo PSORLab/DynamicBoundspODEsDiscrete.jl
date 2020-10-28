@@ -67,13 +67,14 @@ elseif prob_num == 2
 end
 
 prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
+tol = 1E-5
 
 if lohners_type == 1
-    integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{7}(),
-                                 repeat_limit = 1, skip_step2 = false, step_limit = steps, relax = false)
+    integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{10}(),
+                                 repeat_limit = 1, skip_step2 = false, step_limit = steps, relax = false, tol= tol)
 elseif lohners_type == 2
     integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.HermiteObreschkoff(3, 3), h = 1/ticks,
-                             repeat_limit = 1, skip_step2 = false, step_limit = steps, relax = use_relax)
+                             repeat_limit = 1, skip_step2 = false, step_limit = steps, relax = use_relax, tol= tol)
 elseif lohners_type == 3
     function iJx!(dx, x, p, t)
         dx[1] = -2.0*x[1]

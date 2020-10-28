@@ -91,7 +91,7 @@ mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: R
     local_problem_storage::LocalProblemStorage{PRB, INT, N}
 end
 
-function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit = 1000,  tol = 1E-1, hmin = 1E-13,
+function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit = 1000, tol = 1E-4, hmin = 1E-13,
                          relax = false, h = 0.0, skip_step2 = false, Jx! = nothing, Jp! = nothing) where SCN <: AbstractStateContractorName
 
     γ = state_contractor_γ(m)::Float64
