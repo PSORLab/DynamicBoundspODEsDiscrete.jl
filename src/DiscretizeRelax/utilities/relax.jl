@@ -14,6 +14,14 @@
 
 function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY}
 
+    # reset relax!
+    fill!(d.storage, zeros(T, d.nx))
+    fill!(d.storage_apriori, zeros(T, d.nx))
+    fill!(d.time, 0.0)
+    empty!(d.relax_t_dict_indx)
+    empty!(d.relax_t_dict_flt)
+    d.step_result.time = 0.0
+
     set_P!(d)         # Functor set P and P - p values for calculations
     compute_X0!(d)     # Compute initial condition values
 
@@ -71,10 +79,11 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
                 push!(d.storage, copy(d.contractor_result.X_computed))
                 push!(d.storage_apriori, copy(d.exist_result.Xapriori))
                 push!(d.time, d.contractor_result.times[1])
+            else
+                copy!(d.storage[step_number], d.contractor_result.X_computed)
+                copy!(d.storage_apriori[step_number], d.exist_result.Xj_apriori)
+                d.time[step_number] = d.step_result.time
             end
-            copy!(d.storage[step_number], d.contractor_result.X_computed)
-            copy!(d.storage_apriori[step_number], d.exist_result.Xj_apriori)
-            d.time[step_number] = d.step_result.time
             if is_support_pnt
                 stored_value_count += 1
                 d.relax_t_dict_indx[stored_value_count] = step_number
@@ -103,9 +112,9 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
     end
 
     # cut out any unnecessary array elements
-    resize!(d.storage, d.step_count)
-    resize!(d.storage_apriori, d.step_count)
-    resize!(d.time, d.step_count)
+    resize!(d.storage, d.step_count+1)
+    resize!(d.storage_apriori, d.step_count+1)
+    resize!(d.time, d.step_count+1)
 
     if d.error_code === RELAXATION_NOT_CALLED
         d.error_code = COMPLETED

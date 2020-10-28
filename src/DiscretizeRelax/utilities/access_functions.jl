@@ -94,6 +94,21 @@ function DBB.setall!(t::DiscretizeRelax, v::ParameterValue, value::Vector{Float6
     return
 end
 
+function DBB.getall!(out::Vector{Float64}, t::DiscretizeRelax, v::DBB.ParameterValue)
+    out .= t.p[1:t.np]
+    return
+end
+
+function DBB.getall!(out::Array{Float64,2}, t::DiscretizeRelax, v::DBB.Value)
+    copyto!(out, t.local_problem_storage.pode_x)
+    return
+end
+
+function DBB.get(out::Vector{Float64}, t::DiscretizeRelax, v::DBB.Value)
+    val_loc = get_val_loc_local(t, v.index, v.time)
+    out .= t.local_problem_storage.pode_x[:, val_loc]
+    return
+end
 
 ## Inplace integrator acccess functions
 function DBB.getall!(out::Vector{Matrix{Float64}}, t::DiscretizeRelax{X,T}, ::DBB.Subgradient{Lower}) where {X, T <: AbstractInterval}
