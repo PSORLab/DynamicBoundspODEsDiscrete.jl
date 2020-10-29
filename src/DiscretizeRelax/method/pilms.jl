@@ -19,11 +19,14 @@ mutable struct AdamsMoultonFunctor{S} <: AbstractStateContractor
     Jpsto::CircularBuffer{Matrix{S}}
     Jxsum::Vector{S}
     Jpsum::Matrix{S}
+    Jxvec::Vector{S}
+    Jpvec::Vector{S}
     fval::CircularBuffer{Vector{Float64}}
     fk_apriori::CircularBuffer{Vector{S}}
     Rk::Vector{S}
     Y0::Matrix{Float64}
     Y::Matrix{Float64}
+    Jxmid_sto::Matrix{S}
     precond::Matrix{Float64}
     JxAff::Matrix{S}
     YJxAff::Matrix{S}
@@ -44,8 +47,9 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S, t::
     Dk = zeros(S, nx)
 
     precond = zeros(nx, nx)
-    Y = zeros(nx, nx)
     Y0 = zeros(nx, nx)
+    Y = zeros(nx, nx)
+    Jxmid_sto = zeros(S, nx, nx)
     YJxAff = zeros(S, nx, nx)
     JxAff = zeros(S, nx, nx)
     Xj_delta = zeros(S, nx)
@@ -62,6 +66,8 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S, t::
     end
     Jxsum = zeros(S, nx)
     Jpsum = zeros(S, nx, nx)
+    Jxvec = zeros(S, nx)
+    Jpvec = zeros(S, nx)
 
     fval = CircularBuffer{Vector{Float64}}(method_step)
     fk_apriori = CircularBuffer{Vector{S}}(method_step)
@@ -75,9 +81,9 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S, t::
     coeffs = zeros(Float64, method_step + 1)
 
     AdamsMoultonFunctor{S}(f, Jx!, Jp!, nx, np, method_step, η, μX, ρP,
-                           Dk, Jxsto, Jpsto, Jxsum, Jpsum, fval, fk_apriori, Rk,
-                           Y0, Y, precond, JxAff, YJxAff, YJxΔx, Xj_delta,
-                           Ysumx, YsumP, YJpΔp, coeffs)
+                           Dk, Jxsto, Jpsto, Jxsum, Jpsum, Jxvec, Jpvec, fval,
+                           fk_apriori, Rk, Y0, Y, Jxmid_sto, precond, JxAff, YJxAff,
+                           YJxΔx, Xj_delta, Ysumx, YsumP, YJpΔp, coeffs)
 end
 
 
@@ -120,7 +126,7 @@ function compute_jacobian_sum!(d::AdamsMoultonFunctor{T},
     for i = 3:s
         d.Jxsum += (h*d.coeffs[i])*(d.Jxsto[i]*contract.A[2].Q)*contract.Δ[2]
     end
-    @__dot__ d.Jpsum = h*d.coeffs[1]*d.Jpsto[i]
+    @__dot__ d.Jpsum = h*d.coeffs[1]*d.Jpsto[1]
     for i = 2:s
         @__dot__ d.Jpsum += h*d.coeffs[i]*d.Jpsto[i]
     end
@@ -142,14 +148,15 @@ function compute_xval!(contract::ContractorStorage{S}) where S
 end
 
 function compute_Ainv!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) where {S, T<:Number}
-    mul!(d.Jxmid, d.Jxsto, contract.A[2].Q)
-    @__dot__ contract.B = mid(d.Jxmid)
+    @show d.Jxmid_sto, d.Jxsto[1], contract.A[2].Q
+    mul!(d.Jxmid_sto, d.Jxsto[1], contract.A[2].Q)
+    @__dot__ contract.B = mid(d.Jxmid_sto)
     calculateQ!(contract.A[1], contract.B, d.nx)
     calculateQinv!(contract.A[1])
     return nothing
 end
 
-function compute_Delta!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) where {S, T<:Number}
+function update_Delta!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) where {S, T<:Number}
     d.Y = I - Y0*contract.A[2].Q
     d.precond = lu!(d.Y)
     d.YJxAff = d.precond\d.JxAff
