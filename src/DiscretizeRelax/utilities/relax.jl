@@ -118,7 +118,7 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
     # cut out any unnecessary array elements
     resize!(d.storage, d.step_count+1)
     resize!(d.storage_apriori, d.step_count+1)
-    resize!(d.time, d.step_count+1)
+    resize!(d.time, d.step_count + 1)
 
     if d.error_code === RELAXATION_NOT_CALLED
         d.error_code = COMPLETED

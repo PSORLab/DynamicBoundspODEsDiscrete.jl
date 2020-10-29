@@ -131,6 +131,7 @@ include("DiscretizeRelax/method/higher_order_enclosure.jl")
 include("DiscretizeRelax/method/lohners_qr.jl")
 include("DiscretizeRelax/method/hermite_obreschkoff.jl")
 include("DiscretizeRelax/method/wilhelm_2019.jl")
+include("DiscretizeRelax/method/pilms.jl")
 
 include("DiscretizeRelax/utilities/local_integration_problem.jl")
 

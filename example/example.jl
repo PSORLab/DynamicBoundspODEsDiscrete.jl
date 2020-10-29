@@ -38,7 +38,7 @@ println(" ------------- PACKAGE EXAMPLE       ------------------------ ")
 println(" ------------------------------------------------------------ ")
 
 use_relax = false
-lohners_type = 1
+lohners_type = 3
 prob_num = 1
 ticks = 100.0
 steps = 100.0
