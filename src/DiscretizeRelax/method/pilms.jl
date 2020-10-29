@@ -43,8 +43,10 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S, t::
     method_step = steps
     Dk = zeros(S, nx)
 
+    precond = zeros(nx, nx)
     Y = zeros(nx, nx)
     Y0 = zeros(nx, nx)
+    YJxAff = zeros(S, nx, nx)
     JxAff = zeros(S, nx, nx)
     Xj_delta = zeros(S, nx)
     YJxΔx = zeros(S, nx)
@@ -114,13 +116,13 @@ function compute_jacobian_sum!(d::AdamsMoultonFunctor{T},
     @__dot__ d.Y0 = mid(d.Jxsto[1])
     @__dot__ d.JxAff = d.Jxsto[1] - d.Y0
 
-    d.sum_x = ((I - d.Jxsto[2])*contract.A.Q[1])*contract.Δ[1]
+    d.Jxsum = ((I - d.Jxsto[2])*contract.A[1].Q)*contract.Δ[1]
     for i = 3:s
-        d.sum_x += (h*d.coeffs[i])*(d.Jxsto[i]*contract.A.Q[2])*contract.Δ[2]
+        d.Jxsum += (h*d.coeffs[i])*(d.Jxsto[i]*contract.A[2].Q)*contract.Δ[2]
     end
-    @__dot__ d.sum_p = h*d.coeffs[1]*d.Jpsto[i]
+    @__dot__ d.Jpsum = h*d.coeffs[1]*d.Jpsto[i]
     for i = 2:s
-        @__dot__ d.sum_p += h*d.coeffs[i]*d.Jpsto[i]
+        @__dot__ d.Jpsum += h*d.coeffs[i]*d.Jpsto[i]
     end
 
     return nothing
@@ -128,8 +130,8 @@ end
 
 function compute_X!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) where {S, T<:Number}
     mul!(d.Jxvec, d.JxAff, d.Xj_delta)
-    mul!(d.Jpvec, d.sum_p, contract.rP)
-    @__dot__ contract.X_computed = contract.xval + d.Jxvec + d.sum_x + d.Jpvec
+    mul!(d.Jpvec, d.Jpsum, contract.rP)
+    @__dot__ contract.X_computed = contract.xval + d.Jxvec + d.Jxsum + d.Jpvec
     @__dot__ contract.X_computed = contract.X_computed ∩ contract.Xj_0
     return nothing
 end
@@ -152,8 +154,8 @@ function compute_Delta!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S
     d.precond = lu!(d.Y)
     d.YJxAff = d.precond\d.JxAff
     mul!(d.YJxΔx, d.YJxAff, d.Xj_delta)
-    d.Ysumx = d.precond\d.sum_x
-    d.YsumP = d.precond\d.sum_p
+    d.Ysumx = d.precond\d.Jxsum
+    d.YsumP = d.precond\d.Jpsum
     mul!(d.YJpΔp, d.YsumP, contract.rP)
     @__dot__ d.Δⱼ₊₁ = d.YJxΔx + d.Ysumx + d.YJpΔp
     return nothing
