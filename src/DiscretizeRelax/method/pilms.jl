@@ -164,11 +164,14 @@ function compute_jacobian_sum!(d::AdamsMoultonFunctor{T},
     eval_cycle!(d.Jx!, d.Jxsto, d.μX, d.ρP, t)
     eval_cycle!(d.Jp!, d.Jpsto, d.μX, d.ρP, t)
 
+    @show d.Jxsto
+    @show d.Jpsto
+
     @__dot__ d.Y0 = mid(d.Jxsto[1])
     @__dot__ d.JxAff = d.Jxsto[1] - d.Y0
 
     d.Jxsum = ((I - d.Jxsto[2])*contract.A[1].Q)*contract.Δ[1]
-    for i = 3:s
+    for i = 2:s
         d.Jxsum += (h*d.coeffs[i])*(d.Jxsto[i]*contract.A[2].Q)*contract.Δ[2]
     end
     @__dot__ d.Jpsum = h*d.coeffs[1]*d.Jpsto[1]
@@ -180,12 +183,13 @@ function compute_jacobian_sum!(d::AdamsMoultonFunctor{T},
 end
 
 function compute_X!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) where {S, T<:Number}
+
     mul!(d.Jxvec, d.JxAff, d.Xj_delta)
     mul!(d.Jpvec, d.Jpsum, contract.rP)
     @__dot__ contract.X_computed = contract.xval + d.Jxvec + d.Jxsum + d.Jpvec
+    @show contract.X_computed, contract.Xj_0, d.Jxvec, d.Jxsum, d.Jpvec
+
     @__dot__ contract.X_computed = contract.X_computed ∩ contract.Xj_0
-    @show "compute_X!", contract.xval_computed, contract.xval, contract.X_computed
-    @show "compute_X!", d.Jxvec, d.Jxsum, d.Jpvec
     return nothing
 end
 
