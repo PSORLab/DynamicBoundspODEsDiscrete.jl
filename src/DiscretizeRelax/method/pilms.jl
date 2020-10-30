@@ -27,7 +27,7 @@ mutable struct AdamsMoultonFunctor{S} <: AbstractStateContractor
     Y0::Matrix{Float64}
     Y::Matrix{Float64}
     Jxmid_sto::Matrix{S}
-    precond::Matrix{Float64}
+    precond::LinearAlgebra.LU{Float64,Array{Float64,2}}
     JxAff::Matrix{S}
     YJxAff::Matrix{S}
     YJxΔx::Vector{S}
@@ -36,6 +36,7 @@ mutable struct AdamsMoultonFunctor{S} <: AbstractStateContractor
     YsumP::Matrix{S}
     YJpΔp::Vector{S}
     coeffs::Vector{Float64}
+    Δⱼ₊₁::Vector{S}
 end
 
 function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S, t::T, steps::Int) where {F,JX,JP,S,T}
@@ -46,7 +47,11 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S, t::
     method_step = steps
     Dk = zeros(S, nx)
 
-    precond = zeros(nx, nx)
+    lu_mat = zeros(nx, nx)
+    for i = 1:nx
+        lu_mat[i,i] = 1.0
+    end
+    precond = lu(lu_mat)
     Y0 = zeros(nx, nx)
     Y = zeros(nx, nx)
     Jxmid_sto = zeros(S, nx, nx)
@@ -79,11 +84,12 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S, t::
 
     Rk = zeros(S, nx)
     coeffs = zeros(Float64, method_step + 1)
+    Δⱼ₊₁ = zeros(S, nx)
 
     AdamsMoultonFunctor{S}(f, Jx!, Jp!, nx, np, method_step, η, μX, ρP,
                            Dk, Jxsto, Jpsto, Jxsum, Jpsum, Jxvec, Jpvec, fval,
                            fk_apriori, Rk, Y0, Y, Jxmid_sto, precond, JxAff, YJxAff,
-                           YJxΔx, Xj_delta, Ysumx, YsumP, YJpΔp, coeffs)
+                           YJxΔx, Xj_delta, Ysumx, YsumP, YJpΔp, coeffs, Δⱼ₊₁)
 end
 
 
@@ -104,8 +110,9 @@ function compute_real_sum!(d::AdamsMoultonFunctor{T}, contract::ContractorStorag
                            s::Int) where T<:Number
     eval_cycle!(d.f!, d.fval, contract.xval, contract.pval, t)
     @__dot__ d.Dk = result.xⱼ + (d.coeffs[s + 1]*h^(s + 2))*contract.fk_apriori
-    for i = 1:(s + 1)
-        @__dot__  d.Dk += (h^i)*d.coeffs[i]*d.fval[i]
+    @show length(d.coeffs), length(d.fval), length(d.Dk)
+    for i = 1:s
+        @__dot__ d.Dk += (h^i)*d.coeffs[i]*d.fval[i]
     end
     return nothing
 end
@@ -148,7 +155,6 @@ function compute_xval!(contract::ContractorStorage{S}) where S
 end
 
 function compute_Ainv!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) where {S, T<:Number}
-    @show d.Jxmid_sto, d.Jxsto[1], contract.A[2].Q
     mul!(d.Jxmid_sto, d.Jxsto[1], contract.A[2].Q)
     @__dot__ contract.B = mid(d.Jxmid_sto)
     calculateQ!(contract.A[1], contract.B, d.nx)
@@ -156,8 +162,8 @@ function compute_Ainv!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}
     return nothing
 end
 
-function update_Delta!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) where {S, T<:Number}
-    d.Y = I - Y0*contract.A[2].Q
+function update_delta!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) where {S, T<:Number}
+    d.Y = I - d.Y0*contract.A[2].Q
     d.precond = lu!(d.Y)
     d.YJxAff = d.precond\d.JxAff
     mul!(d.YJxΔx, d.YJxAff, d.Xj_delta)
@@ -185,9 +191,11 @@ function (d::AdamsMoultonFunctor{T})(contract::ContractorStorage{S},
     compute_X!(d, contract)
     compute_xval!(contract)
     compute_Ainv!(d, contract)
-    update_Delta!(d, contract)
+    update_delta!(d, contract)
     return nothing
 end
+
+get_Δ(d::AdamsMoultonFunctor) = d.Δⱼ₊₁
 
 function state_contractor(m::AdamsMoulton, f, Jx!, Jp!, nx, np, style, s, h)
     AdamsMoultonFunctor(f, Jx!, Jp!, nx, np, style, s, m.steps)
@@ -196,5 +204,3 @@ state_contractor_k(m::AdamsMoulton) = m.steps
 state_contractor_γ(m::AdamsMoulton) = 0.0
 state_contractor_steps(m::AdamsMoulton) = m.steps
 state_contractor_integrator(m::AdamsMoulton) = CVODE_Adams()
-
-function get_Δ(lf::AdamsMoulton) end
