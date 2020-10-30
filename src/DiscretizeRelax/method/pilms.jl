@@ -37,6 +37,8 @@ mutable struct AdamsMoultonFunctor{S} <: AbstractStateContractor
     YJpΔp::Vector{S}
     coeffs::Vector{Float64}
     Δⱼ₊₁::Vector{S}
+    is_adaptive::Bool
+    γ::Float64
 end
 
 function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S, t::T, steps::Int) where {F,JX,JP,S,T}
@@ -86,16 +88,53 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S, t::
     coeffs = zeros(Float64, method_step + 1)
     Δⱼ₊₁ = zeros(S, nx)
 
+    is_adaptive = false
+    γ = 0.0
+
     AdamsMoultonFunctor{S}(f, Jx!, Jp!, nx, np, method_step, η, μX, ρP,
                            Dk, Jxsto, Jpsto, Jxsum, Jpsum, Jxvec, Jpvec, fval,
                            fk_apriori, Rk, Y0, Y, Jxmid_sto, precond, JxAff, YJxAff,
-                           YJxΔx, Xj_delta, Ysumx, YsumP, YJpΔp, coeffs, Δⱼ₊₁)
+                           YJxΔx, Xj_delta, Ysumx, YsumP, YJpΔp, coeffs, Δⱼ₊₁,
+                           is_adaptive, γ)
 end
 
+function compute_coefficients!(d::AdamsMoultonFunctor{S}, h::Float64, t::Float64, s::Int) where S
+    if !d.is_adaptive
+        if s == 0
+            d.coeffs[1] = 1.0
+        elseif s == 1
+            d.coeffs[1] = 0.5
+            d.coeffs[2] = 0.5
+        elseif s == 2
+            d.coeffs[1] = 5.0/12.0
+            d.coeffs[2] = 2.0/3.0
+            d.coeffs[3] = -1.0/12.0
+        elseif s == 3
+            d.coeffs[1] = 9.0/24.0
+            d.coeffs[2] = 19.0/24.0
+            d.coeffs[3] = -5.0/24.0
+            d.coeffs[4] = 1.0/24.0
+        elseif s == 4
+            d.coeffs[1] = 251.0/720.0
+            d.coeffs[2] = 646.0/720.0
+            d.coeffs[3] = -264.0/720.0
+            d.coeffs[4] = 106.0/720.0
+            d.coeffs[5] = -19.0/720.0
+        else
+            #compute_fixed_higher_coeffs!(d, s)
+        end
+    else
+        #compute_adaptive_coeffs!(d, h, t, s)
+    end
+
+    d.γ = d.coeffs[s + 1]
+
+    return nothing
+end
 
 function compute_Rk!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{T},
-                     h::Float64, γ::Float64, s::Int) where T<:Number
-    coeff = γ*h^(d.method_step + 1)
+                     h::Float64, s::Int) where T<:Number
+    coeff = d.γ*h^(d.method_step + 1)
     pushfirst!(d.fk_apriori, contract.fk_apriori)
     @__dot__ d.Rk = d.fk_apriori[1]
     for i = 2:s
@@ -110,7 +149,6 @@ function compute_real_sum!(d::AdamsMoultonFunctor{T}, contract::ContractorStorag
                            s::Int) where T<:Number
     eval_cycle!(d.f!, d.fval, contract.xval, contract.pval, t)
     @__dot__ d.Dk = result.xⱼ + (d.coeffs[s + 1]*h^(s + 2))*contract.fk_apriori
-    @show length(d.coeffs), length(d.fval), length(d.Dk)
     for i = 1:s
         @__dot__ d.Dk += (h^i)*d.coeffs[i]*d.fval[i]
     end
@@ -146,11 +184,14 @@ function compute_X!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) w
     mul!(d.Jpvec, d.Jpsum, contract.rP)
     @__dot__ contract.X_computed = contract.xval + d.Jxvec + d.Jxsum + d.Jpvec
     @__dot__ contract.X_computed = contract.X_computed ∩ contract.Xj_0
+    @show "compute_X!", contract.xval_computed, contract.xval, contract.X_computed
+    @show "compute_X!", d.Jxvec, d.Jxsum, d.Jpvec
     return nothing
 end
 
 function compute_xval!(contract::ContractorStorage{S}) where S
     @__dot__ contract.xval_computed = mid(contract.X_computed)
+    @show "compute_xval!", contract.xval_computed, contract.X_computed
     return nothing
 end
 
@@ -178,14 +219,18 @@ function (d::AdamsMoultonFunctor{T})(contract::ContractorStorage{S},
                                   result::StepResult{S},
                                   count::Int) where {S, T<:Number}
 
-    t = 0.0
-    γ = 1.0
+    d.is_adaptive = contract.is_adaptive
+
+    t = contract.times[1]
+    h = contract.hj_computed
     s = min(contract.step_count, d.method_step)
-    h = 1.0
+
+    @show " "
+    @show " "
 
     # compute coefficients for linear multistep method
-    #compute_coefficients!(d, h, t, s, adaptive_count, contract.is_adaptive)
-    compute_Rk!(d, contract, h, γ, s)
+    compute_coefficients!(d, h, t, s)
+    compute_Rk!(d, contract, h, s)
     compute_real_sum!(d, contract, result, h, t, s)
     compute_jacobian_sum!(d, contract, h, t, s)
     compute_X!(d, contract)

@@ -250,6 +250,7 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
     # copy info from existence to contractor storage
     contract.Xj_apriori .= exist.Xj_apriori
     contract.hj_computed = min(exist.computed_hj, hj_limit)
+    contract.fk_apriori .= exist.fk
 
     hj = contract.hj_computed
     hj_eu = hj
