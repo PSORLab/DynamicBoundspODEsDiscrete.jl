@@ -134,13 +134,19 @@ end
 
 function compute_Rk!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{T},
                      h::Float64, s::Int) where T<:Number
+
+    println(" ")
+    println(" --- compute_Rk! --- ")
+
     coeff = d.γ*h^(d.method_step + 1)
-    pushfirst!(d.fk_apriori, contract.fk_apriori)
+    pushfirst!(d.fk_apriori, copy(contract.fk_apriori))
+
     @__dot__ d.Rk = d.fk_apriori[1]
     for i = 2:s
         @__dot__ d.Rk = d.Rk ∪ d.fk_apriori[i]
     end
     @__dot__ d.Rk *= coeff
+
     return nothing
 end
 
@@ -149,14 +155,13 @@ function compute_real_sum!(d::AdamsMoultonFunctor{T}, contract::ContractorStorag
                            result::StepResult{T}, h::Float64, t::Float64,
                            s::Int) where T<:Number
 
-    @show " "
-    @show " "
-    @show "COMPUTE REAL SUM!"
+    println(" ")
+    println(" --- compute_real_sum! --- ")
     new_xval_guess = mid.(contract.Xj_apriori)
     eval_cycle!(d.f!, d.fval, new_xval_guess, contract.pval, t)
     @show d.fval
     @show new_xval_guess
-    @__dot__ d.Dk = new_xval_guess + (d.coeffs[s + 1]*h^(s + 2))*contract.fk_apriori
+    @__dot__ d.Dk = new_xval_guess + (d.coeffs[s + 1]*h^(s + 1))*contract.fk_apriori
     for i = 1:s
         @__dot__ d.Dk += (h^i)*d.coeffs[i]*d.fval[i]
     end
@@ -167,13 +172,16 @@ function compute_jacobian_sum!(d::AdamsMoultonFunctor{T},
                            contract::ContractorStorage{T},
                            h::Float64, t::Float64, s::Int) where T<:Number
 
+    println(" ")
+    println(" --- compute_jacobian_sum! --- ")
+
     μ!(d.μX, contract.Xj_0, contract.xval, d.η)
     ρ!(d.ρP, contract.P, contract.pval, d.η)
     eval_cycle!(d.Jx!, d.Jxsto, d.μX, d.ρP, t)
     eval_cycle!(d.Jp!, d.Jpsto, d.μX, d.ρP, t)
 
-    @show d.Jxsto
-    @show d.Jpsto
+    #@show d.Jxsto
+    #@show d.Jpsto
 
     @__dot__ d.Y0 = mid(d.Jxsto[1])
     @__dot__ d.JxAff = d.Jxsto[1] - d.Y0  # IThis may be wrong
@@ -205,9 +213,13 @@ function compute_X!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) w
     return nothing
 end
 
-function compute_xval!(contract::ContractorStorage{S}) where S
+function compute_xval!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}, t) where {S, T<:Number}
+    println(" ")
+    println(" --- compute_xval! --- ")
     @__dot__ contract.xval_computed = mid(contract.X_computed)
-    @show "compute_xval!", contract.xval_computed, contract.X_computed
+    d.f!(d.fval[1], contract.xval_computed, contract.pval, t)
+    @show contract.xval_computed
+    @show contract.X_computed
     return nothing
 end
 
@@ -242,7 +254,7 @@ function (d::AdamsMoultonFunctor{T})(contract::ContractorStorage{S},
     s = min(contract.step_count, d.method_step)
 
     @show " "
-    @show " "
+    @show "BEGIN MAIN"
 
     # compute coefficients for linear multistep method
     compute_coefficients!(d, h, t, s)
@@ -250,7 +262,7 @@ function (d::AdamsMoultonFunctor{T})(contract::ContractorStorage{S},
     compute_real_sum!(d, contract, result, h, t, s)
     compute_jacobian_sum!(d, contract, h, t, s)
     compute_X!(d, contract)
-    compute_xval!(contract)
+    compute_xval!(d, contract, t)
     compute_Ainv!(d, contract)
     update_delta!(d, contract)
     return nothing
