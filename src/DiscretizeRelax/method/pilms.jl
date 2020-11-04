@@ -40,7 +40,7 @@ mutable struct AdamsMoultonFunctor{S} <: AbstractStateContractor
     is_adaptive::Bool
     γ::Float64
     lohners_start::LohnersFunctor
-    A::CircularBuffer{LinearAlgebra.LU{Float64,Array{Float64,2}}}
+    A::CircularBuffer{QRDenseStorage}
     Δ::CircularBuffer{Vector{S}}
 end
 
@@ -82,7 +82,7 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S,
 
     fval = CircularBuffer{Vector{Float64}}(method_step)
     fk_apriori = CircularBuffer{Vector{S}}(method_step)
-    A = CircularBuffer{LinearAlgebra.LU{Float64,Array{Float64,2}}}(method_step)
+    A = qr_stack(nx, method_step)
     Δ = CircularBuffer{Vector{S}}(method_step)
     for i = 1:method_step
         push!(fval, zeros(Float64, nx))
@@ -292,11 +292,6 @@ function (d::AdamsMoultonFunctor{T})(contract::ContractorStorage{S},
     if s < d.method_step
         d.lohners_start(contract, result, count)
         store_starting_buffer!(d, contract, result, count)
-        for (i,p) in enumerate(contract.Δ)
-            @show i, p
-            ptr = pointer_from_objref(p)
-            @show "contract Δ ptr @ $i = $ptr"
-        end
         #@show result.Xⱼ
         #@show result.xⱼ
         return nothing

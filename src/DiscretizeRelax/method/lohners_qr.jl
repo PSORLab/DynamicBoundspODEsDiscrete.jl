@@ -174,9 +174,9 @@ function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T},
     mul_split!(d.YJpvec, d.YJpmat, contract.rP, nx)
     @__dot__ d.Δⱼ₊₁ = d.YdRⱼ₊₁ + d.YJxvec + d.YJpvec
 
-    pushfirst!(contract.Δ, d.Δⱼ₊₁)
+    pushfirst!(contract.Δ, copy(d.Δⱼ₊₁))
 
     return RELAXATION_NOT_CALLED
 end
 
-get_Δ(lf::LohnersFunctor{F,K,S,T,NY}) where {F <: Function, K, S <: Real, T <: Real, NY} = lf.Δⱼ₊₁
+get_Δ(lf::LohnersFunctor{F,K,S,T,NY}) where {F <: Function, K, S <: Real, T <: Real, NY} = copy(lf.Δⱼ₊₁)
