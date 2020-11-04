@@ -30,7 +30,7 @@ using DiffResults: JacobianResult, MutableDiffResult
 
 import DynamicBoundsBase: relax!, set!, setall!, get, getall!, getall, relax!,
                           integrate!, supports
-import Base: setindex!, getindex, copyto!, literal_pow
+import Base: setindex!, getindex, copyto!, literal_pow, copy
 
 import Base.MathConstants.golden
 

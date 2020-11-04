@@ -40,6 +40,8 @@ mutable struct AdamsMoultonFunctor{S} <: AbstractStateContractor
     is_adaptive::Bool
     γ::Float64
     lohners_start::LohnersFunctor
+    A::CircularBuffer{LinearAlgebra.LU{Float64,Array{Float64,2}}}
+    Δ::CircularBuffer{Vector{S}}
 end
 
 function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S,
@@ -80,10 +82,13 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S,
 
     fval = CircularBuffer{Vector{Float64}}(method_step)
     fk_apriori = CircularBuffer{Vector{S}}(method_step)
+    A = CircularBuffer{LinearAlgebra.LU{Float64,Array{Float64,2}}}(method_step)
+    Δ = CircularBuffer{Vector{S}}(method_step)
     for i = 1:method_step
         push!(fval, zeros(Float64, nx))
         #$push!(f̃, zeros(S, nx))
         push!(fk_apriori, zeros(S, nx))
+        push!(Δ, zeros(S, nx))
     end
 
     Rk = zeros(S, nx)
@@ -97,7 +102,7 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S,
                            Dk, Jxsto, Jpsto, Jxsum, Jpsum, Jxvec, Jpvec, fval,
                            fk_apriori, Rk, Y0, Y, Jxmid_sto, precond, JxAff, YJxAff,
                            YJxΔx, Xj_delta, Ysumx, YsumP, YJpΔp, coeffs, Δⱼ₊₁,
-                           is_adaptive, γ, lohners_start)
+                           is_adaptive, γ, lohners_start, A, Δ)
 end
 
 function compute_coefficients!(d::AdamsMoultonFunctor{S}, h::Float64, t::Float64, s::Int) where S
@@ -269,6 +274,8 @@ function store_starting_buffer!(d::AdamsMoultonFunctor{T},
     #d.xval
     #d.Delta
     pushfirst!(d.fk_apriori, copy(contract.fk_apriori))
+    pushfirst!(d.A, copy(contract.A[1]))
+    pushfirst!(d.Δ, copy(contract.Δ[1]))
     return nothing
 end
 
@@ -285,9 +292,16 @@ function (d::AdamsMoultonFunctor{T})(contract::ContractorStorage{S},
     if s < d.method_step
         d.lohners_start(contract, result, count)
         store_starting_buffer!(d, contract, result, count)
+        for (i,p) in enumerate(contract.Δ)
+            @show i, p
+            ptr = pointer_from_objref(p)
+            @show "contract Δ ptr @ $i = $ptr"
+        end
+        #@show result.Xⱼ
+        #@show result.xⱼ
         return nothing
     end
-
+    #=
     d.is_adaptive = contract.is_adaptive
     t = contract.times[1]
     h = contract.hj_computed
@@ -299,14 +313,15 @@ function (d::AdamsMoultonFunctor{T})(contract::ContractorStorage{S},
     compute_xval!(d, contract, t)
     compute_Ainv!(d, contract)
     update_delta!(d, contract)
+    =#
     return nothing
 end
 
 function get_Δ(d::AdamsMoultonFunctor)
     if true
-        return get_Δ(d.lohners_start)
+        return copy(get_Δ(d.lohners_start))
     end
-    return d.Δⱼ₊₁
+    return copy(d.Δⱼ₊₁)
 end
 
 function state_contractor(m::AdamsMoulton, f, Jx!, Jp!, nx, np, style, s, h)

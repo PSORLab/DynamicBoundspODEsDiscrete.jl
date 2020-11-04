@@ -42,6 +42,13 @@ function QRDenseStorage(nx::Int)
     QRDenseStorage(factorization, Q, inverse)
 end
 
+function Base.copy(q::QRDenseStorage)
+    factors_c = q.factorization.factors
+    τ_c = q.factorization.τ
+    f_copy = LinearAlgebra.QR{Float64,Array{Float64,2}}(factors_c,τ_c)
+    QRDenseStorage(f_copy, copy(q.Q), copy(q.inv))
+end
+
 """
 calculateQ!
 
@@ -89,7 +96,10 @@ Creates preallocated storage for an array of QR factorizations.
 """
 function qr_stack(nx::Int, steps::Int)
     qrstack = CircularBuffer{QRDenseStorage}(steps)
-    vector = fill(QRDenseStorage(nx), steps)
+    vector = QRDenseStorage[]
+    for i = 1:steps
+        push!(vector, QRDenseStorage(nx))
+    end
     append!(qrstack, vector)
     qrstack
 end

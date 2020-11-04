@@ -172,7 +172,10 @@ function ContractorStorage(style::S, nx, np, k, h, method_steps) where S
     steps = CircularBuffer{Float64}(method_steps);  append!(steps, zeros(nx))
     A = qr_stack(nx, method_steps)
     Δ = CircularBuffer{Vector{S}}(method_steps)
-    fill!(Δ, zeros(S, nx))
+    for i = 1:method_steps
+        push!(Δ, zeros(S, nx))
+        @show pointer_from_objref(Δ[i])
+    end
 
     return ContractorStorage{S}(is_adaptive, times, steps, Xj_0, Xj_apriori, xval, A, Δ, P,
                                 rP, pval, fk_apriori, hj_computed, X_computed,
