@@ -277,7 +277,7 @@ function store_starting_buffer!(d::AdamsMoultonFunctor{T},
                                 contract::ContractorStorage{T},
                                 result::StepResult{T}, count::Int) where T
     pushfirst!(d.X, copy(contract.X_computed))
-    pushfirst!(d.xval, copy(contract.xval))
+    pushfirst!(d.xval, copy(result.xval))
     pushfirst!(d.fk_apriori, copy(contract.fk_apriori))
     pushfirst!(d.A, copy(contract.A[1]))
     pushfirst!(d.Δ, copy(contract.Δ[1]))
