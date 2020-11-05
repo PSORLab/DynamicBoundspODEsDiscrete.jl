@@ -89,6 +89,7 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S,
     X = CircularBuffer{Vector{S}}(method_step)
     xval = CircularBuffer{Vector{Float64}}(method_step)
     for i = 1:method_step
+        @show pointer_from_objref(A[i])
         push!(xval, zeros(Float64, nx))
         push!(fval, zeros(Float64, nx))
         #$push!(f̃, zeros(S, nx))
@@ -276,11 +277,17 @@ end
 function store_starting_buffer!(d::AdamsMoultonFunctor{T},
                                 contract::ContractorStorage{T},
                                 result::StepResult{T}, count::Int) where T
-    pushfirst!(d.X, copy(contract.X_computed))
-    pushfirst!(d.xval, copy(result.xval))
+
+    pushfirst!(d.X, copy(result.Xⱼ))
+    pushfirst!(d.xval, copy(result.xⱼ))
     pushfirst!(d.fk_apriori, copy(contract.fk_apriori))
     pushfirst!(d.A, copy(contract.A[1]))
-    pushfirst!(d.Δ, copy(contract.Δ[1]))
+    pushfirst!(d.Δ, copy(result.Δ[1]))
+
+    for i = 1:length(d.A)
+        println("A[$i] = $(d.A[i])")
+        prt = pointer_from_objref(d.A[i])
+    end
     return nothing
 end
 
@@ -296,12 +303,11 @@ function (d::AdamsMoultonFunctor{T})(contract::ContractorStorage{S},
     s = min(contract.step_count-1, d.method_step)
     if s < d.method_step
         d.lohners_start(contract, result, count)
+        println("post lohners")
+        @show contract.A[1]
         store_starting_buffer!(d, contract, result, count)
-        @show d.X
-        @show d.xval
-        @show d.fk_apriori
-        @show d.A
-        @show d.Δ
+        println("post starting buffer")
+        @show contract.A[1]
         return nothing
     end
     #=
@@ -328,7 +334,6 @@ function get_Δ(d::AdamsMoultonFunctor)
 end
 
 function state_contractor(m::AdamsMoulton, f, Jx!, Jp!, nx, np, style, s, h)
-    @show m.steps
     lohners_functor = state_contractor(LohnerContractor{m.steps}(), f, Jx!, Jp!, nx, np, style, s, h)
     AdamsMoultonFunctor(f, Jx!, Jp!, nx, np, style, s, m.steps, lohners_functor)
 end

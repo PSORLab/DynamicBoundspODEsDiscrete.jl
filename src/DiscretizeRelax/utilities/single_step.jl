@@ -174,7 +174,6 @@ function ContractorStorage(style::S, nx, np, k, h, method_steps) where S
     Δ = CircularBuffer{Vector{S}}(method_steps)
     for i = 1:method_steps
         push!(Δ, zeros(S, nx))
-        @show pointer_from_objref(Δ[i])
     end
 
     return ContractorStorage{S}(is_adaptive, times, steps, Xj_0, Xj_apriori, xval, A, Δ, P,
@@ -285,7 +284,14 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
             sc(contract, result, 0)
 
             # updates shifts Aj+1 -> Aj and so on
-            pushfirst!(contract.A, last(contract.A))
+            println("post BLARG step")
+            @show contract.A[1]
+
+            pushfirst!(contract.A, last(contract.A)) # TODO: starts to fail if deleted...
+
+            println("post BLARG step2")
+            @show contract.A[1]
+
             pushfirst!(contract.Δ, get_Δ(sc))
             set_xX!(result, contract)::Nothing
         end
@@ -293,6 +299,13 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
         result.xⱼ .= mid.(exist.Xapriori)
         result.Xⱼ .= exist.Xapriori
     end
+
+    # update parallelepid enclosure
+    pushfirst!(result.A, copy(contract.A[1]))
+    pushfirst!(result.Δ, copy(contract.Δ[1]))
+
+    println("single step")
+    @show contract.A[1]
 
     # store times and step sizes to time/step buffer
     # and updated prediced step size

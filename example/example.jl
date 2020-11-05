@@ -7,6 +7,7 @@
 #integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{6}(), h = 0.02,
 #                             repeat_limit = 1, skip_step2 = false, step_limit = 5, relax = use_relax)
 
+# TODO: need to adjust coefficient from hoe test...
 
 #using Revise
 using IntervalArithmetic, TaylorSeries
@@ -41,8 +42,8 @@ use_relax = false
 lohners_type = 3
 prob_num = 1
 ticks = 100.0
-steps = 100.0
-tend = steps/ticks
+steps = 3.0
+tend = 1*steps/ticks # lo 7.6100
 
 if prob_num == 1
     x0(p) = [9.0]
@@ -70,7 +71,7 @@ prob = DynamicBoundsBase.ODERelaxProb(f!, tspan, x0, pL, pU)
 tol = 1E-5
 
 if lohners_type == 1
-    integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{10}(),
+    integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.LohnerContractor{5}(), h = 1/ticks,
                                  repeat_limit = 1, skip_step2 = false, step_limit = steps, relax = false, tol= tol)
 elseif lohners_type == 2
     integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.HermiteObreschkoff(3, 3), h = 1/ticks,
@@ -85,7 +86,8 @@ elseif lohners_type == 3
         nothing
     end
     integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.AdamsMoulton(4), h = 1/ticks,
-                                 skip_step2 = false, relax = false, Jx! = iJx!, Jp! = iJp!)
+                                 repeat_limit = 1, step_limit = steps, skip_step2 = false,
+                                 relax = false, Jx! = iJx!, Jp! = iJp!, tol= tol)
 end
 
 #=
