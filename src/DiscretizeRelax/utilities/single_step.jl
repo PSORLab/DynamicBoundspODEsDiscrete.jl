@@ -287,7 +287,7 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
             println("post BLARG step")
             @show contract.A[1]
 
-            pushfirst!(contract.A, last(contract.A)) # TODO: starts to fail if deleted...
+            pushfirst!(contract.A, copy(last(contract.A))) # TODO: starts to fail if deleted...
 
             println("post BLARG step2")
             @show contract.A[1]

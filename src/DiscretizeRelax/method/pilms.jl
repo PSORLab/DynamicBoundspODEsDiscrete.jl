@@ -40,7 +40,7 @@ mutable struct AdamsMoultonFunctor{S} <: AbstractStateContractor
     is_adaptive::Bool
     γ::Float64
     lohners_start::LohnersFunctor
-    A::CircularBuffer{QRDenseStorage}
+    A::Vector{QRDenseStorage}
     Δ::CircularBuffer{Vector{S}}
     X::CircularBuffer{Vector{S}}
     xval::CircularBuffer{Vector{Float64}}
@@ -84,18 +84,17 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S,
 
     fval = CircularBuffer{Vector{Float64}}(method_step)
     fk_apriori = CircularBuffer{Vector{S}}(method_step)
-    A = qr_stack(nx, method_step)
+    A = Vector{QRDenseStorage}(undef, method_step)
     Δ = CircularBuffer{Vector{S}}(method_step)
     X = CircularBuffer{Vector{S}}(method_step)
     xval = CircularBuffer{Vector{Float64}}(method_step)
     for i = 1:method_step
-        @show pointer_from_objref(A[i])
         push!(xval, zeros(Float64, nx))
         push!(fval, zeros(Float64, nx))
-        #$push!(f̃, zeros(S, nx))
         push!(fk_apriori, zeros(S, nx))
         push!(Δ, zeros(S, nx))
         push!(X, zeros(S, nx))
+        A[i] = QRDenseStorage(nx)
     end
 
     Rk = zeros(S, nx)
@@ -281,13 +280,18 @@ function store_starting_buffer!(d::AdamsMoultonFunctor{T},
     pushfirst!(d.X, copy(result.Xⱼ))
     pushfirst!(d.xval, copy(result.xⱼ))
     pushfirst!(d.fk_apriori, copy(contract.fk_apriori))
-    pushfirst!(d.A, copy(contract.A[1]))
     pushfirst!(d.Δ, copy(result.Δ[1]))
 
-    for i = 1:length(d.A)
-        println("A[$i] = $(d.A[i])")
-        prt = pointer_from_objref(d.A[i])
-    end
+    #d.A[contract.step_count] = copy(contract.A[1])
+
+    # update Jacobian storage
+    t = contract.times[1]
+    μ!(d.μX, result.Xⱼ, result.xⱼ, d.η)
+    ρ!(d.ρP, contract.P, contract.pval, d.η)
+    eval_cycle!(d.Jx!, d.Jxsto, d.μX, d.ρP, t)
+    eval_cycle!(d.Jp!, d.Jpsto, d.μX, d.ρP, t)
+    eval_cycle!(d.f!, d.fval, result.xⱼ, contract.pval, t)
+
     return nothing
 end
 
@@ -303,11 +307,14 @@ function (d::AdamsMoultonFunctor{T})(contract::ContractorStorage{S},
     s = min(contract.step_count-1, d.method_step)
     if s < d.method_step
         d.lohners_start(contract, result, count)
+        @show "--------------"
         println("post lohners")
+        @show "--------------"
+        for i = 1:length(d.A)
+            println("A[$i] = $(d.A[i])")
+        end
         @show contract.A[1]
         store_starting_buffer!(d, contract, result, count)
-        println("post starting buffer")
-        @show contract.A[1]
         return nothing
     end
     #=

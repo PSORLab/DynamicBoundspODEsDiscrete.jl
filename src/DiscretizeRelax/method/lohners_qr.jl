@@ -162,9 +162,11 @@ function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T},
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
     @__dot__ contract.B = mid(d.Jxmat)
+    @show "In Lohners... 1"
+    @show contract.A[1]
     calculateQ!(contract.A[1], contract.B, nx)
     calculateQinv!(contract.A[1])
-    println(" ------ lohners A 1 -----")
+    @show "In Lohners... 2"
     @show contract.A[1]
 
     # update Delta
@@ -177,9 +179,6 @@ function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T},
     @__dot__ d.Δⱼ₊₁ = d.YdRⱼ₊₁ + d.YJxvec + d.YJpvec
 
     pushfirst!(contract.Δ, copy(d.Δⱼ₊₁))
-
-    println(" ------ lohners A 2 -----")
-    @show contract.A[1]
 
     return RELAXATION_NOT_CALLED
 end
