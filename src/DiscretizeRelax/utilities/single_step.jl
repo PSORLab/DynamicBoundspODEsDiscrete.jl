@@ -178,7 +178,6 @@ function ContractorStorage(style::S, nx, np, k, h, method_steps) where S
     A_inv = FixedCircularBuffer{Matrix{Float64}}(method_steps)
     for i = 1:method_steps
         push!(Δ, zeros(S, nx))
-        push!(A_fact, LinearAlgebra.qrfactUnblocked!(Float64.(Matrix(I, nx, nx))))
         push!(A_Q, Float64.(Matrix(I, nx, nx)))
         push!(A_inv, Float64.(Matrix(I, nx, nx)))
     end
@@ -311,9 +310,10 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
     end
 
     # update parallelepid enclosure
-    cycle_copyto!(result.A_Q, contract.A_Q[1])
-    cycle_copyto!(result.A_inv, contract.A_inv[1])
-    cycle_copyto!(result.Δ, contract.Δ[1])
+    @show j
+    cycle_copyto!(result.A_Q, contract.A_Q[1], j)
+    cycle_copyto!(result.A_inv, contract.A_inv[1], j)
+    cycle_copyto!(result.Δ, contract.Δ[1], j)
 
     # store times and step sizes to time/step buffer
     # and updated prediced step size

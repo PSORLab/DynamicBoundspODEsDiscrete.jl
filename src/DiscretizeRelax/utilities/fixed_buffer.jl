@@ -59,14 +59,16 @@ function cycle!(cb::FixedCircularBuffer{S}) where S
     return nothing
 end
 
-function cycle_copyto!(cb::FixedCircularBuffer{V}, v) where V <: AbstractArray
-    cycle!(cb)
-    copyto!(cb.buffer[1], v)
+function cycle_copyto!(cb::FixedCircularBuffer{V}, v, indx) where V <: AbstractArray
+    if indx > 1
+        cycle!(cb)
+    end
+    copyto!(cb[1], v)
     return nothing
 end
 
 function cycle_eval!(f!, cb::FixedCircularBuffer{S}, x, p, t) where S
     cycle!(cb)
-    f!(cb.buffer[1], x, p, t)
+    f!(cb[1], x, p, t)
     return nothing
 end

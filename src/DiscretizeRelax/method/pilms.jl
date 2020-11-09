@@ -85,8 +85,8 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S,
 
     fval = FixedCircularBuffer{Vector{Float64}}(method_step)
     fk_apriori = FixedCircularBuffer{Vector{S}}(method_step)
-    A_Q::FixedCircularBuffer{Matrix{Float64}}(method_step)
-    A_inv::FixedCircularBuffer{Matrix{Float64}}(method_step)
+    A_Q = FixedCircularBuffer{Matrix{Float64}}(method_step)
+    A_inv = FixedCircularBuffer{Matrix{Float64}}(method_step)
     Δ = FixedCircularBuffer{Vector{S}}(method_step)
     X = FixedCircularBuffer{Vector{S}}(method_step)
     xval = FixedCircularBuffer{Vector{Float64}}(method_step)
@@ -97,6 +97,7 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S,
         push!(A_Q, Float64.(Matrix(I, nx, nx)))
         push!(A_inv, Float64.(Matrix(I, nx, nx)))
         push!(X, zeros(S, nx))
+        push!(Δ, zeros(S, nx))
     end
 
     Rk = zeros(S, nx)
@@ -247,21 +248,36 @@ end
 
 function store_starting_buffer!(d::AdamsMoultonFunctor{T},
                                 contract::ContractorStorage{T},
-                                result::StepResult{T}, count::Int) where T
+                                result::StepResult{T}, t::Float64) where T
 
-    pushfirst!(d.X, copy(result.Xⱼ))
-    pushfirst!(d.xval, copy(result.xⱼ))
-    pushfirst!(d.fk_apriori, copy(contract.fk_apriori))
-    pushfirst!(d.Δ, copy(result.Δ[1])) # TODO
-    pushfirst!(d.A, copy(result.A[1])) # TODO
+    @show result.Xⱼ
+    @show result.xⱼ
+    @show contract.fk_apriori
+    @show result.Δ[1]
+    @show result.A_Q[1]
+    @show result.A_inv[1]
+
+    count = contract.step_count - 1
+    @show d.X
+    cycle_copyto!(d.X, result.Xⱼ, count)
+    @show d.X
+
+    cycle_copyto!(d.xval, result.xⱼ, count)
+    cycle_copyto!(d.fk_apriori, contract.fk_apriori, count)
+    cycle_copyto!(d.Δ, result.Δ[1], count)
+    cycle_copyto!(d.A_Q, result.A_Q[1], count)
+    cycle_copyto!(d.A_inv, result.A_inv[1], count)
 
     # update Jacobian storage
-    t = contract.times[1]
     μ!(d.μX, result.Xⱼ, result.xⱼ, d.η)
     ρ!(d.ρP, contract.P, contract.pval, d.η)
-    eval_cycle!(d.Jx!, d.Jxsto, d.μX, d.ρP, t)
-    eval_cycle!(d.Jp!, d.Jpsto, d.μX, d.ρP, t)
-    eval_cycle!(d.f!, d.fval, result.xⱼ, contract.pval, t)
+
+    @show d.μX
+    @show d.ρP
+
+    cycle_eval!(d.Jx!, d.Jxsto, d.μX, d.ρP, t)
+    cycle_eval!(d.Jp!, d.Jpsto, d.μX, d.ρP, t)
+    cycle_eval!(d.f!, d.fval, result.xⱼ, contract.pval, t)
 
     return nothing
 end
@@ -273,25 +289,16 @@ function (d::AdamsMoultonFunctor{T})(contract::ContractorStorage{S},
 
     @show "--------------"
     @show "BEGIN MAIN - step: $(contract.step_count-1), method step: $(d.method_step)"
+    @show "Repeat count = $(count)"
     @show "--------------"
 
+    t = contract.times[1]
     s = min(contract.step_count-1, d.method_step)
     if s < d.method_step
         d.lohners_start(contract, result, count)
-        @show "--------------"
-        println("post lohners")
-        @show "--------------"
-        for i = 1:length(d.A_Q)
-            println("A_Q[$i] = $(d.A_Q[i])")
-        end
-        @show contract.A_Q[1]
-        store_starting_buffer!(d, contract, result, count)
+        (count == 0) && store_starting_buffer!(d, contract, result, t)
         return nothing
     end
-    #=
-    d.is_adaptive = contract.is_adaptive
-    t = contract.times[1]
-    h = contract.hj_computed
     compute_coefficients!(d, h, t, s)
     compute_Rk!(d, contract, h, s)
     compute_real_sum!(d, contract, result, h, t, s)
@@ -300,7 +307,6 @@ function (d::AdamsMoultonFunctor{T})(contract::ContractorStorage{S},
     compute_xval!(d, contract, t)
     compute_Ainv!(d, contract)
     update_delta!(d, contract)
-    =#
     return nothing
 end
 
