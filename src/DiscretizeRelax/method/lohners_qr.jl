@@ -154,7 +154,7 @@ function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T},
 
     # update bounds on X at new time
     mul_split!(d.Jxmat, Jf!.Jxsto, contract.A[2].Q, nx)
-    mul_split!(d.Jxvec, d.Jxmat, contract.Δ[1], nx)
+    mul_split!(d.Jxvec, d.Jxmat, contract.Δ[2], nx)
     mul_split!(d.Jpvec, Jf!.Jpsto, contract.rP, nx)
 
     @__dot__ contract.X_computed = d.Vⱼ₊₁ + d.Rⱼ₊₁ + d.Jxvec + d.Jpvec
@@ -173,12 +173,12 @@ function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T},
     @__dot__ d.rRⱼ₊₁ = d.Rⱼ₊₁ - d.mRⱼ₊₁
     mul_split!(d.YdRⱼ₊₁, contract.A[1].inv, d.rRⱼ₊₁, nx)
     mul_split!(d.YJxmat, contract.A[1].inv, d.Jxmat, nx)
-    mul_split!(d.YJxvec, d.YJxmat, contract.Δ[1], nx)
+    mul_split!(d.YJxvec, d.YJxmat, contract.Δ[2], nx)
     mul_split!(d.YJpmat, contract.A[1].inv, Jf!.Jpsto, nx)
     mul_split!(d.YJpvec, d.YJpmat, contract.rP, nx)
     @__dot__ d.Δⱼ₊₁ = d.YdRⱼ₊₁ + d.YJxvec + d.YJpvec
 
-    pushfirst!(contract.Δ, copy(d.Δⱼ₊₁))
+    contract.Δ[1] = copy(d.Δⱼ₊₁)
 
     return RELAXATION_NOT_CALLED
 end

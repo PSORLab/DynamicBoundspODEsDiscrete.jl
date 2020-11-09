@@ -84,7 +84,7 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S,
 
     fval = CircularBuffer{Vector{Float64}}(method_step)
     fk_apriori = CircularBuffer{Vector{S}}(method_step)
-    A = Vector{QRDenseStorage}(undef, method_step)
+    A = CircularBuffer{QRDenseStorage}(method_step)
     Δ = CircularBuffer{Vector{S}}(method_step)
     X = CircularBuffer{Vector{S}}(method_step)
     xval = CircularBuffer{Vector{Float64}}(method_step)
@@ -92,9 +92,9 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S,
         push!(xval, zeros(Float64, nx))
         push!(fval, zeros(Float64, nx))
         push!(fk_apriori, zeros(S, nx))
+        push!(A, QRDenseStorage(nx))
         push!(Δ, zeros(S, nx))
         push!(X, zeros(S, nx))
-        A[i] = QRDenseStorage(nx)
     end
 
     Rk = zeros(S, nx)
@@ -282,7 +282,7 @@ function store_starting_buffer!(d::AdamsMoultonFunctor{T},
     pushfirst!(d.fk_apriori, copy(contract.fk_apriori))
     pushfirst!(d.Δ, copy(result.Δ[1]))
 
-    #d.A[contract.step_count] = copy(contract.A[1])
+    d.A[contract.step_count] = copy(result.A[1])
 
     # update Jacobian storage
     t = contract.times[1]

@@ -148,6 +148,7 @@ mutable struct ContractorStorage{S}
     B::Matrix{Float64}
     γ::Float64
     step_count::Int64
+    nx::Int
 end
 function ContractorStorage(style::S, nx, np, k, h, method_steps) where S
     is_adaptive = h <= 0.0
@@ -178,7 +179,13 @@ function ContractorStorage(style::S, nx, np, k, h, method_steps) where S
 
     return ContractorStorage{S}(is_adaptive, times, steps, Xj_0, Xj_apriori, xval, A, Δ, P,
                                 rP, pval, fk_apriori, hj_computed, X_computed,
-                                xval_computed, B, γ, step_count)
+                                xval_computed, B, γ, step_count, nx)
+end
+
+function advance!(d::ContractorStorage{S}) where {S <: Number}
+    pushfirst!(d.A, QRDenseStorage(d.nx))
+    pushfirst!(d.Δ, zeros(S, d.nx))
+    return nothing
 end
 
 function set_xX!(result::StepResult{S}, contract::ContractorStorage{S}) where {S <: Number}
@@ -243,6 +250,8 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
 
     contract.is_adaptive = params.is_adaptive
 
+    advance!(contract)
+
     # validate existence & uniqueness (returns if E&U cannot be shown)
     existence_uniqueness!(exist, params, result.time, j)
     if exist.status_flag === NUMERICAL_ERROR
@@ -284,15 +293,8 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
             sc(contract, result, 0)
 
             # updates shifts Aj+1 -> Aj and so on
-            println("post BLARG step")
-            @show contract.A[1]
+            #pushfirst!(contract.A, copy(last(contract.A))) # TODO: starts to fail if deleted...
 
-            pushfirst!(contract.A, copy(last(contract.A))) # TODO: starts to fail if deleted...
-
-            println("post BLARG step2")
-            @show contract.A[1]
-
-            pushfirst!(contract.Δ, get_Δ(sc))
             set_xX!(result, contract)::Nothing
         end
     else
