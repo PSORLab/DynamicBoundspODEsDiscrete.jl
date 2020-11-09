@@ -49,7 +49,12 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
 
     # initialize QR type storage
     set_Δ!(d.contractor_result.Δ, d.storage)
-    reinitialize!(d.contractor_result.A)
+    fill!(d.contractor_result.A_Q[1], 0.0)
+    fill!(d.contractor_result.A_inv[1], 0.0)
+    for i = 1:d.nx
+        d.contractor_result.A_Q[1][i,i] = 1.0
+        d.contractor_result.A_inv[1][i,i] = 1.0
+    end
 
     # Begin integration loop
     hlast = 0.0

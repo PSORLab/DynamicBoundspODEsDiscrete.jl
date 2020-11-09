@@ -16,7 +16,7 @@ module DynamicBoundspODEsDiscrete
 
 using McCormick, DocStringExtensions, DynamicBoundsBase,
       Reexport, LinearAlgebra, IntervalArithmetic, StaticArrays,
-      TaylorSeries, Requires, ElasticArrays, DataStructures, Polynomials
+      TaylorSeries, Requires, ElasticArrays, Polynomials
 
 using ForwardDiff: Chunk, Dual, Partials, construct_seeds, single_seed,
       JacobianConfig, vector_mode_dual_eval, value, vector_mode_jacobian!,
@@ -118,6 +118,7 @@ end
 include("StaticTaylorSeries/StaticTaylorSeries.jl")
 using .StaticTaylorSeries
 
+include("DiscretizeRelax/utilities/fixed_buffer.jl")
 include("DiscretizeRelax/utilities/mul_split.jl")
 include("DiscretizeRelax/utilities/fast_set_index.jl")
 include("DiscretizeRelax/utilities/qr_utilities.jl")

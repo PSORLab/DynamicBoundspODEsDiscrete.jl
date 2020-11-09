@@ -266,7 +266,7 @@ function hermite_obreschkoff_predictor!(d::HermiteObreschkoffFunctor{F,P1,Q1,K,T
     end
 
     # update x floating point value
-    mul_split!(d.pred_Jxmat, Jf!_pred.Jxsto, contract.A[2].Q, nx)
+    mul_split!(d.pred_Jxmat, Jf!_pred.Jxsto, contract.A_Q[2], nx)
     mul_split!(d.pred_Jxvec, d.pred_Jxmat, contract.Δ[2], nx)
     mul_split!(d.pred_Jpvec, Jf!_pred.Jpsto, contract.rP, nx)
 
@@ -334,7 +334,7 @@ function (d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY})(contract::ContractorSt
     @__dot__ d.precond = mid(Jf!_correct.Jxsto)
     lu!(d.precond)
 
-    mul_split!(d.pred_Jxmat, Jf!_pred.Jxsto, contract.A[2].Q, nx)
+    mul_split!(d.pred_Jxmat, Jf!_pred.Jxsto, contract.A_Q[2], nx)
     d.correct_B = d.precond\d.pred_Jxmat
     mul_split!(d.correct_Bvec, d.correct_B, contract.Δ[2], nx)
 
@@ -359,13 +359,12 @@ function (d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY})(contract::ContractorSt
     @__dot__ contract.xval_computed = mid(contract.X_computed)
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
-    Aⱼ₊₁ = contract.A[1]
-    mul_split!(d.correct_Jmid, Jf!_correct.Jxsto, contract.A[2].Q, nx)
+    mul_split!(d.correct_Jmid, Jf!_correct.Jxsto, contract.A_Q[2], nx)
     @__dot__ contract.B = mid(d.correct_Jmid)
-    calculateQ!(Aⱼ₊₁, contract.B, nx)
-    calculateQinv!(Aⱼ₊₁)
+    calculateQ!(contract.A_Q[1], contract.B, nx)
+    calculateQinv!(contract.A_inv[1], contract.A_Q[1], nx)
 
-    mul_split!(d.precond2, Aⱼ₊₁.inv, d.precond, nx)
+    mul_split!(d.precond2, contract.A_inv[1], d.precond, nx)
     @__dot__ d.Uj2 = contract.X_computed - d.xval_correct
     mul_split!(d.B2, d.precond, d.correct_Jmid, nx)
     mul_split!(d.B2vec, d.B2, contract.Δ[2], nx)
@@ -373,7 +372,7 @@ function (d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY})(contract::ContractorSt
     mul_split!(d.Y2δⱼ₊₁, d.precond2, d.δⱼ₊₁, nx)
     mul_split!(d.Y2Jpdiff, d.precond2, d.Jpdiff, nx)
     mul_split!(d.Y2Jpvec, d.Y2Jpdiff, contract.rP, nx)
-    mul_split!(d.YC, Aⱼ₊₁.inv, d.correct_C, nx)
+    mul_split!(d.YC, contract.A_inv[1], d.correct_C, nx)
     mul_split!(d.YUj2, d.YC, d.Uj2, nx)
 
     @__dot__ d.Δⱼ₊₁ = d.Y2δⱼ₊₁ + d.Y2Jpvec + d.B2vec + d.YUj2
@@ -384,3 +383,4 @@ function (d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY})(contract::ContractorSt
 end
 
 get_Δ(f::HermiteObreschkoffFunctor) = f.Δⱼ₊₁
+advance_contractor_buffer!(lf::HermiteObreschkoffFunctor) = nothing

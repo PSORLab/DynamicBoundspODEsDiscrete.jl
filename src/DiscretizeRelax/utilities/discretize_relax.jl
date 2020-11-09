@@ -114,9 +114,14 @@ function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit 
     P = zeros(T, d.np)
     rP = zeros(T, d.np)
 
-    A = qr_stack(d.nx, method_steps)
-    Δ = CircularBuffer{Vector{T}}(method_steps)
-    fill!(Δ, zeros(T, d.nx))
+    Δ = FixedCircularBuffer{Vector{T}}(method_steps)
+    A_Q = FixedCircularBuffer{Matrix{Float64}}(method_steps)
+    A_inv = FixedCircularBuffer{Matrix{Float64}}(method_steps)
+    for i = 1:method_steps
+        push!(Δ, zeros(T, d.nx))
+        push!(A_Q, Float64.(Matrix(I, d.nx, d.nx)))
+        push!(A_inv, Float64.(Matrix(I, d.nx, d.nx)))
+    end
 
     state_method = state_contractor(m, d.f, Jx!, Jp!, d.nx, d.np, style, zero(Float64), h)
     is_adaptive = (h <= 0.0)
@@ -130,7 +135,8 @@ function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit 
 
     contractor_result.is_adaptive = is_adaptive
     step_params = StepParams(tol, hmin, repeat_limit, is_adaptive, skip_step2)
-    step_result = StepResult{typeof(style)}(zeros(d.nx), zeros(typeof(style), d.nx), A, Δ, 0.0, 0.0)
+    step_result = StepResult{typeof(style)}(zeros(d.nx), zeros(typeof(style), d.nx),
+                                            A_Q, A_inv, Δ, 0.0, 0.0)
 
     relax_t_dict_indx = Dict{Int,Int}()
     relax_t_dict_flt = Dict{Float64,Int}()
@@ -215,7 +221,7 @@ set_Δ!
 Initializes the circular buffer, `Δ`, that holds `Δ_i` with the `out - mid(out)` at
 index 1 and a zero vector at all other indices.
 """
-function set_Δ!(Δ::CircularBuffer{Vector{T}}, out::Vector{Vector{T}}) where T
+function set_Δ!(Δ::FixedCircularBuffer{Vector{T}}, out::Vector{Vector{T}}) where T
 
     Δ[1] .= out[1] .- mid.(out[1])
     for i = 2:length(Δ)
