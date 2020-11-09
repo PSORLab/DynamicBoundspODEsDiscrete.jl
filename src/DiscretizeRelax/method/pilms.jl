@@ -152,17 +152,15 @@ end
 function compute_Rk!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{T},
                      h::Float64, s::Int) where T<:Number
 
-    #println(" ")
-    #println(" --- compute_Rk! --- ")
-    #@show contract.fk_apriori
-
     coeff = d.γ*h^(d.method_step + 1)
-    pushfirst!(d.fk_apriori, copy(contract.fk_apriori))
+    cycle_copyto!(d.fk_apriori, contract.fk_apriori, contract.step_count - 1)
 
     @__dot__ d.Rk = d.fk_apriori[1]
     for i = 2:s
         @__dot__ d.Rk = d.Rk ∪ d.fk_apriori[i]
     end
+    @show d.γ
+    @show h^(d.method_step + 1)
     @__dot__ d.Rk *= coeff
 
     return nothing
@@ -188,13 +186,24 @@ function compute_jacobian_sum!(d::AdamsMoultonFunctor{T},
 
     μ!(d.μX, contract.Xj_0, contract.xval, d.η)
     ρ!(d.ρP, contract.P, contract.pval, d.η)
-    eval_cycle!(d.Jx!, d.Jxsto, d.μX, d.ρP, t)
-    eval_cycle!(d.Jp!, d.Jpsto, d.μX, d.ρP, t)
+    cycle_eval!(d.Jx!, d.Jxsto, d.μX, d.ρP, t)
+    cycle_eval!(d.Jp!, d.Jpsto, d.μX, d.ρP, t)
+
+    println("------------")
+    println("-compute_jacobian_sum!-")
+    println("------------")
+    @show d.Jxsto
+    @show d.Jpsto
 
     @__dot__ d.Y0 = mid(d.Jxsto[1])
     @__dot__ d.JxAff = d.Jxsto[1] - d.Y0  # IThis may be wrong
 
+    @show d.Y0
+    @show d.JxAff
+
     @__dot__ d.Xj_delta = contract.Xj_apriori - mid(contract.Xj_apriori)
+    @show contract.Xj_apriori
+    @show d.Xj_delta
 
     d.Jxsum = (h*d.coeffs[1])*d.Jxsto[1]*d.Xj_delta
     d.Jxsum += ((I + h*d.coeffs[2]*d.Jxsto[2])*contract.A_Q[1])*contract.Δ[1]
@@ -212,9 +221,21 @@ end
 
 function compute_X!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) where {S, T<:Number}
 
+    println("------------")
+    println("-compute_X!-")
+    println("------------")
+
     mul!(d.Jxvec, d.JxAff, d.Xj_delta)
     mul!(d.Jpvec, d.Jpsum, contract.rP)
+
+    @show d.Jxvec
+    @show d.Jxsum
+    @show d.Jpvec
+    @show d.Dk
+    @show d.Rk
     @__dot__ contract.X_computed = d.Jxvec + d.Jxsum + d.Jpvec + d.Dk + d.Rk
+    @show contract.X_computed
+    @show contract.Xj_apriori
     @__dot__ contract.X_computed = contract.X_computed ∩ contract.Xj_apriori
     return nothing
 end
@@ -250,18 +271,8 @@ function store_starting_buffer!(d::AdamsMoultonFunctor{T},
                                 contract::ContractorStorage{T},
                                 result::StepResult{T}, t::Float64) where T
 
-    @show result.Xⱼ
-    @show result.xⱼ
-    @show contract.fk_apriori
-    @show result.Δ[1]
-    @show result.A_Q[1]
-    @show result.A_inv[1]
-
     count = contract.step_count - 1
-    @show d.X
     cycle_copyto!(d.X, result.Xⱼ, count)
-    @show d.X
-
     cycle_copyto!(d.xval, result.xⱼ, count)
     cycle_copyto!(d.fk_apriori, contract.fk_apriori, count)
     cycle_copyto!(d.Δ, result.Δ[1], count)
@@ -271,9 +282,6 @@ function store_starting_buffer!(d::AdamsMoultonFunctor{T},
     # update Jacobian storage
     μ!(d.μX, result.Xⱼ, result.xⱼ, d.η)
     ρ!(d.ρP, contract.P, contract.pval, d.η)
-
-    @show d.μX
-    @show d.ρP
 
     cycle_eval!(d.Jx!, d.Jxsto, d.μX, d.ρP, t)
     cycle_eval!(d.Jp!, d.Jpsto, d.μX, d.ρP, t)
@@ -287,10 +295,9 @@ function (d::AdamsMoultonFunctor{T})(contract::ContractorStorage{S},
                                   count::Int) where {S, T<:Number}
 
 
-    @show "--------------"
+    println("--------------------------------------------------------------------------")
     @show "BEGIN MAIN - step: $(contract.step_count-1), method step: $(d.method_step)"
-    @show "Repeat count = $(count)"
-    @show "--------------"
+    println("--------------------------------------------------------------------------")
 
     t = contract.times[1]
     s = min(contract.step_count-1, d.method_step)
@@ -299,6 +306,8 @@ function (d::AdamsMoultonFunctor{T})(contract::ContractorStorage{S},
         (count == 0) && store_starting_buffer!(d, contract, result, t)
         return nothing
     end
+
+    h = contract.hj_computed
     compute_coefficients!(d, h, t, s)
     compute_Rk!(d, contract, h, s)
     compute_real_sum!(d, contract, result, h, t, s)

@@ -259,6 +259,7 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
     # validate existence & uniqueness (returns if E&U cannot be shown)
     existence_uniqueness!(exist, params, result.time, j)
     if exist.status_flag === NUMERICAL_ERROR
+        @show "existed error"
         return nothing
     end
 
