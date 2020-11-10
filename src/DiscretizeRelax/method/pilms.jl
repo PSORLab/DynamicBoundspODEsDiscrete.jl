@@ -117,25 +117,20 @@ end
 
 function compute_coefficients!(d::AdamsMoultonFunctor{S}, h::Float64, t::Float64, s::Int) where S
     if !d.is_adaptive
-        if s == 0
-            d.coeffs[1] = 1.0
-        elseif s == 1
+        if s + 1 == 3
             d.coeffs[1] = 0.5
             d.coeffs[2] = 0.5
-        elseif s == 2
-            d.coeffs[1] = 5.0/12.0
-            d.coeffs[2] = 2.0/3.0
             d.coeffs[3] = -1.0/12.0
-        elseif s == 3
+        elseif s + 1  == 4
+            d.coeffs[1] = 5.0/12.0
+            d.coeffs[2] = 8.0/12.0
+            d.coeffs[3] = -1.0/12.0
+            d.coeffs[4] = -1.0/24.0
+        elseif s + 1  == 5
             d.coeffs[1] = 9.0/24.0
             d.coeffs[2] = 19.0/24.0
             d.coeffs[3] = -5.0/24.0
             d.coeffs[4] = 1.0/24.0
-        elseif s == 4
-            d.coeffs[1] = 251.0/720.0
-            d.coeffs[2] = 646.0/720.0
-            d.coeffs[3] = -264.0/720.0
-            d.coeffs[4] = 106.0/720.0
             d.coeffs[5] = -19.0/720.0
         else
             #compute_fixed_higher_coeffs!(d, s)
@@ -144,13 +139,25 @@ function compute_coefficients!(d::AdamsMoultonFunctor{S}, h::Float64, t::Float64
         #compute_adaptive_coeffs!(d, h, t, s)
     end
 
+    println("------------")
+    println("-compute_coefficients!-")
+    println("------------")
+
     d.γ = d.coeffs[s + 1]
+
+    @show d.γ
+    @show d.coeffs
+    @show s
 
     return nothing
 end
 
 function compute_Rk!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{T},
                      h::Float64, s::Int) where T<:Number
+
+    println("------------")
+    println("-compute_Rk-")
+    println("------------")
 
     coeff = d.γ*h^(d.method_step + 1)
     cycle_copyto!(d.fk_apriori, contract.fk_apriori, contract.step_count - 1)
@@ -173,9 +180,11 @@ function compute_real_sum!(d::AdamsMoultonFunctor{T}, contract::ContractorStorag
 
     new_xval_guess = mid.(contract.Xj_apriori)
     cycle_eval!(d.f!, d.fval, new_xval_guess, contract.pval, t)
-    @__dot__ d.Dk = new_xval_guess #+ (d.coeffs[s + 1]*h^(s + 1))*contract.fk_apriori
+    @__dot__ d.Dk = d.xval[1] #new_xval_guess #+ (d.coeffs[s + 1]*h^(s + 1))*contract.fk_apriori
+    @show d.Dk
     for i = 1:s
         @__dot__ d.Dk += h*d.coeffs[i]*d.fval[i]
+        println("$i-th coeffs = $(d.coeffs[i]), fvals = $(d.fval[i])")
     end
     return nothing
 end
@@ -195,22 +204,25 @@ function compute_jacobian_sum!(d::AdamsMoultonFunctor{T},
     @show d.Jxsto
     @show d.Jpsto
 
-    @__dot__ d.Y0 = mid(d.Jxsto[1])
-    @__dot__ d.JxAff = d.Jxsto[1] - d.Y0  # IThis may be wrong
+    @__dot__ d.JxAff = d.Jxsto[1]
 
-    @show d.Y0
     @show d.JxAff
 
+    # contract.Xj_apriori GOOD
+    # d.Xj_delta GOOD
     @__dot__ d.Xj_delta = contract.Xj_apriori - mid(contract.Xj_apriori)
-    @show contract.Xj_apriori
-    @show d.Xj_delta
 
+    # TODO: CHECK RIGHT DELTAS...
     d.Jxsum = (h*d.coeffs[1])*d.Jxsto[1]*d.Xj_delta
+    @show h, d.coeffs[1], d.Jxsto[1], d.Xj_delta
     d.Jxsum += ((I + h*d.coeffs[2]*d.Jxsto[2])*contract.A_Q[1])*contract.Δ[1]
+    @show h, d.coeffs[2], d.Jxsto[2], contract.A_Q[1], contract.Δ[1]
     for i = 3:s
-        d.Jxsum += (h*d.coeffs[i])*(d.Jxsto[i]*contract.A_Q[2])*contract.Δ[2]
+        d.Jxsum += (h*d.coeffs[i])*(d.Jxsto[i]*contract.A_Q[i])*contract.Δ[i]
+        @show h, d.coeffs[i], d.Jxsto[i], contract.A_Q[i], contract.Δ[i]
     end
 
+    # JpSum is correct
     @__dot__ d.Jpsum = h*d.coeffs[1]*d.Jpsto[1]
     for i = 2:s
         @__dot__ d.Jpsum += h*d.coeffs[i]*d.Jpsto[i]
@@ -225,15 +237,16 @@ function compute_X!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) w
     println("-compute_X!-")
     println("------------")
 
-    mul!(d.Jxvec, d.JxAff, d.Xj_delta)
+    #mul!(d.Jxvec, d.JxAff, d.Xj_delta)
     mul!(d.Jpvec, d.Jpsum, contract.rP)
 
-    @show d.Jxvec
+    #@show d.Jxvec
     @show d.Jxsum
-    @show d.Jpvec
+    # d.Jpvec is correct...
     @show d.Dk
     @show d.Rk
-    @__dot__ contract.X_computed = d.Jxvec + d.Jxsum + d.Jpvec + d.Dk + d.Rk
+    #@__dot__ contract.X_computed = d.Jxvec + d.Jxsum + d.Jpvec + d.Dk + d.Rk
+    @__dot__ contract.X_computed = d.Jxsum + d.Jpvec + d.Dk + d.Rk
     @show contract.X_computed
     @show contract.Xj_apriori
     @__dot__ contract.X_computed = contract.X_computed ∩ contract.Xj_apriori

@@ -77,6 +77,36 @@ function /(b::T, a::STaylor1{N,T}) where {N, T<:Number}
     return (b*one(STaylor1{N,T}))/a
 end
 
+function *(a::STaylor1{N,Float64}, b::Float64) where N
+    STaylor1{N,Float64}(b .* a.coeffs)
+end
+function *(b::Float64, a::STaylor1{N,Float64}) where N
+    STaylor1{N,Float64}(b .* a.coeffs)
+end
+
+function /(a::STaylor1{N,Float64}, b::Float64) where N
+    STaylor1{N,Float64}(a.coeffs ./ b)
+end
+
+function /(b::Float64, a::STaylor1{N,Float64}) where N
+    return (b*one(STaylor1{N,Float64}))/a
+end
+
+function *(a::STaylor1{N,T}, b::Float64) where {N, T<:Number}
+    STaylor1{N,T}(b .* a.coeffs)
+end
+function *(b::Float64, a::STaylor1{N,T}) where {N, T<:Number}
+    STaylor1{N,T}(b .* a.coeffs)
+end
+
+function /(a::STaylor1{N,T}, b::Float64) where {N, T<:Number}
+    STaylor1{N,T}(a.coeffs ./ b)
+end
+
+function /(b::Float64, a::STaylor1{N,T}) where {N, T<:Number}
+    return (b*one(STaylor1{N,T}))/a
+end
+
 @generated function /(a::STaylor1{N,T}, b::STaylor1{N,T}) where {N,T<:Number}
 
     ex_calc = quote end

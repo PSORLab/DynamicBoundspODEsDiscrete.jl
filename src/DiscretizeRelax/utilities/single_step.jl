@@ -256,6 +256,7 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
 
     contract.is_adaptive = params.is_adaptive
 
+
     # validate existence & uniqueness (returns if E&U cannot be shown)
     existence_uniqueness!(exist, params, result.time, j)
     if exist.status_flag === NUMERICAL_ERROR
@@ -309,7 +310,6 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
     end
 
     # update parallelepid enclosure
-    #@show j
     cycle_copyto!(result.A_Q, contract.A_Q[1], j)
     cycle_copyto!(result.A_inv, contract.A_inv[1], j)
     cycle_copyto!(result.Δ, contract.Δ[1], j)

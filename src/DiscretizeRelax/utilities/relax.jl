@@ -73,7 +73,6 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
     d.exist_result.hj = !is_adaptive ? d.exist_result.hj : 0.01*(tmax - d.contractor_result.times[1])
     d.exist_result.predicted_hj = d.exist_result.hj
     stored_value_count = length(d.relax_t_dict_indx)
-
     for step_number = 2:(d.step_limit+2)
         if (sign_tstep*d.step_result.time <= sign_tstep*tmax) &&
            (d.exist_result.predicted_hj != 0.0)
