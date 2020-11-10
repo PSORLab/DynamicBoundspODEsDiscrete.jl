@@ -252,14 +252,17 @@ Performs a single-step of the validated integrator. Input stepsize is out.step.
 """
 function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{T},
                       params::StepParams, result::StepResult{T}, sc::M,
-                      j::Int64, hj_limit::Float64) where {M <: AbstractStateContractor, F, K, S <: Real, T}
+                      j::Int64, hj_limit::Float64, delT) where {M <: AbstractStateContractor, F, K, S <: Real, T}
 
     contract.is_adaptive = params.is_adaptive
 
     # validate existence & uniqueness (returns if E&U cannot be shown)
     existence_uniqueness!(exist, params, result.time, j)
     if exist.status_flag === NUMERICAL_ERROR
-        @show "existed error"
+        @show "RESET Numerical error here..."
+        if delT < 1E-6
+            exist.status_flag = COMPLETED
+        end
         return nothing
     end
 
@@ -311,7 +314,7 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
     end
 
     # update parallelepid enclosure
-    @show j
+    #@show j
     cycle_copyto!(result.A_Q, contract.A_Q[1], j)
     cycle_copyto!(result.A_inv, contract.A_inv[1], j)
     cycle_copyto!(result.Δ, contract.Δ[1], j)

@@ -14,6 +14,15 @@
 
 function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY}
 
+    fill!(d.time, 0.0)
+
+    storage_len = length(d.storage)
+    for i=1:(1000-storage_len)
+        push!(d.storage, zeros(T, d.nx))
+        push!(d.storage_apriori, zeros(T, d.nx))
+        push!(d.time, 0.0)
+    end
+
     # reset relax!
     for i = 1:length(d.storage)
         fill!(d.storage[i], zero(T))
@@ -21,7 +30,6 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
     for i = 1:length(d.storage_apriori)
         fill!(d.storage_apriori[i], zero(T))
     end
-    fill!(d.time, 0.0)
     empty!(d.relax_t_dict_indx)
     empty!(d.relax_t_dict_flt)
     d.step_result.time = 0.0
@@ -56,6 +64,8 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
         d.contractor_result.A_inv[1][i,i] = 1.0
     end
 
+    d.exist_result.status_flag = RELAXATION_NOT_CALLED
+
     # Begin integration loop
     hlast = 0.0
     d.step_count = 0
@@ -67,6 +77,8 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
     for step_number = 2:(d.step_limit+2)
         if (sign_tstep*d.step_result.time <= sign_tstep*tmax) &&
            (d.exist_result.predicted_hj != 0.0)
+
+            delT = abs(sign_tstep*d.step_result.time - sign_tstep*tmax)
 
             # max step size is min of predicted, when next support point occurs,
             # or the last time step in the span
@@ -81,7 +93,8 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
 
             # perform step size calculation and update bound information
             single_step!(d.exist_result, d.contractor_result, d.step_params,
-                         d.step_result, d.method_f!, step_number-1, hj_limit)
+                         d.step_result, d.method_f!, step_number-1, hj_limit,
+                         delT)
 
             # unpack storage
             if step_number - 1 > length(d.time)
@@ -121,8 +134,8 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
     end
 
     # cut out any unnecessary array elements
-    resize!(d.storage, d.step_count+1)
-    resize!(d.storage_apriori, d.step_count+1)
+    resize!(d.storage, d.step_count + 1)
+    resize!(d.storage_apriori, d.step_count + 1)
     resize!(d.time, d.step_count + 1)
 
     if d.error_code === RELAXATION_NOT_CALLED
