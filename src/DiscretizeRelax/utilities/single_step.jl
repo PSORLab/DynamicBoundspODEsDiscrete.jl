@@ -259,7 +259,6 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
     # validate existence & uniqueness (returns if E&U cannot be shown)
     existence_uniqueness!(exist, params, result.time, j)
     if exist.status_flag === NUMERICAL_ERROR
-        @show "RESET Numerical error here..."
         if delT < 1E-6
             exist.status_flag = COMPLETED
         end
@@ -302,10 +301,6 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
         else
             # perform corrector step
             sc(contract, result, 0)
-
-            # updates shifts Aj+1 -> Aj and so on
-            #pushfirst!(contract.A, copy(last(contract.A))) # TODO: starts to fail if deleted...
-
             set_xX!(result, contract)::Nothing
         end
     else

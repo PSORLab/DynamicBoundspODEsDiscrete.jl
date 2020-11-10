@@ -180,8 +180,6 @@ function existence_uniqueness!(s::ExistStorage{F,K,S,T}, params::StepParams, t::
                 s.status_flag = NUMERICAL_ERROR
             end
         else
-            @show "SET NUMERICAL ERROR HERE"
-            @show t
             s.status_flag = NUMERICAL_ERROR
         end
     else
