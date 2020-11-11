@@ -93,7 +93,7 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
             # perform step size calculation and update bound information
             single_step!(d.exist_result, d.contractor_result, d.step_params,
                          d.step_result, d.method_f!, step_number-1, hj_limit,
-                         delT)
+                         delT, d.constant_state_bounds, d.polyhedral_constraint)
 
             # unpack storage
             if step_number - 1 > length(d.time)

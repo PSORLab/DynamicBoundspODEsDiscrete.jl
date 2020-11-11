@@ -245,6 +245,17 @@ function affine_contract!(X::Vector{MC{N,T}}, P::Vector{MC{N,T}}, pval::Vector{F
     return nothing
 end
 
+contract_apriori!(exist::ExistStorage{F,K,S,T}, n::Nothing) where {F, K, S <: Real, T} = nothing
+function contract_apriori!(exist::ExistStorage{F,K,S,T}, p::PolyhedralConstraint) where {F, K, S <: Real, T}
+    nothing
+end
+function contract_apriori!(exist::ExistStorage{F,K,S,T}, c::ConstantStateBounds) where {F, K, S <: Real, T}
+    for i = 1:exist.nx
+        exist.Xj_apriori[i] = exist.Xj_apriori[i] ∩ Interval(c.xL[i], c.xU[i])
+    end
+    nothing
+end
+
 """
 single_step!
 
@@ -252,7 +263,9 @@ Performs a single-step of the validated integrator. Input stepsize is out.step.
 """
 function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{T},
                       params::StepParams, result::StepResult{T}, sc::M,
-                      j::Int64, hj_limit::Float64, delT) where {M <: AbstractStateContractor, F, K, S <: Real, T}
+                      j::Int64, hj_limit::Float64, delT,
+                      constant_state_bounds::C,
+                      polyhedral_constraint::P) where {M <: AbstractStateContractor, F, K, S <: Real, T, C, P}
 
     contract.is_adaptive = params.is_adaptive
 
@@ -260,16 +273,19 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
     # validate existence & uniqueness (returns if E&U cannot be shown)
     existence_uniqueness!(exist, params, result.time, j)
     if exist.status_flag === NUMERICAL_ERROR
-        if delT < 1E-6
+        if delT > 1E-6
+            return nothing
+        else
             exist.status_flag = COMPLETED
         end
-        return nothing
     end
 
     advance_contractor_buffer!(sc)::Nothing
     advance_contract_storage!(contract)
 
     # copy info from existence to contractor storage
+    contract_apriori!(exist, constant_state_bounds)::Nothing
+    contract_apriori!(exist, polyhedral_constraint)::Nothing
     contract.Xj_apriori .= exist.Xj_apriori
     contract.hj_computed = min(exist.computed_hj, hj_limit)
     contract.fk_apriori .= exist.fk

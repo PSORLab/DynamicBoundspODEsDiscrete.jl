@@ -89,6 +89,9 @@ mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: R
 
     calculate_local_sensitivity::Bool
     local_problem_storage::LocalProblemStorage{PRB, INT, N}
+
+    constant_state_bounds::Union{Nothing,ConstantStateBounds}
+    polyhedral_constraint::Union{Nothing,PolyhedralConstraint}
 end
 
 function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit = 1000, tol = 1E-4, hmin = 1E-13,
@@ -159,8 +162,10 @@ function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit 
                            step_result, step_params, true, true,
                            relax_t_dict_indx, relax_t_dict_flt, local_t_dict_indx,
                            local_t_dict_flt, calculate_local_sensitivity,
-                           local_problem_storage)
+                           local_problem_storage, d.constant_state_bounds,
+                           d.polyhedral_constraint)
 end
+
 function DiscretizeRelax(d::ODERelaxProb; kwargs...)
     DiscretizeRelax(d, LohnerContractor{4}(); kwargs...)
 end
