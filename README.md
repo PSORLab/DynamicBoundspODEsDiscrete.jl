@@ -3,7 +3,7 @@ Parametric Discretize-and-Relax methods within DynamicBounds.jl
 
 | **Linux/OS/Windows**                                   |        **Coverage**             |              
 |:-------------------------------------------------------:|:-------------------------------------------------------:|
-| [![Build Status](https://travis-ci.org/PSORLab/DynamicBoundspODEsDiscrete.jl.svg?branch=master)](https://travis-ci.org/PSORLab/DynamicBoundspODEsDiscrete.jl) | [![Coverage Status](https://coveralls.io/repos/github/PSORLab/DynamicBoundspODEsDiscrete.jl/badge.svg?branch=master)](https://coveralls.io/github/PSORLab/DynamicBoundspODEsDiscrete.jl?branch=master) |
+| [![Build Status](https://github.com/PSORLab/DynamicBoundspODEsDiscrete.jl/workflows/CI/badge.svg?branch=master)](https://github.com/PSORLab/DynamicBoundspODEsDiscrete.jl/actions?query=workflow%3ACI) | [![codecov](https://codecov.io/gh/PSORLab/DynamicBoundspODEsDiscrete.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/PSORLab/DynamicBoundspODEsDiscrete.jl)) |
 
 ## Summary
 This package implements a discretize-and-relax approaches to
