@@ -111,7 +111,6 @@ cos(a::STaylor1{N,T}) where {N, T <: Number} = sincos(a)[2]
 end
 
 # Functions for STaylor1
-#=
 @generated function tan(a::STaylor1{N,T}) where {N, T <: Number}
 
     ex_calc = quote end
@@ -171,10 +170,9 @@ end
                return STaylor1{N,T}($exout)
             end
 end
-=#
+
 
 # Functions for STaylor1
-#=
 @generated function asin(a::STaylor1{N,T}) where {N, T <: Number}
     ex_calc = quote end
     append!(ex_calc.args, Any[nothing for i in 1:N])
@@ -184,7 +182,6 @@ end
     ex_line = :($(sym) = asin(a[0]))
     ex_calc.args[1] = ex_line
 
-    #=
     for k in 1:(N-1)
         kT = convert(T,k)
         sym = syms[k+1]
@@ -196,7 +193,6 @@ end
         ex_line = :($sym = $ex_line)
         ex_calc.args[k+1] = ex_line
     end
-    =#
 
     exout = :(($(syms[1]),))
     for i = 2:N
@@ -204,14 +200,19 @@ end
     end
     return quote
                Base.@_inline_meta
+               a0 = constant_term(a)
+               a0^2 == one(a0) && throw(ArgumentError(
+                   """
+                   Recursion formula diverges due to vanishing `sqrt`
+                   in the denominator.
+                   """))
                $ex_calc
                return STaylor1{N,T}($exout)
             end
 end
-=#
+
 
 # Functions for STaylor1
-#=
 @generated function acos(a::STaylor1{N,T}) where {N, T <: Number}
     ex_calc = quote end
     append!(ex_calc.args, Any[nothing for i in 1:N])
@@ -221,7 +222,6 @@ end
     ex_line = :($(sym) = acos(a[0]))
     ex_calc.args[1] = ex_line
 
-    #=
     for k in 1:(N-1)
         kT = convert(T,k)
         sym = syms[k+1]
@@ -233,7 +233,6 @@ end
         ex_line = :($sym = $ex_line)
         ex_calc.args[k+1] = ex_line
     end
-    =#
 
     exout = :(($(syms[1]),))
     for i = 2:N
@@ -245,10 +244,8 @@ end
                return STaylor1{N,T}($exout)
             end
 end
-=#
 
 # Functions for STaylor1
-#=
 @generated function atan(a::STaylor1{N,T}) where {N, T <: Number}
     ex_calc = quote end
     append!(ex_calc.args, Any[nothing for i in 1:N])
@@ -258,7 +255,6 @@ end
     ex_line = :($(sym) = atan(a[0]))
     ex_calc.args[1] = ex_line
 
-    #=
     for k in 1:(N-1)
         kT = convert(T,k)
         sym = syms[k+1]
@@ -270,7 +266,6 @@ end
         ex_line = :($sym = $ex_line)
         ex_calc.args[k+1] = ex_line
     end
-    =#
 
     exout = :(($(syms[1]),))
     for i = 2:N
@@ -282,7 +277,6 @@ end
                return STaylor1{N,T}($exout)
             end
 end
-=#
 
 sinh(a::STaylor1{N,T}) where {N, T <: Number} = sinhcosh(a)[1]
 cosh(a::STaylor1{N,T}) where {N, T <: Number} = sinhcosh(a)[2]
