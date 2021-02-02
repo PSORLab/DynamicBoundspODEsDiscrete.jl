@@ -16,7 +16,7 @@ module DynamicBoundspODEsDiscrete
 
 using McCormick, DocStringExtensions, DynamicBoundsBase,
       Reexport, LinearAlgebra, IntervalArithmetic, StaticArrays,
-      TaylorSeries, Requires, ElasticArrays, Polynomials
+      TaylorSeries, ElasticArrays, Polynomials
 
 using ForwardDiff: Chunk, Dual, Partials, construct_seeds, single_seed,
       JacobianConfig, vector_mode_dual_eval, value, vector_mode_jacobian!,
