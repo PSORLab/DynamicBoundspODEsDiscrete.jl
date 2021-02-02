@@ -25,7 +25,7 @@ TaylorSeries = "6aa5eb33-94cf-58f4-a9d0-e4b2c4fc25ea"
 [compat]
 DataStructures = "0.17.11"
 DiffEqBase = "6.12.2"
-DiffEqSensitivity = "~6"
+DiffEqSensitivity = "~5, ~6"
 DiffResults = "~1.0"
 DocStringExtensions = "~0.8"
 DynamicBoundsBase = "~0.5"
