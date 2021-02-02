@@ -24,7 +24,7 @@ TaylorSeries = "6aa5eb33-94cf-58f4-a9d0-e4b2c4fc25ea"
 
 [compat]
 DataStructures = "0.17.11"
-DiffEqBase = ">= 6.5.0, ~6"
+DiffEqBase = "~5, ~6"
 DiffEqSensitivity = "~5, ~6"
 DiffResults = "~1.0"
 DocStringExtensions = "~0.8"
@@ -37,7 +37,7 @@ Polynomials = "~1.2"
 Reexport = "~0.2"
 Requires = "~1.0"
 StaticArrays = "~0.8, ~0.9, ~0.10, ~0.11, ~0.12"
-Sundials = "3.8.3"
+Sundials = "~3, ~4"
 TaylorSeries = "~0.10"
 julia = "~1"
 
