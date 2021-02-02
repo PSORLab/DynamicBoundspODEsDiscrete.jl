@@ -172,8 +172,8 @@ if !(VERSION < v"1.1" && testfile == "intervals.jl")
 
     @testset "Tests for STaylor1 expansions" begin
 
-        @test STaylor1 <: AbstractSeries
-        @test STaylor1{1,Float64} <: AbstractSeries{Float64}
+        @test STaylor1 <: DR.StaticTaylorSeries.AbstractSeries
+        @test STaylor1{1,Float64} <: DR.StaticTaylorSeries.AbstractSeries{Float64}
         @test STaylor1([1.0, 2.0]) == STaylor1((1.0, 2.0))
         @test STaylor1(STaylor1((1.0, 2.0))) == STaylor1((1.0, 2.0))
         @test STaylor1(1.0, Val(2)) == STaylor1((1.0, 0.0, 0.0))
