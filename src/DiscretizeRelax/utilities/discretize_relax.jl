@@ -20,8 +20,7 @@ An integrator for discretize and relaxation techniques.
 
 $(TYPEDFIELDS)
 """
-mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY, JX, JP,
-                               PRB <: AbstractODEProblem, INT, N} <: AbstractODERelaxIntegrator
+mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY, JX, JP, INT, N} <: AbstractODERelaxIntegrator
 
     # Problem description
     "Initial Condition for pODEs"
@@ -84,14 +83,13 @@ mutable struct DiscretizeRelax{M <: AbstractStateContractor, T <: Number, S <: R
 
     relax_t_dict_indx::Dict{Int,Int}
     relax_t_dict_flt::Dict{Float64,Int}
-    local_t_dict_indx::Dict{Int,Int}
-    local_t_dict_flt::Dict{Float64,Int}
 
     calculate_local_sensitivity::Bool
-    local_problem_storage::LocalProblemStorage{PRB, INT, N}
+    local_problem_storage
 
     constant_state_bounds::Union{Nothing,ConstantStateBounds}
     polyhedral_constraint::Union{Nothing,PolyhedralConstraint}
+    prob
 end
 
 function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit = 1000, tol = 1E-4, hmin = 1E-13,
@@ -143,27 +141,22 @@ function DiscretizeRelax(d::ODERelaxProb, m::SCN; repeat_limit = 50, step_limit 
 
     relax_t_dict_indx = Dict{Int,Int}()
     relax_t_dict_flt = Dict{Float64,Int}()
-    local_t_dict_indx = Dict{Int,Int}()
-    local_t_dict_flt = Dict{Float64,Int}()
 
     calculate_local_sensitivity = false
     local_integrator = state_contractor_integrator(m)
-    local_problem_storage = LocalProblemStorage(d, local_integrator,
-                                                tsupports, calculate_local_sensitivity)
+    local_problem_storage = ODELocalIntegrator(d, local_integrator)
 
     return DiscretizeRelax{typeof(state_method), T, Float64, typeof(d.f), k+1,
                            typeof(d.x0), d.nx+d.np, typeof(Jx!), typeof(Jp!),
-                           typeof(local_problem_storage.pode_problem),
                            typeof(local_integrator), d.np}(d.x0, Jx!, Jp!, d.p,
                            d.pL, d.pU, d.nx, d.np, d.tspan, tsupports,
                            step_limit, 0, storage, storage_apriori, time,
                            support_dict, error_code, P, rP, skip_step2, style,
                            set_tf!, state_method, exist_storage, contractor_result,
                            step_result, step_params, true, true,
-                           relax_t_dict_indx, relax_t_dict_flt, local_t_dict_indx,
-                           local_t_dict_flt, calculate_local_sensitivity,
+                           relax_t_dict_indx, relax_t_dict_flt,calculate_local_sensitivity,
                            local_problem_storage, d.constant_state_bounds,
-                           d.polyhedral_constraint)
+                           d.polyhedral_constraint, d)
 end
 
 function DiscretizeRelax(d::ODERelaxProb; kwargs...)

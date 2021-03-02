@@ -133,11 +133,8 @@ include("DiscretizeRelax/method/hermite_obreschkoff.jl")
 include("DiscretizeRelax/method/wilhelm_2019.jl")
 include("DiscretizeRelax/method/pilms.jl")
 
-include("DiscretizeRelax/utilities/local_integration_problem.jl")
-
 include("DiscretizeRelax/utilities/discretize_relax.jl")
 include("DiscretizeRelax/utilities/relax.jl")
-include("DiscretizeRelax/utilities/integrate.jl")
 include("DiscretizeRelax/utilities/access_functions.jl")
 
 end # module
