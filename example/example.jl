@@ -31,7 +31,7 @@ function ^(x::Interval{Float64}, n::Integer)  # fast integer power
 end
 
 using DynamicBoundsBase, Plots, DifferentialEquations#, Cthulhu
-using DynamicBoundspODEsDiscrete
+using DynamicBoundspODEsDiscrete, BenchmarkTools
 
 println(" ")
 println(" ------------------------------------------------------------ ")
@@ -39,10 +39,10 @@ println(" ------------- PACKAGE EXAMPLE       ------------------------ ")
 println(" ------------------------------------------------------------ ")
 
 use_relax = false
-lohners_type = 3
+lohners_type = 2
 prob_num = 1
 ticks = 100.0
-steps = 3.0
+steps = 100.0
 tend = 1*steps/ticks # lo 7.6100
 
 if prob_num == 1
@@ -85,7 +85,7 @@ elseif lohners_type == 3
         dx[1] = one(p[1])
         nothing
     end
-    integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.AdamsMoulton(4), h = 1/ticks,
+    integrator = DiscretizeRelax(prob, DynamicBoundspODEsDiscrete.AdamsMoulton(2), h = 1/ticks,
                                  repeat_limit = 1, step_limit = steps, skip_step2 = false,
                                  relax = false, Jx! = iJx!, Jp! = iJp!, tol= tol)
 end
@@ -113,9 +113,26 @@ ratio = rand(1)
 pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
 setall!(integrator, ParameterValue(), [0.0])
 DynamicBoundsBase.relax!(integrator)
+
+#ratio = rand(1)
+#pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
+#setall!(integrator, ParameterValue(), [0.0])
+#DynamicBoundsBase.relax!(integrator)
+
 #println("alloc_num: $(alloc_num)")
 
+
+#function relax_test()
+#    ratio = rand(1)
+#    pstar = pL.*ratio .+ pU.*(1.0 .- ratio)
+#    setall!(integrator, ParameterValue(), [0.0])
+#    DynamicBoundsBase.relax!(integrator)
+#    return nothing
+#end
+#@btime relax_test()
+
 d = integrator
+
 #@code_warntype DynamicBoundspODEsPILMS.single_step!(d.step_result, d.step_params, d.method_f!, d.set_tf!, d.Δ, d.A, d.P, d.rP, d.p)
 #=
 method_f! = d.method_f!
