@@ -11,13 +11,18 @@ computing state bounds and relaxations using the DynamicBounds.jl framework. The
 relaxations at these time-points. Full documentation of this functionality may be found [here](https://psorlab.github.io/DynamicBounds.jl/dev/pODEsDiscrete/pODEsDiscrete) in the DynamicBounds.jl website.
 
 ## Installation
-This package currently makes use of a static Taylor series variant for computing
-Taylor series coefficients and variants thereof. The branch of TaylorSeries.jl located
-at https://github.com/mewilhel/TaylorSeries.jl should be used temporarily until this functionality has been merged into the main package. Instructions on using this branch are provided below:
 
 ```julia
-using Pkg; Pkg.develop(PackageSpec(url="https://github.com/mewilhel/TaylorSeries.jl"))
+using Pkg; Pkg.add("DynamicBoundspODEsDiscrete")
 ```
+
+or using the following command in the pacakge manager environment
+```
+pkg > add DynamicBoundspODEsDiscrete
+```
+
+Note that this package can also be used directly via DynamicBounds.jl as the later
+package automatically reexports it.
 
 ## References
 - Corliss, G. F., & Rihm, R. (1996). Validating an a priori enclosure using high-order Taylor series. MATHEMATICAL RESEARCH, 90, 228-238.

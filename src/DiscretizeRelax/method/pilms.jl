@@ -117,16 +117,19 @@ end
 
 function compute_coefficients!(d::AdamsMoultonFunctor{S}, h::Float64, t::Float64, s::Int) where S
     if !d.is_adaptive
-        if s + 1 == 3
+        if s == 1
+            d.coeffs[1] = 1.0
+            d.coeffs[2] = 0.5
+        elseif s == 2
             d.coeffs[1] = 0.5
             d.coeffs[2] = 0.5
             d.coeffs[3] = -1.0/12.0
-        elseif s + 1  == 4
+        elseif s == 3
             d.coeffs[1] = 5.0/12.0
             d.coeffs[2] = 8.0/12.0
             d.coeffs[3] = -1.0/12.0
             d.coeffs[4] = -1.0/24.0
-        elseif s + 1  == 5
+        elseif s == 4
             d.coeffs[1] = 9.0/24.0
             d.coeffs[2] = 19.0/24.0
             d.coeffs[3] = -5.0/24.0
@@ -139,15 +142,7 @@ function compute_coefficients!(d::AdamsMoultonFunctor{S}, h::Float64, t::Float64
         #compute_adaptive_coeffs!(d, h, t, s)
     end
 
-    println("------------")
-    println("-compute_coefficients!-")
-    println("------------")
-
     d.γ = d.coeffs[s + 1]
-
-    @show d.γ
-    @show d.coeffs
-    @show s
 
     return nothing
 end
@@ -155,19 +150,22 @@ end
 function compute_Rk!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{T},
                      h::Float64, s::Int) where T<:Number
 
-    println("------------")
-    println("-compute_Rk-")
-    println("------------")
+    #println("------------")
+    #println("-compute_Rk-")
+    #println("------------")
 
     coeff = d.γ*h^(d.method_step + 1)
     cycle_copyto!(d.fk_apriori, contract.fk_apriori, contract.step_count - 1)
 
     @__dot__ d.Rk = d.fk_apriori[1]
+    #println("d.Rk[1] = $(d.Rk)")
     for i = 2:s
         @__dot__ d.Rk = d.Rk ∪ d.fk_apriori[i]
+        #println("d.fk_apriori[$i] = $(d.fk_apriori[i])")
+        #println(" d.Rk[$i] = $(d.Rk)")
     end
-    @show d.γ
-    @show h^(d.method_step + 1)
+    #@show d.γ
+    #@show h^(d.method_step + 1)
     @__dot__ d.Rk *= coeff
 
     return nothing
@@ -178,13 +176,13 @@ function compute_real_sum!(d::AdamsMoultonFunctor{T}, contract::ContractorStorag
                            result::StepResult{T}, h::Float64, t::Float64,
                            s::Int) where T<:Number
 
-    new_xval_guess = mid.(contract.Xj_apriori)
-    cycle_eval!(d.f!, d.fval, new_xval_guess, contract.pval, t)
-    @__dot__ d.Dk = d.xval[1] #new_xval_guess #+ (d.coeffs[s + 1]*h^(s + 1))*contract.fk_apriori
-    @show d.Dk
+    old_xval = mid.(contract.Xj_0)
+    cycle_eval!(d.f!, d.fval, old_xval, contract.pval, t)
+    @__dot__ d.Dk = old_xval
+    #@show old_xval
     for i = 1:s
         @__dot__ d.Dk += h*d.coeffs[i]*d.fval[i]
-        println("$i-th coeffs = $(d.coeffs[i]), fvals = $(d.fval[i])")
+        #println("$i-th coeffs = $(d.coeffs[i]), fvals = $(d.fval[i])")
     end
     return nothing
 end
@@ -198,15 +196,15 @@ function compute_jacobian_sum!(d::AdamsMoultonFunctor{T},
     cycle_eval!(d.Jx!, d.Jxsto, d.μX, d.ρP, t)
     cycle_eval!(d.Jp!, d.Jpsto, d.μX, d.ρP, t)
 
-    println("------------")
-    println("-compute_jacobian_sum!-")
-    println("------------")
-    @show d.Jxsto
-    @show d.Jpsto
+    #println("------------")
+    #println("-compute_jacobian_sum!-")
+    #println("------------")
+    #@show d.Jxsto
+    #@show d.Jpsto
 
     @__dot__ d.JxAff = d.Jxsto[1]
 
-    @show d.JxAff
+    #@show d.JxAff
 
     # contract.Xj_apriori GOOD
     # d.Xj_delta GOOD
@@ -215,11 +213,13 @@ function compute_jacobian_sum!(d::AdamsMoultonFunctor{T},
     # TODO: CHECK RIGHT DELTAS...
     d.Jxsum = (h*d.coeffs[1])*d.Jxsto[1]*d.Xj_delta
     @show h, d.coeffs[1], d.Jxsto[1], d.Xj_delta
-    d.Jxsum += ((I + h*d.coeffs[2]*d.Jxsto[2])*contract.A_Q[1])*contract.Δ[1]
-    @show h, d.coeffs[2], d.Jxsto[2], contract.A_Q[1], contract.Δ[1]
+    if s > 1
+        d.Jxsum += ((d.η*I + h*d.coeffs[2]*d.Jxsto[2])*contract.A_Q[1])*contract.Δ[1]
+        @show h, d.coeffs[2], d.Jxsto[2], contract.A_Q[1], contract.Δ[1]
+    end
     for i = 3:s
         d.Jxsum += (h*d.coeffs[i])*(d.Jxsto[i]*contract.A_Q[i])*contract.Δ[i]
-        @show h, d.coeffs[i], d.Jxsto[i], contract.A_Q[i], contract.Δ[i]
+        #@show h, d.coeffs[i], d.Jxsto[i], contract.A_Q[i], contract.Δ[i]
     end
 
     # JpSum is correct
@@ -233,9 +233,9 @@ end
 
 function compute_X!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) where {S, T<:Number}
 
-    println("------------")
-    println("-compute_X!-")
-    println("------------")
+    #println("------------")
+    #println("-compute_X!-")
+    #println("------------")
 
     #mul!(d.Jxvec, d.JxAff, d.Xj_delta)
     mul!(d.Jpvec, d.Jpsum, contract.rP)
@@ -243,6 +243,7 @@ function compute_X!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) w
     #@show d.Jxvec
     @show d.Jxsum
     # d.Jpvec is correct...
+    @show d.Jpvec
     @show d.Dk
     @show d.Rk
     #@__dot__ contract.X_computed = d.Jxvec + d.Jxsum + d.Jpvec + d.Dk + d.Rk
@@ -250,32 +251,49 @@ function compute_X!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) w
     @show contract.X_computed
     @show contract.Xj_apriori
     @__dot__ contract.X_computed = contract.X_computed ∩ contract.Xj_apriori
+    @show contract.X_computed
     return nothing
 end
 
 function compute_xval!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}, t) where {S, T<:Number}
     @__dot__ contract.xval_computed = mid(contract.X_computed)
+    @show contract.xval_computed
     d.f!(d.fval[1], contract.xval_computed, contract.pval, t)
     return nothing
 end
 
-function compute_Ainv!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) where {S, T<:Number}
-    mul!(d.Jxmid_sto, d.Jxsto[1], contract.A_Q[2])
-    @__dot__ contract.B = mid(d.Jxmid_sto)
-    calculateQ!(contract.A_Q[1], contract.B, d.nx)
-    calculateQinv!(contract.A_inv[1], contract.A_Q[1], d.nx)
+function compute_Ainv!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}, s::Int) where {S, T<:Number}
+    if s > 1
+        mul!(d.Jxmid_sto, d.Jxsto[1], contract.A_Q[2])
+        @__dot__ contract.B = mid(d.Jxmid_sto)
+        calculateQ!(contract.A_Q[1], contract.B, d.nx)
+        calculateQinv!(contract.A_inv[1], contract.A_Q[1], d.nx)
+    end
     return nothing
 end
 
-function update_delta!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) where {S, T<:Number}
-    d.Y = I - d.Y0*contract.A_Q[2]
-    d.precond = lu!(d.Y)
-    d.YJxAff = d.precond\d.JxAff
-    mul!(d.YJxΔx, d.YJxAff, d.Xj_delta)
-    d.Ysumx = d.precond\d.Jxsum
-    d.YsumP = d.precond\d.Jpsum
-    mul!(d.YJpΔp, d.YsumP, contract.rP)
-    @__dot__ d.Δⱼ₊₁ = d.YJxΔx + d.Ysumx + d.YJpΔp
+function update_delta!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}, s::Int) where {S, T<:Number}
+    println("update delta for s = $s order")
+    if s > 0
+        println("ran delta update...")
+        @show d.Y0
+        @show contract.A_Q[2]
+        d.Y = I - d.Y0*contract.A_Q[2]
+        @show d.Y
+        d.precond = lu!(d.Y)
+        d.YJxAff = d.precond\d.JxAff
+        @show d.YJxAff
+        mul!(d.YJxΔx, d.YJxAff, d.Xj_delta)
+        @show d.YJxΔx
+        d.Ysumx = d.precond\d.Jxsum
+        d.YsumP = d.precond\d.Jpsum
+        @show d.Ysumx
+        @show d.YsumP
+        mul!(d.YJpΔp, d.YsumP, contract.rP)
+        @show d.YJpΔp
+        @__dot__ d.Δⱼ₊₁ = d.YJxΔx + d.Ysumx + d.YJpΔp
+        @show d.Δⱼ₊₁
+    end
     return nothing
 end
 
@@ -308,27 +326,30 @@ function (d::AdamsMoultonFunctor{T})(contract::ContractorStorage{S},
                                   count::Int) where {S, T<:Number}
 
 
-    println("--------------------------------------------------------------------------")
-    @show "BEGIN MAIN - step: $(contract.step_count-1), method step: $(d.method_step)"
-    println("--------------------------------------------------------------------------")
+    println("\n BEGIN MAIN - step: $(contract.step_count-1), method step: $(d.method_step) \n")
 
     t = contract.times[1]
     s = min(contract.step_count-1, d.method_step)
-    if s < d.method_step
+    #@show s
+    #@show d.method_step
+    if s < d.method_step - 1
+        #println("---- LOHNERS STEP -----")
         d.lohners_start(contract, result, count)
         (count == 0) && store_starting_buffer!(d, contract, result, t)
         return nothing
     end
 
+    #println("---- PILMS STEP -----")
     h = contract.hj_computed
+    #@show contract.hj_computed
     compute_coefficients!(d, h, t, s)
     compute_Rk!(d, contract, h, s)
     compute_real_sum!(d, contract, result, h, t, s)
     compute_jacobian_sum!(d, contract, h, t, s)
     compute_X!(d, contract)
     compute_xval!(d, contract, t)
-    compute_Ainv!(d, contract)
-    update_delta!(d, contract)
+    compute_Ainv!(d, contract, s)
+    update_delta!(d, contract, s)
     return nothing
 end
 
