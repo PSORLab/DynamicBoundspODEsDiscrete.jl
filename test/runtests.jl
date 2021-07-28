@@ -1,5 +1,5 @@
 #!/usr/bin/env julia
-using Test, DynamicBoundspODEsDiscrete, IntervalArithmetic, DynamicBoundsBase,
+using Test, DynamicBoundspODEsDiscrete, McCormick, DynamicBoundsBase,
       DataStructures
 using DynamicBoundspODEsDiscrete.StaticTaylorSeries
 using DiffResults: JacobianResult

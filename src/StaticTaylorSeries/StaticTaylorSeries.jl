@@ -1,6 +1,7 @@
 module StaticTaylorSeries
 
 using Requires
+using McCormick # TODO: Remove if package
 
 import Base: ==, +, -, *, /, ^
 
