@@ -247,16 +247,16 @@ function _pred_compute_rhs_jacobian!(d, c::ContractorStorage{S}, t) where S
     ρ!(d.ρP, c.P, c.pval, d.η)
     set_JxJp!(Jf!_pred, d.μX, d.ρP, t)
     for i = 1:d.q_predict
-        hji1 = hⱼ^(i-1)
+        hji1 = hⱼ^i
         if i == 1
             fill!(Jf!_pred.Jxsto, zero(S))
             for j = 1:d.nx
                 Jf!_pred.Jxsto[j,j] = one(S)
             end
         else
-            @__dot__ Jf!_pred.Jxsto += hji1*Jf!_pred.Jx[i]
+            @__dot__ Jf!_pred.Jxsto += hji1*Jf!_pred.Jx[i+1]
         end
-        @__dot__ Jf!_pred.Jpsto += hji1*Jf!_pred.Jp[i]
+        @__dot__ Jf!_pred.Jpsto += hji1*Jf!_pred.Jp[i+1]
     end
     return nothing
 end
@@ -272,6 +272,7 @@ function _hermite_obreschkoff_predictor!(d::HermiteObreschkoffFunctor{F,P1,Q1,K,
     mul_split!(d.pred_Jxvec, d.pred_Jxmat,     c.Δ[2],   d.nx)
     mul_split!(d.pred_Jpvec, d.Jf!_pred.Jpsto, c.rP,     d.nx)
     @__dot__ d.X_predict = d.Vⱼ₊₁ + d.Rⱼ₊₁ + d.pred_Jxvec + d.pred_Jpvec
+
     return nothing
 end
 
@@ -281,37 +282,40 @@ function (d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY})(contract::ContractorSt
 
     _hermite_obreschkoff_predictor!(d, contract)
 
-    map!(mid, d.xval_correct, d.X_predict)
+    map!(mid, d.xval_correct, d.X_predict)     # GOOD
 
     # extract method constants
     ho = d.hermite_obreschkoff
     γ = ho.γ
-    p = ho.p
-    q = ho.q
-    k = ho.k
-    nx = d.nx
-    np = length(contract.pval)
+    p = ho.p                     # GOOD
+    q = ho.q                     # GOOD
+    k = ho.k                     # GOOD
+    nx = d.nx                    # GOOD
+    np = length(contract.pval)   # GOOD
 
-    hⱼ = contract.hj_computed
-    t = contract.times[1]
-    hjk = hⱼ^k
-    _sum_pred(y, i) = y[i]*ho.cpq[i]*hⱼ^(i - 1)
-    _sum_q(y, i) = (ho.cqp[i]*(-hⱼ)^(i-1))*y[i]
+    hⱼ = contract.hj_computed    # GOOD
+    t = contract.times[1]        # GOOD
+    hjk = hⱼ^k                   # GOOD
+    _sum_pred(y, i) = y[i+1]*ho.cpq[i+1]*hⱼ^(i)
+    _sum_q(y, i) = (ho.cqp[i+1]*(-hⱼ)^i)*y[i+1]
 
-    d.sum_p .= mapreduce(i -> _sum_pred(d.f̃val_pred, i), +, 1:(p + 1))
+    d.sum_p .= mapreduce(i -> _sum_pred(d.f̃val_pred, i), +, 1:p)
 
     d.real_tf!_correct(d.f̃val_correct, d.xval_correct, contract.pval, t)
-    d.sum_q .=  mapreduce(i -> _sum_q(d.f̃val_correct, i), +, 1:(q + 1))
-    @__dot__ d.δⱼ₊₁ = d.sum_p - d.sum_q + γ*hjk*d.f̃_pred[k + 1]
+    d.sum_q .=  mapreduce(i -> _sum_q(d.f̃val_correct, i), +, 1:q)
 
-    d.Jf!_pred.Jxsto .= mapreduce(i -> _sum_pred(d.Jf!_pred.Jx, i), +, 1:(p + 1))
-    d.Jf!_pred.Jpsto .= mapreduce(i -> _sum_pred(d.Jf!_pred.Jp, i), +, 1:(p + 1))
+    @__dot__ d.δⱼ₊₁ = contract.xval - d.xval_correct + d.sum_p - d.sum_q + γ*hjk*d.f̃_pred[k + 1]   # Looks wrong based on impact....
+
+    d.Jf!_pred.Jxsto .= mapreduce(i -> _sum_pred(d.Jf!_pred.Jx, i), +, 1:p)
+    d.Jf!_pred.Jpsto .= mapreduce(i -> _sum_pred(d.Jf!_pred.Jp, i), +, 1:p)
+    d.Jf!_pred.Jxsto += d.Inx
 
     μ!(d.μX, d.X_predict, d.xval_correct, d.η)
     ρ!(d.ρP, contract.P, contract.pval, d.η)
     set_JxJp!(d.Jf!_correct, d.μX, d.ρP, t)
-    d.Jf!_correct.Jxsto .= mapreduce(i -> _sum_q(d.Jf!_correct.Jx, i), +, 1:(q + 1))
-    d.Jf!_correct.Jpsto .= mapreduce(i -> _sum_q(d.Jf!_correct.Jp, i), +, 1:(q + 1))
+    d.Jf!_correct.Jxsto .= mapreduce(i -> _sum_q(d.Jf!_correct.Jx, i), +, 1:q)
+    d.Jf!_correct.Jpsto .= mapreduce(i -> _sum_q(d.Jf!_correct.Jp, i), +, 1:q)
+    d.Jf!_correct.Jxsto += d.Inx
 
     map!(mid, d.precond, d.Jf!_correct.Jxsto)
     lu!(d.precond)
@@ -332,11 +336,10 @@ function (d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY})(contract::ContractorSt
     mul_split!(d.CprP, d.Cp, contract.rP, nx)
     mul_split!(d.Yδⱼ₊₁, d.precond, d.δⱼ₊₁, nx)
     @__dot__ contract.X_computed = d.xval_correct + d.correct_Bvec + d.Uj + d.CprP + d.Yδⱼ₊₁
-    @__dot__ contract.X_computed = contract.X_computed ∩ d.X_predict
-    @show contract.X_computed
-    @show d.X_predict
-    affine_contract!(contract.X_computed, contract.P, contract.pval, nx, np)
 
+    @__dot__ contract.X_computed = contract.X_computed ∩ d.X_predict
+
+    affine_contract!(contract.X_computed, contract.P, contract.pval, nx, np)
     @__dot__ contract.xval_computed = mid(contract.X_computed)
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)

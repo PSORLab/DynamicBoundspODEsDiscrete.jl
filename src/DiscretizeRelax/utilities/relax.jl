@@ -104,6 +104,7 @@ function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStat
                 copyto!(d.storage[step_number], d.contractor_result.X_computed)
                 copyto!(d.storage_apriori[step_number], d.exist_result.Xj_apriori)
                 d.time[step_number] = d.step_result.time
+                d.contractor_result.times[1] = d.step_result.time
             end
             if is_support_pnt
                 stored_value_count += 1
