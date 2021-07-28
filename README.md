@@ -16,7 +16,7 @@ relaxations at these time-points. Full documentation of this functionality may b
 using Pkg; Pkg.add("DynamicBoundspODEsDiscrete")
 ```
 
-or using the following command in the pacakge manager environment
+or using the following command in the package manager environment
 ```
 pkg > add DynamicBoundspODEsDiscrete
 ```
