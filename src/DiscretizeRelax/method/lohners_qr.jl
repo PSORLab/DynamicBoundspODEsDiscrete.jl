@@ -153,8 +153,8 @@ function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T},
     @__dot__ contract.xval_computed = d.Vⱼ₊₁ + d.mRⱼ₊₁
 
     # update bounds on X at new time
-    mul_split!(d.Jxmat, Jf!.Jxsto, contract.A[2].Q, nx)
-    mul_split!(d.Jxvec, d.Jxmat, contract.Δ[1], nx)
+    mul_split!(d.Jxmat, Jf!.Jxsto, contract.A_Q[2], nx)
+    mul_split!(d.Jxvec, d.Jxmat, contract.Δ[2], nx)
     mul_split!(d.Jpvec, Jf!.Jpsto, contract.rP, nx)
 
     @__dot__ contract.X_computed = d.Vⱼ₊₁ + d.Rⱼ₊₁ + d.Jxvec + d.Jpvec
@@ -162,21 +162,22 @@ function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T},
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
     @__dot__ contract.B = mid(d.Jxmat)
-    calculateQ!(contract.A[1], contract.B, nx)
-    calculateQinv!(contract.A[1])
+    calculateQ!(contract.A_Q[1], contract.B, nx)
+    calculateQinv!(contract.A_inv[1], contract.A_Q[1], nx)
 
     # update Delta
     @__dot__ d.rRⱼ₊₁ = d.Rⱼ₊₁ - d.mRⱼ₊₁
-    mul_split!(d.YdRⱼ₊₁, contract.A[1].inv, d.rRⱼ₊₁, nx)
-    mul_split!(d.YJxmat, contract.A[1].inv, d.Jxmat, nx)
-    mul_split!(d.YJxvec, d.YJxmat, contract.Δ[1], nx)
-    mul_split!(d.YJpmat, contract.A[1].inv, Jf!.Jpsto, nx)
+    mul_split!(d.YdRⱼ₊₁, contract.A_inv[1], d.rRⱼ₊₁, nx)
+    mul_split!(d.YJxmat, contract.A_inv[1], d.Jxmat, nx)
+    mul_split!(d.YJxvec, d.YJxmat, contract.Δ[2], nx)
+    mul_split!(d.YJpmat, contract.A_inv[1], Jf!.Jpsto, nx)
     mul_split!(d.YJpvec, d.YJpmat, contract.rP, nx)
     @__dot__ d.Δⱼ₊₁ = d.YdRⱼ₊₁ + d.YJxvec + d.YJpvec
 
-    pushfirst!(contract.Δ, d.Δⱼ₊₁)
+    contract.Δ[1] = copy(d.Δⱼ₊₁)
 
     return RELAXATION_NOT_CALLED
 end
 
-get_Δ(lf::LohnersFunctor{F,K,S,T,NY}) where {F <: Function, K, S <: Real, T <: Real, NY} = lf.Δⱼ₊₁
+get_Δ(lf::LohnersFunctor{F,K,S,T,NY}) where {F <: Function, K, S <: Real, T <: Real, NY} = copy(lf.Δⱼ₊₁)
+advance_contractor_buffer!(lf::LohnersFunctor) = nothing

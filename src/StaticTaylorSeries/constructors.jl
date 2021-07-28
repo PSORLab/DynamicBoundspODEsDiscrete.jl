@@ -1,4 +1,7 @@
 ######################### STaylor1
+
+abstract type AbstractSeries{T<:Number} <: Number end
+
 """
     STaylor1{N,T<:Number} <: AbstractSeries{T}
 

@@ -3,7 +3,7 @@ Parametric Discretize-and-Relax methods within DynamicBounds.jl
 
 | **Linux/OS/Windows**                                   |        **Coverage**             |              
 |:-------------------------------------------------------:|:-------------------------------------------------------:|
-| [![Build Status](https://travis-ci.org/PSORLab/DynamicBoundspODEsDiscrete.jl.svg?branch=master)](https://travis-ci.org/PSORLab/DynamicBoundspODEsDiscrete.jl) | [![Coverage Status](https://coveralls.io/repos/github/PSORLab/DynamicBoundspODEsDiscrete.jl/badge.svg?branch=master)](https://coveralls.io/github/PSORLab/DynamicBoundspODEsDiscrete.jl?branch=master) |
+| [![Build Status](https://github.com/PSORLab/DynamicBoundspODEsDiscrete.jl/workflows/CI/badge.svg?branch=master)](https://github.com/PSORLab/DynamicBoundspODEsDiscrete.jl/actions?query=workflow%3ACI) | [![codecov](https://codecov.io/gh/PSORLab/DynamicBoundspODEsDiscrete.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/PSORLab/DynamicBoundspODEsDiscrete.jl)) |
 
 ## Summary
 This package implements a discretize-and-relax approaches to
@@ -11,13 +11,18 @@ computing state bounds and relaxations using the DynamicBounds.jl framework. The
 relaxations at these time-points. Full documentation of this functionality may be found [here](https://psorlab.github.io/DynamicBounds.jl/dev/pODEsDiscrete/pODEsDiscrete) in the DynamicBounds.jl website.
 
 ## Installation
-This package currently makes use of a static Taylor series variant for computing
-Taylor series coefficients and variants thereof. The branch of TaylorSeries.jl located
-at https://github.com/mewilhel/TaylorSeries.jl should be used temporarily until this functionality has been merged into the main package. Instructions on using this branch are provided below:
 
 ```julia
-using Pkg; Pkg.develop(PackageSpec(url="https://github.com/mewilhel/TaylorSeries.jl"))
+using Pkg; Pkg.add("DynamicBoundspODEsDiscrete")
 ```
+
+or using the following command in the pacakge manager environment
+```
+pkg > add DynamicBoundspODEsDiscrete
+```
+
+Note that this package can also be used directly via DynamicBounds.jl as the later
+package automatically reexports it.
 
 ## References
 - Corliss, G. F., & Rihm, R. (1996). Validating an a priori enclosure using high-order Taylor series. MATHEMATICAL RESEARCH, 90, 228-238.

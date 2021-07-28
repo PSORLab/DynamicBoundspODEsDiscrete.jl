@@ -12,6 +12,7 @@
 # Functions used for preconditioning with QR factorization.
 #############################################################################
 
+#=
 """
 QRDenseStorage
 
@@ -28,6 +29,7 @@ mutable struct QRDenseStorage
     inv::Array{Float64,2}
 end
 
+
 """
 QRDenseStorage(nx::Int)
 
@@ -42,6 +44,15 @@ function QRDenseStorage(nx::Int)
     QRDenseStorage(factorization, Q, inverse)
 end
 
+function Base.copy(q::QRDenseStorage)
+    factors_c = q.factorization.factors
+    τ_c = q.factorization.τ
+    f_copy = LinearAlgebra.QR{Float64,Array{Float64,2}}(factors_c,τ_c)
+    QRDenseStorage(f_copy, copy(q.Q), copy(q.inv))
+end
+=#
+
+#=
 """
 calculateQ!
 
@@ -63,7 +74,26 @@ function calculateQinv!(qst::QRDenseStorage)
     transpose!(qst.inv, qst.Q)
     nothing
 end
+=#
 
+function calculateQ!(Q, A::Matrix{Float64}, nx::Int)
+    if nx == 1
+        Q[1,1] = 1.0
+    else
+        F = LinearAlgebra.qr(A)
+        Q = view(F.Q, 1:nx, 1:nx)
+    end
+    nothing
+end
+function calculateQinv!(Qinv, Q, nx::Int)
+    if nx == 1
+        Qinv[1,1] = 1.0
+    else
+        transpose!(Qinv, Q)
+    end
+    nothing
+end
+#=
 """
 An circular buffer of fixed capacity and length which allows
 for access via getindex and copying of an element to the last then cycling
@@ -76,23 +106,6 @@ function DataStructures.CircularBuffer(a::T, length::Int) where T
     cb
 end
 
-function eval_cycle!(f!, cb::CircularBuffer, x, p, t)
-    cb.first = (cb.first == 1 ? cb.length : cb.first - 1)
-    f!(cb.buffer[cb.first], x, p, t)
-    nothing
-end
-
-"""
-qr_stack(nx::Int, steps::Int)
-
-Creates preallocated storage for an array of QR factorizations.
-"""
-function qr_stack(nx::Int, steps::Int)
-    qrstack = CircularBuffer{QRDenseStorage}(steps)
-    vector = fill(QRDenseStorage(nx), steps)
-    append!(qrstack, vector)
-    qrstack
-end
 
 """
 reinitialize!(x::CircularBuffer{QRDenseStorage})
@@ -106,3 +119,4 @@ function reinitialize!(x::CircularBuffer{QRDenseStorage})
     end
     nothing
 end
+=#

@@ -510,3 +510,9 @@ function DBB.getall(t::DiscretizeRelax{X,T}, ::DBB.Relaxation{Upper}) where {X, 
     end
     out
 end
+
+function DBB.get(t::DiscretizeRelax{X,T}, v::DBB.LocalIntegrator) where {X, T}
+    return t.local_problem_storage
+end
+
+DBB.get(t::DiscretizeRelax{X,T}, v::DBB.AttachedProblem) where {X, T} = t.prob

@@ -45,9 +45,10 @@ mutable struct StepResult{S}
     "relaxations/bounds of the state variables"
     Xⱼ::Vector{S}
     "storage for parallelepid enclosure of `xⱼ`"
-    A::CircularBuffer{QRDenseStorage}
+    A_Q::FixedCircularBuffer{Matrix{Float64}}
+    A_inv::FixedCircularBuffer{Matrix{Float64}}
     "storage for parallelepid enclosure of `xⱼ`"
-    Δ::CircularBuffer{Vector{S}}
+    Δ::FixedCircularBuffer{Vector{S}}
     "predicted step size for next step"
     predicted_hj::Float64
     "new time"
@@ -131,13 +132,14 @@ Storage used to hold inputs to the contractor method used.
 """
 mutable struct ContractorStorage{S}
     is_adaptive::Bool
-    times::CircularBuffer{Float64}
-    steps::CircularBuffer{Float64}
+    times::FixedCircularBuffer{Float64}
+    steps::FixedCircularBuffer{Float64}
     Xj_0::Vector{S}
     Xj_apriori::Vector{S}
     xval::Vector{Float64}
-    A::CircularBuffer{QRDenseStorage}
-    Δ::CircularBuffer{Vector{S}}
+    A_Q::FixedCircularBuffer{Matrix{Float64}}
+    A_inv::FixedCircularBuffer{Matrix{Float64}}
+    Δ::FixedCircularBuffer{Vector{S}}
     P::Vector{S}
     rP::Vector{S}
     pval::Vector{Float64}
@@ -148,6 +150,7 @@ mutable struct ContractorStorage{S}
     B::Matrix{Float64}
     γ::Float64
     step_count::Int64
+    nx::Int
 end
 function ContractorStorage(style::S, nx, np, k, h, method_steps) where S
     is_adaptive = h <= 0.0
@@ -168,15 +171,27 @@ function ContractorStorage(style::S, nx, np, k, h, method_steps) where S
     step_count = 1
 
     # add to buffer
-    times = CircularBuffer{Float64}(method_steps);  append!(times, zeros(nx))
-    steps = CircularBuffer{Float64}(method_steps);  append!(steps, zeros(nx))
-    A = qr_stack(nx, method_steps)
-    Δ = CircularBuffer{Vector{S}}(method_steps)
-    fill!(Δ, zeros(S, nx))
+    times = FixedCircularBuffer{Float64}(method_steps);  append!(times, zeros(nx))
+    steps = FixedCircularBuffer{Float64}(method_steps);  append!(steps, zeros(nx))
+    Δ = FixedCircularBuffer{Vector{S}}(method_steps)
+    A_Q = FixedCircularBuffer{Matrix{Float64}}(method_steps)
+    A_inv = FixedCircularBuffer{Matrix{Float64}}(method_steps)
+    for i = 1:method_steps
+        push!(Δ, zeros(S, nx))
+        push!(A_Q, Float64.(Matrix(I, nx, nx)))
+        push!(A_inv, Float64.(Matrix(I, nx, nx)))
+    end
 
-    return ContractorStorage{S}(is_adaptive, times, steps, Xj_0, Xj_apriori, xval, A, Δ, P,
-                                rP, pval, fk_apriori, hj_computed, X_computed,
-                                xval_computed, B, γ, step_count)
+    return ContractorStorage{S}(is_adaptive, times, steps, Xj_0, Xj_apriori, xval,
+                                A_Q, A_inv, Δ, P, rP, pval, fk_apriori,
+                                hj_computed, X_computed, xval_computed, B, γ, step_count, nx)
+end
+
+function advance_contract_storage!(d::ContractorStorage{S}) where {S <: Number}
+    cycle!(d.A_Q)
+    cycle!(d.A_inv)
+    cycle!(d.Δ)
+    return nothing
 end
 
 function set_xX!(result::StepResult{S}, contract::ContractorStorage{S}) where {S <: Number}
@@ -230,6 +245,17 @@ function affine_contract!(X::Vector{MC{N,T}}, P::Vector{MC{N,T}}, pval::Vector{F
     return nothing
 end
 
+contract_apriori!(exist::ExistStorage{F,K,S,T}, n::Nothing) where {F, K, S <: Real, T} = nothing
+function contract_apriori!(exist::ExistStorage{F,K,S,T}, p::PolyhedralConstraint) where {F, K, S <: Real, T}
+    nothing
+end
+function contract_apriori!(exist::ExistStorage{F,K,S,T}, c::ConstantStateBounds) where {F, K, S <: Real, T}
+    for i = 1:exist.nx
+        exist.Xj_apriori[i] = exist.Xj_apriori[i] ∩ Interval(c.xL[i], c.xU[i])
+    end
+    nothing
+end
+
 """
 single_step!
 
@@ -237,19 +263,32 @@ Performs a single-step of the validated integrator. Input stepsize is out.step.
 """
 function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{T},
                       params::StepParams, result::StepResult{T}, sc::M,
-                      j::Int64, hj_limit::Float64) where {M <: AbstractStateContractor, F, K, S <: Real, T}
+                      j::Int64, hj_limit::Float64, delT,
+                      constant_state_bounds::C,
+                      polyhedral_constraint::P) where {M <: AbstractStateContractor, F, K, S <: Real, T, C, P}
 
     contract.is_adaptive = params.is_adaptive
+
 
     # validate existence & uniqueness (returns if E&U cannot be shown)
     existence_uniqueness!(exist, params, result.time, j)
     if exist.status_flag === NUMERICAL_ERROR
-        return nothing
+        if delT > 1E-6
+            return nothing
+        else
+            exist.status_flag = COMPLETED
+        end
     end
 
+    advance_contractor_buffer!(sc)::Nothing
+    advance_contract_storage!(contract)
+
     # copy info from existence to contractor storage
+    contract_apriori!(exist, constant_state_bounds)::Nothing
+    contract_apriori!(exist, polyhedral_constraint)::Nothing
     contract.Xj_apriori .= exist.Xj_apriori
     contract.hj_computed = min(exist.computed_hj, hj_limit)
+    contract.fk_apriori .= exist.fk
 
     hj = contract.hj_computed
     hj_eu = hj
@@ -279,16 +318,17 @@ function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{
         else
             # perform corrector step
             sc(contract, result, 0)
-
-            # updates shifts Aj+1 -> Aj and so on
-            pushfirst!(contract.A, last(contract.A))
-            pushfirst!(contract.Δ, get_Δ(sc))
             set_xX!(result, contract)::Nothing
         end
     else
         result.xⱼ .= mid.(exist.Xapriori)
         result.Xⱼ .= exist.Xapriori
     end
+
+    # update parallelepid enclosure
+    cycle_copyto!(result.A_Q, contract.A_Q[1], j)
+    cycle_copyto!(result.A_inv, contract.A_inv[1], j)
+    cycle_copyto!(result.Δ, contract.Δ[1], j)
 
     # store times and step sizes to time/step buffer
     # and updated prediced step size

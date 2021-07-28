@@ -15,8 +15,7 @@
 module DynamicBoundspODEsDiscrete
 
 using McCormick, DocStringExtensions, DynamicBoundsBase,
-      Reexport, LinearAlgebra, IntervalArithmetic, StaticArrays,
-      TaylorSeries, Requires, ElasticArrays, DataStructures, Polynomials
+      Reexport, LinearAlgebra, StaticArrays, ElasticArrays, Polynomials
 
 using ForwardDiff: Chunk, Dual, Partials, construct_seeds, single_seed,
       JacobianConfig, vector_mode_dual_eval, value, vector_mode_jacobian!,
@@ -30,7 +29,7 @@ using DiffResults: JacobianResult, MutableDiffResult
 
 import DynamicBoundsBase: relax!, set!, setall!, get, getall!, getall, relax!,
                           integrate!, supports
-import Base: setindex!, getindex, copyto!, literal_pow
+import Base: setindex!, getindex, copyto!, literal_pow, copy
 
 import Base.MathConstants.golden
 
@@ -118,6 +117,7 @@ end
 include("StaticTaylorSeries/StaticTaylorSeries.jl")
 using .StaticTaylorSeries
 
+include("DiscretizeRelax/utilities/fixed_buffer.jl")
 include("DiscretizeRelax/utilities/mul_split.jl")
 include("DiscretizeRelax/utilities/fast_set_index.jl")
 include("DiscretizeRelax/utilities/qr_utilities.jl")
@@ -131,12 +131,10 @@ include("DiscretizeRelax/method/higher_order_enclosure.jl")
 include("DiscretizeRelax/method/lohners_qr.jl")
 include("DiscretizeRelax/method/hermite_obreschkoff.jl")
 include("DiscretizeRelax/method/wilhelm_2019.jl")
-
-include("DiscretizeRelax/utilities/local_integration_problem.jl")
+include("DiscretizeRelax/method/pilms.jl")
 
 include("DiscretizeRelax/utilities/discretize_relax.jl")
 include("DiscretizeRelax/utilities/relax.jl")
-include("DiscretizeRelax/utilities/integrate.jl")
 include("DiscretizeRelax/utilities/access_functions.jl")
 
 end # module
