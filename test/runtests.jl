@@ -157,7 +157,7 @@ const DR = DynamicBoundspODEsDiscrete
 end
 
 if !(VERSION < v"1.1" && testfile == "intervals.jl")
-    using TaylorSeries, IntervalArithmetic
+    using TaylorSeries
 
     function test_vs_Taylor1(x, y)
         flag = true
