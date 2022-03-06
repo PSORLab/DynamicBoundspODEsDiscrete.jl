@@ -18,12 +18,13 @@ using McCormick, DocStringExtensions, DynamicBoundsBase,
       Reexport, LinearAlgebra, StaticArrays, ElasticArrays, Polynomials
 
 using ForwardDiff: Chunk, Dual, Partials, construct_seeds, single_seed,
-      JacobianConfig, vector_mode_dual_eval, value, vector_mode_jacobian!,
+      JacobianConfig, vector_mode_dual_eval!, value, vector_mode_jacobian!,
       jacobian!
 
 using DiffEqSensitivity: extract_local_sensitivities, ODEForwardSensitivityProblem
 using DiffEqBase: remake, AbstractODEProblem, AbstractContinuousCallback, solve
 using Sundials
+using OrdinaryDiffEq: ABDF2, Trapezoid, ImplicitEuler
 
 using DiffResults: JacobianResult, MutableDiffResult
 
