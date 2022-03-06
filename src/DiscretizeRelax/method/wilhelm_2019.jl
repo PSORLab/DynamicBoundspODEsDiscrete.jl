@@ -836,7 +836,7 @@ function DBB.getall!(out, t::Wilhelm2019, v::DBB.ParameterBound{Upper})
     end
     return
 end
-DBB.getall(out, t::Wilhelm2019, v::DBB.ParameterBound{Upper}) = t.pU
+DBB.getall(t::Wilhelm2019, v::DBB.ParameterBound{Upper}) = t.pU
 
 function DBB.setall!(t::Wilhelm2019, v::DBB.ParameterBound{Lower}, value::Vector{Float64})
     t.integrator_states.new_decision_box = true
