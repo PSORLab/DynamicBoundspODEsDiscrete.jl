@@ -291,7 +291,7 @@ $(TYPEDFIELDS)
 """
 mutable struct Wilhelm2019{T <: W19T, ICB1 <: PICallback, ICB2 <: PICallback,
                            PRE, CTR <: AbstractContractor,
-                           IC <: Function, F, Z, J, PRB, N, C, AMAT} <: AbstractStateContractor
+                           IC <: Function, F, Z, J, PRB, N, C, AMAT} <: DBB.AbstractODERelaxIntegrator
 
     # problem specifications
     integrator_type::T
@@ -338,6 +338,7 @@ mutable struct Wilhelm2019{T <: W19T, ICB1 <: PICallback, ICB2 <: PICallback,
     var_relax::Vector{Z}
     param::Vector{Vector{Vector{Z}}}
     kmax::Int
+    calculate_local_sensitivity::Bool
 
     # local evaluation information
     local_problem_storage
@@ -393,7 +394,9 @@ function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
     param = Vector{Vector{Z}}[[zeros(Z,nx) for j in 1:kmax] for i in 1:steps]
     var_relax = zeros(Z,np)
 
-    local_integrator = state_contractor_integrator(t)
+    calculate_local_sensitivity = true
+
+    local_integrator() = state_contractor_integrator(t)
     local_problem_storage = ODELocalIntegrator(d, local_integrator)
 
     return Wilhelm2019{T, typeof(pi_callback1), typeof(pi_callback2),
@@ -405,7 +408,8 @@ function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
                        pi_contractor, inclusion_flag, exclusion_flag,
                        extended_division_flag, ic, h1, h2, hj1, hj2,
                        mc_callback1, mc_callback2, IC_relax, state_relax,
-                       var_relax, param, kmax, local_problem_storage, d)
+                       var_relax, param, kmax, calculate_local_sensitivity, 
+                       local_problem_storage, d)
 end
 
 function relax!(d::Wilhelm2019)
@@ -413,6 +417,7 @@ function relax!(d::Wilhelm2019)
     # load state relaxation bounds at support values
     if d.integrator_states.set_lower_state || d.integrator_states.set_upper_state
         @. d.X = Interval{Float64}(d.xL, d.xU)
+        @show d.X
     end
 
     # if P has been updated perform an parametric interval contraction,
@@ -423,6 +428,7 @@ function relax!(d::Wilhelm2019)
 
         # evaluate initial condition
         d.X0P .= d.ic(d.P)
+        @show d.X0P
 
         # loads CallbackH and CallbackHJ function with correct time and prior x values
         @inbounds for j=1:d.nx
@@ -458,6 +464,7 @@ function relax!(d::Wilhelm2019)
         end
 
         for i in 2:d.steps
+            #println("step number is i = $i")
             # loads CallbackH and CallbackHJ function with correct time and prior x values
             @inbounds for j=1:d.nx
                 d.pi_callback2.X[j] = d.X[j,i]
@@ -652,18 +659,41 @@ function relax!(d::Wilhelm2019)
     return
 end
 
-function integrate!(d::Wilhelm2019)
-    d.local_problem_storage.pduals .= seed_duals(d.p)
-    d.local_problem_storage.x0duals .= d.ic(d.local_problem_storage.pduals)
-    @inbounds for i in 1:d.np
-        d.local_problem_storage.x0local[i] = d.local_problem_storage.x0duals[i].value
-        @inbounds for j in 1:d.nx
-            d.local_problem_storage.x0local[(j+d.np+(i-1)*d.nx)] = d.local_problem_storage.x0duals[i].partials[j]
+function DBB.integrate!(d::Wilhelm2019, p::ODERelaxProb)
+
+    local_integrator() = state_contractor_integrator(d.integrator_type)
+    local_prob_storage = DBB.get(d, DBB.LocalIntegrator())::ODELocalIntegrator
+    local_prob_storage.integrator = local_integrator
+    local_prob_storage.adaptive_solver = false
+    local_prob_storage.user_t = d.time
+
+    DBB.getall!(local_prob_storage.p, d, ParameterValue())
+    local_prob_storage.pduals .= DBB.seed_duals(Val(length(local_prob_storage.p)), local_prob_storage.p)
+    local_prob_storage.x0duals = p.x0(d.local_problem_storage.pduals)
+    solution_t = DBB.integrate!(Val(DBB.get(d, DBB.LocalSensitivityOn())), d, p)
+
+    empty!(local_prob_storage.local_t_dict_flt)
+    empty!(local_prob_storage.local_t_dict_indx)
+
+    for (tindx, t) in enumerate(solution_t)
+        local_prob_storage.local_t_dict_flt[t] = tindx
+    end
+
+    if !isempty(local_prob_storage.user_t)
+        next_support_time = local_prob_storage.user_t[1]
+        supports_left = length(local_prob_storage.user_t)
+        loc_count = 1
+        for (tindx, t) in enumerate(solution_t)
+            if t == next_support_time
+                local_prob_storage.local_t_dict_indx[loc_count] = tindx
+                loc_count += 1
+                supports_left -= 1
+                if supports_left > 0
+                    next_support_time = local_prob_storage.user_t[loc_count]
+                end
+            end
         end
     end
-    d.local_problem_storage.pode_problem = remake(d.local_problem_storage.pode_problem, u0 = d.local_problem_storage.x0local, p = d.p)
-    solution = solve(d.local_problem_storage.pode_problem, local_integrator(d.integrator_type), tstops = d.time, adaptive = false)
-    d.local_problem_storage.pode_x[:,:], d.local_problem_storage.pode_dxdp[:] = extract_local_sensitivities(solution)
     return
 end
 
@@ -686,6 +716,11 @@ DBB.get(t::Wilhelm2019, s::DBB.TerminationStatus) = t.integrator_states.terminat
 DBB.get(t::Wilhelm2019, s::DBB.ParameterNumber) = t.np
 DBB.get(t::Wilhelm2019, s::DBB.StateNumber) = t.nx
 DBB.get(t::Wilhelm2019, s::DBB.SupportNumber) = length(t.time)
+DBB.get(t::Wilhelm2019, s::DBB.AttachedProblem) = t.prob
+
+function DBB.get(t::Wilhelm2019, v::DBB.LocalIntegrator)
+    return t.local_problem_storage
+end
 
 function DBB.getall!(out::Array{Float64,2}, t::Wilhelm2019, v::DBB.Value)
     out .= t.local_problem_storage.pode_x
@@ -759,8 +794,6 @@ function DBB.getall!(out::Vector{Float64}, t::Wilhelm2019, v::DBB.Bound{Lower})
     out[:] = t.xL[1,:]
     return
 end
-
-
 
 function DBB.getall!(out::Array{Float64,2}, t::Wilhelm2019, v::DBB.Bound{Upper})
     out .= t.xU
@@ -862,6 +895,13 @@ function DBB.setall!(t::Wilhelm2019, v::DBB.ParameterValue, value::Vector{Float6
     return
 end
 
+function DBB.getall!(out, t::Wilhelm2019, v::DBB.ParameterValue)
+    @inbounds for i in 1:t.np
+        out[i] = t.p[i]
+    end
+    return
+end
+
 function DBB.setall!(t::Wilhelm2019, v::DBB.Bound{Lower}, values::Array{Float64,2})
     if t.integrator_states.new_decision_box
         t.integrator_states.set_lower_state = true
@@ -904,6 +944,152 @@ function DBB.setall!(t::Wilhelm2019, v::DBB.Bound{Upper}, values::Vector{Float64
         t.xU[1,i] = values[i]
     end
     return
+end
+
+function DBB.get(t::Wilhelm2019, v::DBB.SupportSet{T}) where T
+    DBB.get(t.prob, v)
+end
+
+DBB.get(t::Wilhelm2019, v::DBB.LocalSensitivityOn) = t.calculate_local_sensitivity
+function DBB.set!(t::Wilhelm2019, v::DBB.LocalSensitivityOn, b::Bool) 
+    t.calculate_local_sensitivity = b
+end
+
+function DBB.get!(out, t::Wilhelm2019, v::DBB.Bound{Lower})
+    if v.index > 1
+        if t.evaluate_interval
+            for i = 1:length(out) 
+                out[i] = t.xL[i,v.index-1]
+            end
+        else
+            for i = 1:length(out)
+                out[i] = t.state_relax[i,v.index-1].Intv.lo
+            end
+        end
+    end
+    if t.evaluate_interval
+        for i = 1:length(out) 
+            out[i] = t.X0P[i].lo
+        end
+    else
+        for i = 1:length(out) 
+            out[i] = t.IC_relax[i].Intv.lo
+        end
+    end
+end
+function DBB.get!(out, t::Wilhelm2019, v::DBB.Bound{Upper})
+    if v.index > 1
+        if t.evaluate_interval
+            for i = 1:length(out) 
+                out[i] = t.xU[i,v.index-1]
+            end
+        else
+            for i = 1:length(out)
+                out[i] = t.state_relax[i,v.index-1].Intv.hi
+            end
+        end
+    end
+    if t.evaluate_interval
+        for i = 1:length(out) 
+            out[i] = t.X0P[i].hi
+        end
+    else
+        for i = 1:length(out) 
+            out[i] = t.IC_relax[i].Intv.hi
+        end
+    end
+end
+function DBB.get!(out, t::Wilhelm2019, v::DBB.Relaxation{Lower})
+    if v.index > 1
+        if t.evaluate_interval
+            for i = 1:length(out) 
+                out[i] = t.xL[i,v.index-1]
+            end
+        else
+            for i = 1:length(out)
+                out[i] = t.state_relax[i,v.index-1].cv
+            end
+        end
+    end
+    if t.evaluate_interval
+        for i = 1:length(out) 
+            out[i] = t.X0P[i].lo
+        end
+    else
+        for i = 1:length(out) 
+            out[i] = t.IC_relax[i].cv
+        end
+    end
+end
+function DBB.get!(out, t::Wilhelm2019, v::DBB.Relaxation{Upper})
+    if v.index > 1
+        if t.evaluate_interval
+            for i = 1:length(out) 
+                out[i] = t.xU[i,v.index-1]
+            end
+        else
+            for i = 1:length(out)
+                out[i] = t.state_relax[i,v.index-1].cc
+            end
+        end
+    end
+    if t.evaluate_interval
+        for i = 1:length(out) 
+            out[i] = t.X0P[i].hi
+        end
+    else
+        for i = 1:length(out) 
+            out[i] = t.IC_relax[i].cc
+        end
+    end
+end
+function DBB.get!(out, t::Wilhelm2019, v::DBB.Subgradient{Lower})
+    if v.index > 1
+        if t.evaluate_interval
+            fill!(out, 0.0)
+        else
+            ni, nj = size(out)
+            for i = 1:ni
+                for j = 1:nj
+                    out[i, j] = t.state_relax[i,v.index-1].cv_grad[j]
+                end
+            end
+        end
+    end
+    if t.evaluate_interval
+        fill!(out, 0.0)
+    else
+        ni, nj = size(out)
+        for i = 1:ni
+            for j = 1:nj
+                out[i, j] = t.IC_relax[i].cv_grad[j]
+            end
+        end
+    end
+end
+function DBB.get!(out, t::Wilhelm2019, v::DBB.Subgradient{Upper})
+    if v.index > 1
+        if t.evaluate_interval
+            fill!(out, 0.0)
+        else
+            ni, nj = size(out)
+            for i = 1:ni
+                for j = 1:nj
+                    out[i, j] = t.state_relax[i,v.index-1].cc_grad[j]
+                end
+            end
+        end
+    end
+    if t.evaluate_interval
+        fill!(out, 0.0)
+    else
+        ni, nj = size(out)
+        for i = 1:ni
+            for j = 1:nj
+                out[i, j] = t.IC_relax[i].cc_grad[j]
+            end
+        end
+    end
 end
 
 """
