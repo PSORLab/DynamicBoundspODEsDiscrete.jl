@@ -343,6 +343,7 @@ mutable struct Wilhelm2019{T <: W19T, ICB1 <: PICallback, ICB2 <: PICallback,
     # local evaluation information
     local_problem_storage
     prob
+    constant_state_bounds::Union{Nothing,ConstantStateBounds}
 end
 
 function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
@@ -388,13 +389,14 @@ function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
     mc_callback2 = MCCallback(h2, hj2, nx, np)
 
     # storage used for MC methods
-    kmax = 2
+    kmax = 1
     IC_relax = zeros(Z,nx)
     state_relax = zeros(Z, nx, steps)
     param = Vector{Vector{Z}}[[zeros(Z,nx) for j in 1:kmax] for i in 1:steps]
     var_relax = zeros(Z,np)
 
     calculate_local_sensitivity = true
+    constant_state_bounds = d.constant_state_bounds
 
     local_integrator() = state_contractor_integrator(t)
     local_problem_storage = ODELocalIntegrator(d, local_integrator)
@@ -409,15 +411,16 @@ function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
                        extended_division_flag, ic, h1, h2, hj1, hj2,
                        mc_callback1, mc_callback2, IC_relax, state_relax,
                        var_relax, param, kmax, calculate_local_sensitivity, 
-                       local_problem_storage, d)
+                       local_problem_storage, d, constant_state_bounds)
 end
 
 function relax!(d::Wilhelm2019)
 
     # load state relaxation bounds at support values
-    if d.integrator_states.set_lower_state || d.integrator_states.set_upper_state
-        @. d.X = Interval{Float64}(d.xL, d.xU)
-        @show d.X
+    if d.constant_state_bounds !== nothing
+        for i = 1:d.steps
+            d.X[:,i] .= Interval{Float64}.(d.constant_state_bounds.xL, d.constant_state_bounds.xU)
+        end
     end
 
     # if P has been updated perform an parametric interval contraction,
@@ -428,7 +431,6 @@ function relax!(d::Wilhelm2019)
 
         # evaluate initial condition
         d.X0P .= d.ic(d.P)
-        @show d.X0P
 
         # loads CallbackH and CallbackHJ function with correct time and prior x values
         @inbounds for j=1:d.nx
@@ -464,7 +466,6 @@ function relax!(d::Wilhelm2019)
         end
 
         for i in 2:d.steps
-            #println("step number is i = $i")
             # loads CallbackH and CallbackHJ function with correct time and prior x values
             @inbounds for j=1:d.nx
                 d.pi_callback2.X[j] = d.X[j,i]
@@ -533,6 +534,7 @@ function relax!(d::Wilhelm2019)
                 for j=1:d.nx
                     @inbounds d.param[1][q][j] = d.mccallback1.param[q][j]
                 end
+                @show d.param[1][q][:]
             end
 
             # generate and save relaxation at reference point
@@ -540,6 +542,7 @@ function relax!(d::Wilhelm2019)
             @inbounds for j=1:d.nx
                 d.state_relax[j,1] = d.mccallback1.x_mc[j]
             end
+            @show d.state_relax[:,1]
 
             for i=2:d.steps
                 # loads MCcallback, CallbackH and CallbackHJ function with correct time and prior x values
@@ -568,9 +571,9 @@ function relax!(d::Wilhelm2019)
                 # generate and save relaxation at reference point
                 implicit_relax_h!(d.mccallback2)
                 @inbounds for j=1:d.nx
-                    d.state_relax[j+d.nx*(i-1)] = d.mccallback2.x_mc[j]
+                    d.state_relax[j,i] = d.mccallback2.x_mc[j]
                 end
-            end
+             end
         end
     end
 
@@ -605,7 +608,7 @@ function relax!(d::Wilhelm2019)
         # computes relaxation
         implicit_relax_h!(d.mccallback1)
         @inbounds for j=1:d.nx
-            d.state_relax[j] = d.mccallback1.x_mc[j]
+            d.state_relax[j, 1] = d.mccallback1.x_mc[j]
         end
         for i=2:d.steps
             # loads MC callback, CallbackH and CallbackHJ function with correct time and prior x values
@@ -631,7 +634,7 @@ function relax!(d::Wilhelm2019)
             # computes relaxation
             implicit_relax_h!(d.mccallback2)
             @inbounds for j=1:d.nx
-                d.state_relax[j+d.nx*(i-1)] = d.mccallback2.x_mc[j]
+                d.state_relax[j, i] = d.mccallback2.x_mc[j]
             end
         end
     end
@@ -707,6 +710,7 @@ DBB.supports(::Wilhelm2019, ::DBB.IsSolutionSet) = true
 DBB.supports(::Wilhelm2019, ::DBB.TerminationStatus) = true
 DBB.supports(::Wilhelm2019, ::DBB.Value) = true
 DBB.supports(::Wilhelm2019, ::DBB.ParameterValue) = true
+DBB.supports(::Wilhelm2019, ::DBB.ConstantStateBounds) = true
 
 DBB.get(t::Wilhelm2019, v::DBB.IntegratorName) = "Wilhelm 2019 Integrator"
 DBB.get(t::Wilhelm2019, v::DBB.IsNumeric) = true
@@ -717,6 +721,12 @@ DBB.get(t::Wilhelm2019, s::DBB.ParameterNumber) = t.np
 DBB.get(t::Wilhelm2019, s::DBB.StateNumber) = t.nx
 DBB.get(t::Wilhelm2019, s::DBB.SupportNumber) = length(t.time)
 DBB.get(t::Wilhelm2019, s::DBB.AttachedProblem) = t.prob
+
+
+function DBB.set!(t::Wilhelm2019, v::ConstantStateBounds)
+    t.constant_state_bounds = v
+    return
+end
 
 function DBB.get(t::Wilhelm2019, v::DBB.LocalIntegrator)
     return t.local_problem_storage
