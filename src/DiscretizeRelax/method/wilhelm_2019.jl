@@ -191,9 +191,9 @@ Use an second-order Backward Difference Formula method style of relaxation.
 """
 struct BDF2 <: W19T end
 
-local_integrator(wt::ImpEuler) = ImplicitEuler(autodiff = false)
-local_integrator(wt::AM2) = Trapezoid(autodiff = false)
-local_integrator(wt::BDF2) = ABDF2(autodiff = false)
+state_contractor_integrator(m::ImpEuler) = ImplicitEuler(autodiff = false)
+state_contractor_integrator(m::AM2) = Trapezoid(autodiff = false)
+state_contractor_integrator(m::BDF2) = ABDF2(autodiff = false)
 
 """
 $(TYPEDEF)
@@ -282,7 +282,6 @@ function (cb::CallbackHJ{F, BDF2})(out, x, p) where F
     return
 end
 
-#=
 """
 $(TYPEDEF)
 
@@ -292,7 +291,7 @@ $(TYPEDFIELDS)
 """
 mutable struct Wilhelm2019{T <: W19T, ICB1 <: PICallback, ICB2 <: PICallback,
                            PRE, CTR <: AbstractContractor,
-                           IC <: Function, F, Z, J, PRB, N, C, AMAT} <: AbstractStateContractor
+                           IC <: Function, F, Z, J, PRB, N, C, AMAT} <: DBB.AbstractODERelaxIntegrator
 
     # problem specifications
     integrator_type::T
@@ -339,26 +338,28 @@ mutable struct Wilhelm2019{T <: W19T, ICB1 <: PICallback, ICB2 <: PICallback,
     var_relax::Vector{Z}
     param::Vector{Vector{Vector{Z}}}
     kmax::Int
+    calculate_local_sensitivity::Bool
 
     # local evaluation information
-    local_problem_storage::LocalProblemStorage{N}
+    local_problem_storage
+    prob
+    constant_state_bounds::Union{Nothing,ConstantStateBounds}
 end
-=#
 
-#=
 function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
 
     h! = d.f
-    hj! = d.fj!
-    time = d.tsupports
+    hj! = d.Jx!
+    time = d.support_set.s
     steps = length(time) - 1
+
     p = d.p
     pL = d.pL
     pU = d.pU
     nx = d.nx
     np = length(p)
-    xL = (d.xL === nothing) ? zeros(nx,steps) : d.xL
-    xU = (d.xU === nothing) ? zeros(nx,steps) : d.xU
+    xL = isempty(d.xL) ? zeros(nx,steps) : d.xL
+    xU = isempty(d.xU) ? zeros(nx,steps) : d.xU
 
     P = Interval{Float64}.(pL, pU)
     X = zeros(Interval{Float64}, nx, steps)
@@ -388,31 +389,38 @@ function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
     mc_callback2 = MCCallback(h2, hj2, nx, np)
 
     # storage used for MC methods
-    kmax = 2
+    kmax = 1
     IC_relax = zeros(Z,nx)
     state_relax = zeros(Z, nx, steps)
     param = Vector{Vector{Z}}[[zeros(Z,nx) for j in 1:kmax] for i in 1:steps]
     var_relax = zeros(Z,np)
 
-    local_problem_storage = LocalProblemStorage(d)
-    abc = problem_type(local_problem_storage)
+    calculate_local_sensitivity = true
+    constant_state_bounds = d.constant_state_bounds
+
+    local_integrator() = state_contractor_integrator(t)
+    local_problem_storage = ODELocalIntegrator(d, local_integrator)
+
     return Wilhelm2019{T, typeof(pi_callback1), typeof(pi_callback2),
                        typeof(pi_precond!), typeof(pi_contractor),
-                       typeof(ic), typeof(h!), Z, typeof(hj!), problem_type(local_problem_storage),
+                       typeof(ic), typeof(h!), Z, typeof(hj!), nothing,
                        np, NewtonGS, Array{Float64,2}}(t, time, steps, p, pL, pU, nx, np, xL, xU,
                        IntegratorStates(), false, false, false,
                        P, X, X0P, pi_callback1, pi_callback2, pi_precond!,
                        pi_contractor, inclusion_flag, exclusion_flag,
                        extended_division_flag, ic, h1, h2, hj1, hj2,
                        mc_callback1, mc_callback2, IC_relax, state_relax,
-                       var_relax, param, kmax, local_problem_storage)
+                       var_relax, param, kmax, calculate_local_sensitivity, 
+                       local_problem_storage, d, constant_state_bounds)
 end
 
 function relax!(d::Wilhelm2019)
 
     # load state relaxation bounds at support values
-    if d.integrator_states.set_lower_state || d.integrator_states.set_upper_state
-        @. d.X = Interval{Float64}(d.xL, d.xU)
+    if d.constant_state_bounds !== nothing
+        for i = 1:d.steps
+            d.X[:,i] .= Interval{Float64}.(d.constant_state_bounds.xL, d.constant_state_bounds.xU)
+        end
     end
 
     # if P has been updated perform an parametric interval contraction,
@@ -526,6 +534,7 @@ function relax!(d::Wilhelm2019)
                 for j=1:d.nx
                     @inbounds d.param[1][q][j] = d.mccallback1.param[q][j]
                 end
+                @show d.param[1][q][:]
             end
 
             # generate and save relaxation at reference point
@@ -533,6 +542,7 @@ function relax!(d::Wilhelm2019)
             @inbounds for j=1:d.nx
                 d.state_relax[j,1] = d.mccallback1.x_mc[j]
             end
+            @show d.state_relax[:,1]
 
             for i=2:d.steps
                 # loads MCcallback, CallbackH and CallbackHJ function with correct time and prior x values
@@ -561,9 +571,9 @@ function relax!(d::Wilhelm2019)
                 # generate and save relaxation at reference point
                 implicit_relax_h!(d.mccallback2)
                 @inbounds for j=1:d.nx
-                    d.state_relax[j+d.nx*(i-1)] = d.mccallback2.x_mc[j]
+                    d.state_relax[j,i] = d.mccallback2.x_mc[j]
                 end
-            end
+             end
         end
     end
 
@@ -598,7 +608,7 @@ function relax!(d::Wilhelm2019)
         # computes relaxation
         implicit_relax_h!(d.mccallback1)
         @inbounds for j=1:d.nx
-            d.state_relax[j] = d.mccallback1.x_mc[j]
+            d.state_relax[j, 1] = d.mccallback1.x_mc[j]
         end
         for i=2:d.steps
             # loads MC callback, CallbackH and CallbackHJ function with correct time and prior x values
@@ -624,7 +634,7 @@ function relax!(d::Wilhelm2019)
             # computes relaxation
             implicit_relax_h!(d.mccallback2)
             @inbounds for j=1:d.nx
-                d.state_relax[j+d.nx*(i-1)] = d.mccallback2.x_mc[j]
+                d.state_relax[j, i] = d.mccallback2.x_mc[j]
             end
         end
     end
@@ -652,53 +662,82 @@ function relax!(d::Wilhelm2019)
     return
 end
 
-function integrate!(d::Wilhelm2019)
-    d.local_problem_storage.pduals .= seed_duals(d.p)
-    d.local_problem_storage.x0duals .= d.ic(d.local_problem_storage.pduals)
-    @inbounds for i in 1:d.np
-        d.local_problem_storage.x0local[i] = d.local_problem_storage.x0duals[i].value
-        @inbounds for j in 1:d.nx
-            d.local_problem_storage.x0local[(j+d.np+(i-1)*d.nx)] = d.local_problem_storage.x0duals[i].partials[j]
+function DBB.integrate!(d::Wilhelm2019, p::ODERelaxProb)
+
+    local_integrator() = state_contractor_integrator(d.integrator_type)
+    local_prob_storage = DBB.get(d, DBB.LocalIntegrator())::ODELocalIntegrator
+    local_prob_storage.integrator = local_integrator
+    local_prob_storage.adaptive_solver = false
+    local_prob_storage.user_t = d.time
+
+    DBB.getall!(local_prob_storage.p, d, ParameterValue())
+    local_prob_storage.pduals .= DBB.seed_duals(Val(length(local_prob_storage.p)), local_prob_storage.p)
+    local_prob_storage.x0duals = p.x0(d.local_problem_storage.pduals)
+    solution_t = DBB.integrate!(Val(DBB.get(d, DBB.LocalSensitivityOn())), d, p)
+
+    empty!(local_prob_storage.local_t_dict_flt)
+    empty!(local_prob_storage.local_t_dict_indx)
+
+    for (tindx, t) in enumerate(solution_t)
+        local_prob_storage.local_t_dict_flt[t] = tindx
+    end
+
+    if !isempty(local_prob_storage.user_t)
+        next_support_time = local_prob_storage.user_t[1]
+        supports_left = length(local_prob_storage.user_t)
+        loc_count = 1
+        for (tindx, t) in enumerate(solution_t)
+            if t == next_support_time
+                local_prob_storage.local_t_dict_indx[loc_count] = tindx
+                loc_count += 1
+                supports_left -= 1
+                if supports_left > 0
+                    next_support_time = local_prob_storage.user_t[loc_count]
+                end
+            end
         end
     end
-    d.local_problem_storage.pode_problem = remake(d.local_problem_storage.pode_problem, u0 = d.local_problem_storage.x0local, p = d.p)
-    solution = solve(d.local_problem_storage.pode_problem, local_integrator(d.integrator_type), tstops = d.time, adaptive = false)
-    d.local_problem_storage.pode_x[:,:], d.local_problem_storage.pode_dxdp[:] = extract_local_sensitivities(solution)
     return
 end
-=#
-#=
-supports(::Wilhelm2019, ::IntegratorName) = true
-supports(::Wilhelm2019, ::Gradient) = true
-supports(::Wilhelm2019, ::Subgradient) = true
-supports(::Wilhelm2019, ::Bound) = true
-supports(::Wilhelm2019, ::Relaxation) = true
-supports(::Wilhelm2019, ::IsNumeric) = true
-supports(::Wilhelm2019, ::IsSolutionSet) = true
-supports(::Wilhelm2019, ::TerminationStatus) = true
-supports(::Wilhelm2019, ::Value) = true
-supports(::Wilhelm2019, ::ParameterValue) = true
 
-get(t::Wilhelm2019, v::IntegratorName) = "Wilhelm 2019 Integrator"
-get(t::Wilhelm2019, v::IsNumeric) = true
-get(t::Wilhelm2019, v::IsSolutionSet) = false
-get(t::Wilhelm2019, s::TerminationStatus) = t.integrator_states.termination_status
+DBB.supports(::Wilhelm2019, ::DBB.IntegratorName) = true
+DBB.supports(::Wilhelm2019, ::DBB.Gradient) = true
+DBB.supports(::Wilhelm2019, ::DBB.Subgradient) = true
+DBB.supports(::Wilhelm2019, ::DBB.Bound) = true
+DBB.supports(::Wilhelm2019, ::DBB.Relaxation) = true
+DBB.supports(::Wilhelm2019, ::DBB.IsNumeric) = true
+DBB.supports(::Wilhelm2019, ::DBB.IsSolutionSet) = true
+DBB.supports(::Wilhelm2019, ::DBB.TerminationStatus) = true
+DBB.supports(::Wilhelm2019, ::DBB.Value) = true
+DBB.supports(::Wilhelm2019, ::DBB.ParameterValue) = true
+DBB.supports(::Wilhelm2019, ::DBB.ConstantStateBounds) = true
 
-function getall!(out::Array{Float64,2}, t::Wilhelm2019, v::Value)
+DBB.get(t::Wilhelm2019, v::DBB.IntegratorName) = "Wilhelm 2019 Integrator"
+DBB.get(t::Wilhelm2019, v::DBB.IsNumeric) = true
+DBB.get(t::Wilhelm2019, v::DBB.IsSolutionSet) = false
+DBB.get(t::Wilhelm2019, s::DBB.TerminationStatus) = t.integrator_states.termination_status
+
+DBB.get(t::Wilhelm2019, s::DBB.ParameterNumber) = t.np
+DBB.get(t::Wilhelm2019, s::DBB.StateNumber) = t.nx
+DBB.get(t::Wilhelm2019, s::DBB.SupportNumber) = length(t.time)
+DBB.get(t::Wilhelm2019, s::DBB.AttachedProblem) = t.prob
+
+
+function DBB.set!(t::Wilhelm2019, v::ConstantStateBounds)
+    t.constant_state_bounds = v
+    return
+end
+
+function DBB.get(t::Wilhelm2019, v::DBB.LocalIntegrator)
+    return t.local_problem_storage
+end
+
+function DBB.getall!(out::Array{Float64,2}, t::Wilhelm2019, v::DBB.Value)
     out .= t.local_problem_storage.pode_x
     return
 end
 
-function getall!(out::Vector{Array{Float64,2}}, t::Wilhelm2019, g::Gradient{NOMINAL})
-    for i in 1:t.np
-        @inbounds for j in eachindex(out[i])
-            out[i][j] = t.local_problem_storage.pode_dxdp[i][j]
-        end
-    end
-    return
-end
-
-function getall!(out::Vector{Array{Float64,2}}, t::Wilhelm2019, g::Gradient{LOWER})
+function DBB.getall!(out::Vector{Array{Float64,2}}, t::Wilhelm2019, g::DBB.Gradient{Lower})
     if ~t.differentiable_flag
         error("Integrator does not generate differential relaxations. Set the
                differentiable_flag field to true and reintegrate.")
@@ -714,7 +753,7 @@ function getall!(out::Vector{Array{Float64,2}}, t::Wilhelm2019, g::Gradient{LOWE
     end
     return
 end
-function getall!(out::Vector{Array{Float64,2}}, t::Wilhelm2019, g::Gradient{UPPER})
+function DBB.getall!(out::Vector{Array{Float64,2}}, t::Wilhelm2019, g::DBB.Gradient{Upper})
     if ~t.differentiable_flag
         error("Integrator does not generate differential relaxations. Set the
                differentiable_flag field to true and reintegrate.")
@@ -731,7 +770,7 @@ function getall!(out::Vector{Array{Float64,2}}, t::Wilhelm2019, g::Gradient{UPPE
     return
 end
 
-function getall!(out::Vector{Array{Float64,2}}, t::Wilhelm2019, g::Subgradient{LOWER})
+function DBB.getall!(out::Vector{Array{Float64,2}}, t::Wilhelm2019, g::DBB.Subgradient{Lower})
     for i in 1:t.np
         if t.evaluate_interval
             fill!(out[i], 0.0)
@@ -743,7 +782,7 @@ function getall!(out::Vector{Array{Float64,2}}, t::Wilhelm2019, g::Subgradient{L
     end
     return
 end
-function getall!(out::Vector{Array{Float64,2}}, t::Wilhelm2019, g::Subgradient{UPPER})
+function DBB.getall!(out::Vector{Array{Float64,2}}, t::Wilhelm2019, g::DBB.Subgradient{Upper})
     for i in 1:t.np
         if t.evaluate_interval
             fill!(out[i], 0.0)
@@ -756,27 +795,27 @@ function getall!(out::Vector{Array{Float64,2}}, t::Wilhelm2019, g::Subgradient{U
     return
 end
 
-function getall!(out::Array{Float64,2}, t::Wilhelm2019, v::Bound{LOWER})
+function DBB.getall!(out::Array{Float64,2}, t::Wilhelm2019, v::DBB.Bound{Lower})
     out .= t.xL
     return
 end
 
-function getall!(out::Vector{Float64}, t::Wilhelm2019, v::Bound{LOWER})
+function DBB.getall!(out::Vector{Float64}, t::Wilhelm2019, v::DBB.Bound{Lower})
     out[:] = t.xL[1,:]
     return
 end
 
-function getall!(out::Array{Float64,2}, t::Wilhelm2019, v::Bound{UPPER})
+function DBB.getall!(out::Array{Float64,2}, t::Wilhelm2019, v::DBB.Bound{Upper})
     out .= t.xU
     return
 end
 
-function getall!(out::Vector{Float64}, t::Wilhelm2019, v::Bound{UPPER})
+function DBB.getall!(out::Vector{Float64}, t::Wilhelm2019, v::DBB.Bound{Upper})
     out[:] = t.xU[1,:]
     return
 end
 
-function getall!(out::Array{Float64,2}, t::Wilhelm2019, v::Relaxation{LOWER})
+function DBB.getall!(out::Array{Float64,2}, t::Wilhelm2019, v::DBB.Relaxation{Lower})
     if t.evaluate_interval
         @inbounds for i in eachindex(out)
             out[i] = t.X[i].lo
@@ -788,7 +827,7 @@ function getall!(out::Array{Float64,2}, t::Wilhelm2019, v::Relaxation{LOWER})
     end
     return
 end
-function getall!(out::Vector{Float64}, t::Wilhelm2019, v::Relaxation{LOWER})
+function DBB.getall!(out::Vector{Float64}, t::Wilhelm2019, v::DBB.Relaxation{Lower})
     if t.evaluate_interval
         @inbounds for i in eachindex(out)
             out[i] = t.X[i].lo
@@ -801,7 +840,7 @@ function getall!(out::Vector{Float64}, t::Wilhelm2019, v::Relaxation{LOWER})
     return
 end
 
-function getall!(out::Array{Float64,2}, t::Wilhelm2019, v::Relaxation{UPPER})
+function DBB.getall!(out::Array{Float64,2}, t::Wilhelm2019, v::DBB.Relaxation{Upper})
     if t.evaluate_interval
         @inbounds for i in eachindex(out)
             out[i] = t.X[i].hi
@@ -813,7 +852,7 @@ function getall!(out::Array{Float64,2}, t::Wilhelm2019, v::Relaxation{UPPER})
     end
     return
 end
-function getall!(out::Vector{Float64}, t::Wilhelm2019, v::Relaxation{UPPER})
+function DBB.getall!(out::Vector{Float64}, t::Wilhelm2019, v::DBB.Relaxation{Upper})
     if t.evaluate_interval
         @inbounds for i in eachindex(out)
             out[i] = t.X[i].hi
@@ -826,7 +865,23 @@ function getall!(out::Vector{Float64}, t::Wilhelm2019, v::Relaxation{UPPER})
     return
 end
 
-function setall!(t::Wilhelm2019, v::ParameterBound{LOWER}, value::Vector{Float64})
+function DBB.getall!(t::Wilhelm2019, v::DBB.ParameterBound{Lower})
+    @inbounds for i in 1:t.np
+        out[i] = t.pL[i]
+    end
+    return
+end
+DBB.getall(t::Wilhelm2019, v::DBB.ParameterBound{Lower}) = t.pL
+
+function DBB.getall!(out, t::Wilhelm2019, v::DBB.ParameterBound{Upper})
+    @inbounds for i in 1:t.np
+        out[i] = t.pU[i]
+    end
+    return
+end
+DBB.getall(t::Wilhelm2019, v::DBB.ParameterBound{Upper}) = t.pU
+
+function DBB.setall!(t::Wilhelm2019, v::DBB.ParameterBound{Lower}, value::Vector{Float64})
     t.integrator_states.new_decision_box = true
     @inbounds for i in 1:t.np
         t.pL[i] = value[i]
@@ -834,7 +889,7 @@ function setall!(t::Wilhelm2019, v::ParameterBound{LOWER}, value::Vector{Float64
     return
 end
 
-function setall!(t::Wilhelm2019, v::ParameterBound{UPPER}, value::Vector{Float64})
+function DBB.setall!(t::Wilhelm2019, v::DBB.ParameterBound{Upper}, value::Vector{Float64})
     t.integrator_states.new_decision_box = true
     @inbounds for i in 1:t.np
         t.pU[i] = value[i]
@@ -842,7 +897,7 @@ function setall!(t::Wilhelm2019, v::ParameterBound{UPPER}, value::Vector{Float64
     return
 end
 
-function setall!(t::Wilhelm2019, v::ParameterValue, value::Vector{Float64})
+function DBB.setall!(t::Wilhelm2019, v::DBB.ParameterValue, value::Vector{Float64})
     t.integrator_states.new_decision_pnt = true
     @inbounds for i in 1:t.np
         t.p[i] = value[i]
@@ -850,7 +905,14 @@ function setall!(t::Wilhelm2019, v::ParameterValue, value::Vector{Float64})
     return
 end
 
-function setall!(t::Wilhelm2019, v::Bound{LOWER}, values::Array{Float64,2})
+function DBB.getall!(out, t::Wilhelm2019, v::DBB.ParameterValue)
+    @inbounds for i in 1:t.np
+        out[i] = t.p[i]
+    end
+    return
+end
+
+function DBB.setall!(t::Wilhelm2019, v::DBB.Bound{Lower}, values::Array{Float64,2})
     if t.integrator_states.new_decision_box
         t.integrator_states.set_lower_state = true
     end
@@ -862,7 +924,7 @@ function setall!(t::Wilhelm2019, v::Bound{LOWER}, values::Array{Float64,2})
     return
 end
 
-function setall!(t::Wilhelm2019, v::Bound{LOWER}, values::Vector{Float64})
+function DBB.setall!(t::Wilhelm2019, v::DBB.Bound{Lower}, values::Vector{Float64})
     if t.integrator_states.new_decision_box
         t.integrator_states.set_lower_state = true
     end
@@ -872,7 +934,7 @@ function setall!(t::Wilhelm2019, v::Bound{LOWER}, values::Vector{Float64})
     return
 end
 
-function setall!(t::Wilhelm2019, v::Bound{UPPER}, values::Array{Float64,2})
+function DBB.setall!(t::Wilhelm2019, v::DBB.Bound{Upper}, values::Array{Float64,2})
     if t.integrator_states.new_decision_box
         t.integrator_states.set_upper_state = true
     end
@@ -884,7 +946,7 @@ function setall!(t::Wilhelm2019, v::Bound{UPPER}, values::Array{Float64,2})
     return
 end
 
-function setall!(t::Wilhelm2019, v::Bound{UPPER}, values::Vector{Float64})
+function DBB.setall!(t::Wilhelm2019, v::DBB.Bound{Upper}, values::Vector{Float64})
     if t.integrator_states.new_decision_box
         t.integrator_states.set_upper_state = true
     end
@@ -893,8 +955,152 @@ function setall!(t::Wilhelm2019, v::Bound{UPPER}, values::Vector{Float64})
     end
     return
 end
-=#
 
+function DBB.get(t::Wilhelm2019, v::DBB.SupportSet{T}) where T
+    DBB.get(t.prob, v)
+end
+
+DBB.get(t::Wilhelm2019, v::DBB.LocalSensitivityOn) = t.calculate_local_sensitivity
+function DBB.set!(t::Wilhelm2019, v::DBB.LocalSensitivityOn, b::Bool) 
+    t.calculate_local_sensitivity = b
+end
+
+function DBB.get!(out, t::Wilhelm2019, v::DBB.Bound{Lower})
+    if v.index > 1
+        if t.evaluate_interval
+            for i = 1:length(out) 
+                out[i] = t.xL[i,v.index-1]
+            end
+        else
+            for i = 1:length(out)
+                out[i] = t.state_relax[i,v.index-1].Intv.lo
+            end
+        end
+    end
+    if t.evaluate_interval
+        for i = 1:length(out) 
+            out[i] = t.X0P[i].lo
+        end
+    else
+        for i = 1:length(out) 
+            out[i] = t.IC_relax[i].Intv.lo
+        end
+    end
+end
+function DBB.get!(out, t::Wilhelm2019, v::DBB.Bound{Upper})
+    if v.index > 1
+        if t.evaluate_interval
+            for i = 1:length(out) 
+                out[i] = t.xU[i,v.index-1]
+            end
+        else
+            for i = 1:length(out)
+                out[i] = t.state_relax[i,v.index-1].Intv.hi
+            end
+        end
+    end
+    if t.evaluate_interval
+        for i = 1:length(out) 
+            out[i] = t.X0P[i].hi
+        end
+    else
+        for i = 1:length(out) 
+            out[i] = t.IC_relax[i].Intv.hi
+        end
+    end
+end
+function DBB.get!(out, t::Wilhelm2019, v::DBB.Relaxation{Lower})
+    if v.index > 1
+        if t.evaluate_interval
+            for i = 1:length(out) 
+                out[i] = t.xL[i,v.index-1]
+            end
+        else
+            for i = 1:length(out)
+                out[i] = t.state_relax[i,v.index-1].cv
+            end
+        end
+    end
+    if t.evaluate_interval
+        for i = 1:length(out) 
+            out[i] = t.X0P[i].lo
+        end
+    else
+        for i = 1:length(out) 
+            out[i] = t.IC_relax[i].cv
+        end
+    end
+end
+function DBB.get!(out, t::Wilhelm2019, v::DBB.Relaxation{Upper})
+    if v.index > 1
+        if t.evaluate_interval
+            for i = 1:length(out) 
+                out[i] = t.xU[i,v.index-1]
+            end
+        else
+            for i = 1:length(out)
+                out[i] = t.state_relax[i,v.index-1].cc
+            end
+        end
+    end
+    if t.evaluate_interval
+        for i = 1:length(out) 
+            out[i] = t.X0P[i].hi
+        end
+    else
+        for i = 1:length(out) 
+            out[i] = t.IC_relax[i].cc
+        end
+    end
+end
+function DBB.get!(out, t::Wilhelm2019, v::DBB.Subgradient{Lower})
+    if v.index > 1
+        if t.evaluate_interval
+            fill!(out, 0.0)
+        else
+            ni, nj = size(out)
+            for i = 1:ni
+                for j = 1:nj
+                    out[i, j] = t.state_relax[i,v.index-1].cv_grad[j]
+                end
+            end
+        end
+    end
+    if t.evaluate_interval
+        fill!(out, 0.0)
+    else
+        ni, nj = size(out)
+        for i = 1:ni
+            for j = 1:nj
+                out[i, j] = t.IC_relax[i].cv_grad[j]
+            end
+        end
+    end
+end
+function DBB.get!(out, t::Wilhelm2019, v::DBB.Subgradient{Upper})
+    if v.index > 1
+        if t.evaluate_interval
+            fill!(out, 0.0)
+        else
+            ni, nj = size(out)
+            for i = 1:ni
+                for j = 1:nj
+                    out[i, j] = t.state_relax[i,v.index-1].cc_grad[j]
+                end
+            end
+        end
+    end
+    if t.evaluate_interval
+        fill!(out, 0.0)
+    else
+        ni, nj = size(out)
+        for i = 1:ni
+            for j = 1:nj
+                out[i, j] = t.IC_relax[i].cc_grad[j]
+            end
+        end
+    end
+end
 
 """
 $(FUNCTIONNAME)
