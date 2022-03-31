@@ -289,9 +289,8 @@ An integrator that bounds the numerical solution of the pODEs system.
 
 $(TYPEDFIELDS)
 """
-mutable struct Wilhelm2019{T <: W19T, ICB1 <: PICallback, ICB2 <: PICallback,
-                           PRE, CTR <: AbstractContractor,
-                           IC <: Function, F, Z, J, PRB, N, C, AMAT} <: DBB.AbstractODERelaxIntegrator
+mutable struct Wilhelm2019{T <: W19T, ICB1 <: PICallback, ICB2 <: PICallback, PRE, 
+                           CTR <: AbstractContractor, IC <: Function, F, Z, J, PRB, N, C, AMAT} <: DBB.AbstractODERelaxIntegrator
 
     # problem specifications
     integrator_type::T
@@ -344,6 +343,9 @@ mutable struct Wilhelm2019{T <: W19T, ICB1 <: PICallback, ICB2 <: PICallback,
     local_problem_storage
     prob
     constant_state_bounds::Union{Nothing,ConstantStateBounds}
+
+    relax_t_dict_flt::Dict{Float64,Int}
+    relax_t_dict_indx::Dict{Int,Int}
 end
 
 function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
@@ -401,6 +403,14 @@ function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
     local_integrator() = state_contractor_integrator(t)
     local_problem_storage = ODELocalIntegrator(d, local_integrator)
 
+    support_set = DBB.get(d, DBB.SupportSet())
+    relax_t_dict_flt = Dict{Float64,Int}()
+    relax_t_dict_indx = Dict{Int,Int}()
+    for (i,s) in enumerate(support_set.s)
+        relax_t_dict_flt[s] = i
+        relax_t_dict_indx[i] = i
+    end
+
     return Wilhelm2019{T, typeof(pi_callback1), typeof(pi_callback2),
                        typeof(pi_precond!), typeof(pi_contractor),
                        typeof(ic), typeof(h!), Z, typeof(hj!), nothing,
@@ -411,7 +421,17 @@ function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
                        extended_division_flag, ic, h1, h2, hj1, hj2,
                        mc_callback1, mc_callback2, IC_relax, state_relax,
                        var_relax, param, kmax, calculate_local_sensitivity, 
-                       local_problem_storage, d, constant_state_bounds)
+                       local_problem_storage, d, constant_state_bounds,
+                       relax_t_dict_flt, relax_t_dict_indx)
+end
+
+function get_val_loc(d::Wilhelm2019, i::Int, t::Float64)
+    println("ran get val loc")
+    (i <= 0 && t == -Inf) && error("Must set either index or time.")
+    if i > 0
+        return d.relax_t_dict_indx[i]
+    end
+    d.relax_t_dict_flt[t]
 end
 
 function relax!(d::Wilhelm2019)
@@ -589,6 +609,8 @@ function relax!(d::Wilhelm2019)
 
         # compute initial condition
         d.IC_relax .= d.ic(d.var_relax)
+        @show d.var_relax
+        @show d.IC_relax
 
         # loads MC callback, CallbackH and CallbackHJ function with correct time and prior x values
         @inbounds for j=1:d.nx
@@ -956,101 +978,54 @@ function DBB.setall!(t::Wilhelm2019, v::DBB.Bound{Upper}, values::Vector{Float64
     return
 end
 
-function DBB.get(t::Wilhelm2019, v::DBB.SupportSet{T}) where T
-    DBB.get(t.prob, v)
-end
-
+DBB.get(t::Wilhelm2019, v::DBB.SupportSet{T}) where T = DBB.get(t.prob, v)
 DBB.get(t::Wilhelm2019, v::DBB.LocalSensitivityOn) = t.calculate_local_sensitivity
 function DBB.set!(t::Wilhelm2019, v::DBB.LocalSensitivityOn, b::Bool) 
     t.calculate_local_sensitivity = b
 end
 
 function DBB.get!(out, t::Wilhelm2019, v::DBB.Bound{Lower})
-    if v.index > 1
-        if t.evaluate_interval
-            for i = 1:length(out) 
-                out[i] = t.xL[i,v.index-1]
-            end
-        else
-            for i = 1:length(out)
-                out[i] = t.state_relax[i,v.index-1].Intv.lo
-            end
-        end
+    vi = get_val_loc(t, v.index, v.time)
+    if vi <= 1
+        return t.evaluate_interval ? map!(lo, out, t.X0P) : map!(lo, out, t.IC_relax)
     end
     if t.evaluate_interval
-        for i = 1:length(out) 
-            out[i] = t.X0P[i].lo
-        end
+        out .= view(t.xL, :, vi - 1)
     else
-        for i = 1:length(out) 
-            out[i] = t.IC_relax[i].Intv.lo
-        end
+        map!(lo, out, view(t.state_relax, :, vi - 1))
     end
 end
 function DBB.get!(out, t::Wilhelm2019, v::DBB.Bound{Upper})
-    if v.index > 1
-        if t.evaluate_interval
-            for i = 1:length(out) 
-                out[i] = t.xU[i,v.index-1]
-            end
-        else
-            for i = 1:length(out)
-                out[i] = t.state_relax[i,v.index-1].Intv.hi
-            end
-        end
+    vi = get_val_loc(t, v.index, v.time)
+    if vi <= 1
+        return t.evaluate_interval ? map!(hi, out, t.X0P) : map!(hi, out, t.IC_relax)
     end
     if t.evaluate_interval
-        for i = 1:length(out) 
-            out[i] = t.X0P[i].hi
-        end
+        out .= view(t.xU, :, vi - 1)
     else
-        for i = 1:length(out) 
-            out[i] = t.IC_relax[i].Intv.hi
-        end
+        map!(hi, out, view(t.state_relax, :, vi - 1))
     end
 end
 function DBB.get!(out, t::Wilhelm2019, v::DBB.Relaxation{Lower})
-    if v.index > 1
-        if t.evaluate_interval
-            for i = 1:length(out) 
-                out[i] = t.xL[i,v.index-1]
-            end
-        else
-            for i = 1:length(out)
-                out[i] = t.state_relax[i,v.index-1].cv
-            end
-        end
+    vi = get_val_loc(t, v.index, v.time)
+    if vi <= 1
+        return t.evaluate_interval ? map!(lo, out, t.X0P) : map!(cv, out, t.IC_relax)
     end
     if t.evaluate_interval
-        for i = 1:length(out) 
-            out[i] = t.X0P[i].lo
-        end
+        out .= view(t.xL, :, vi - 1)
     else
-        for i = 1:length(out) 
-            out[i] = t.IC_relax[i].cv
-        end
+        map!(cv, out, view(t.state_relax, :, vi - 1))
     end
 end
 function DBB.get!(out, t::Wilhelm2019, v::DBB.Relaxation{Upper})
-    if v.index > 1
-        if t.evaluate_interval
-            for i = 1:length(out) 
-                out[i] = t.xU[i,v.index-1]
-            end
-        else
-            for i = 1:length(out)
-                out[i] = t.state_relax[i,v.index-1].cc
-            end
-        end
+    vi = get_val_loc(t, v.index, v.time)
+    if vi <= 1
+        return t.evaluate_interval ? map!(hi, out, t.X0P) : map!(cc, out, t.IC_relax)
     end
     if t.evaluate_interval
-        for i = 1:length(out) 
-            out[i] = t.X0P[i].hi
-        end
+        out .= view(t.xU, :, vi - 1)
     else
-        for i = 1:length(out) 
-            out[i] = t.IC_relax[i].cc
-        end
+        map!(cc, out, view(t.state_relax, :, vi - 1))
     end
 end
 function DBB.get!(out, t::Wilhelm2019, v::DBB.Subgradient{Lower})
@@ -1065,6 +1040,7 @@ function DBB.get!(out, t::Wilhelm2019, v::DBB.Subgradient{Lower})
                 end
             end
         end
+        return
     end
     if t.evaluate_interval
         fill!(out, 0.0)
@@ -1089,6 +1065,7 @@ function DBB.get!(out, t::Wilhelm2019, v::DBB.Subgradient{Upper})
                 end
             end
         end
+        return
     end
     if t.evaluate_interval
         fill!(out, 0.0)
@@ -1134,14 +1111,12 @@ end
 $(FUNCTIONNAME)
 """
 function inclusion_test(inclusion_flag::Bool, inclusion_vector::Vector{Bool}, nx::Int)
-    if inclusion_flag == false
-        @inbounds for i=1:nx
-            if inclusion_vector[i]
+    if !inclusion_flag
+        for i=1:nx
+            if @inbounds inclusion_vector[i]
                 inclusion_flag = true
-                continue
             else
-                inclusion_flag = false
-                break
+                inclusion_flag = false; break
             end
         end
     end
