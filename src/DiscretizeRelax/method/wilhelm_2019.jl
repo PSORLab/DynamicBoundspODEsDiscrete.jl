@@ -426,7 +426,6 @@ function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
 end
 
 function get_val_loc(d::Wilhelm2019, i::Int, t::Float64)
-    println("ran get val loc")
     (i <= 0 && t == -Inf) && error("Must set either index or time.")
     if i > 0
         return d.relax_t_dict_indx[i]
@@ -1029,52 +1028,30 @@ function DBB.get!(out, t::Wilhelm2019, v::DBB.Relaxation{Upper})
     end
 end
 function DBB.get!(out, t::Wilhelm2019, v::DBB.Subgradient{Lower})
-    if v.index > 1
-        if t.evaluate_interval
-            fill!(out, 0.0)
-        else
-            ni, nj = size(out)
-            for i = 1:ni
-                for j = 1:nj
-                    out[i, j] = t.state_relax[i,v.index-1].cv_grad[j]
-                end
-            end
+    vi = get_val_loc(t, v.index, v.time)
+    t.evaluate_interval && (return fill!(out, 0.0);)
+    ni, nj = size(out)
+    if vi <= 1
+        for i = 1:ni, j = 1:nj
+            out[i, j] = t.IC_relax[i].cv_grad[j]
         end
-        return
-    end
-    if t.evaluate_interval
-        fill!(out, 0.0)
     else
-        ni, nj = size(out)
-        for i = 1:ni
-            for j = 1:nj
-                out[i, j] = t.IC_relax[i].cv_grad[j]
-            end
+        for i = 1:ni, j = 1:nj
+            out[i, j] = t.state_relax[i,vi-1].cv_grad[j]
         end
     end
 end
 function DBB.get!(out, t::Wilhelm2019, v::DBB.Subgradient{Upper})
-    if v.index > 1
-        if t.evaluate_interval
-            fill!(out, 0.0)
-        else
-            ni, nj = size(out)
-            for i = 1:ni
-                for j = 1:nj
-                    out[i, j] = t.state_relax[i,v.index-1].cc_grad[j]
-                end
-            end
+    vi = get_val_loc(t, v.index, v.time)
+    t.evaluate_interval && (return fill!(out, 0.0);)
+    ni, nj = size(out)
+    if vi <= 1
+        for i = 1:ni, j = 1:nj
+            out[i, j] = t.IC_relax[i].cc_grad[j]
         end
-        return
-    end
-    if t.evaluate_interval
-        fill!(out, 0.0)
     else
-        ni, nj = size(out)
-        for i = 1:ni
-            for j = 1:nj
-                out[i, j] = t.IC_relax[i].cc_grad[j]
-            end
+        for i = 1:ni, j = 1:nj
+            out[i, j] = t.state_relax[i,vi-1].cc_grad[j]
         end
     end
 end
