@@ -3,7 +3,7 @@ Parametric Discretize-and-Relax methods within DynamicBounds.jl
 
 | **Linux/OS/Windows**                                   |        **Coverage**             |              
 |:-------------------------------------------------------:|:-------------------------------------------------------:|
-| [![Build Status](https://github.com/PSORLab/DynamicBoundspODEsDiscrete.jl/workflows/CI/badge.svg?branch=master)](https://github.com/PSORLab/DynamicBoundspODEsDiscrete.jl/actions?query=workflow%3ACI) | [![codecov](https://codecov.io/gh/PSORLab/DynamicBoundspODEsDiscrete.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/PSORLab/DynamicBoundspODEsDiscrete.jl)) |
+| [![Build Status](https://github.com/PSORLab/DynamicBoundspODEsDiscrete.jl/workflows/CI/badge.svg?branch=master)](https://github.com/PSORLab/DynamicBoundspODEsDiscrete.jl/actions?query=workflow%3ACI) | [![codecov](https://codecov.io/gh/PSORLab/DynamicBoundspODEsDiscrete.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/PSORLab/DynamicBoundspODEsDiscrete.jl) |
 
 ## Summary
 This package implements a discretize-and-relax approaches to
@@ -16,7 +16,7 @@ relaxations at these time-points. Full documentation of this functionality may b
 using Pkg; Pkg.add("DynamicBoundspODEsDiscrete")
 ```
 
-or using the following command in the pacakge manager environment
+or using the following command in the package manager environment
 ```
 pkg > add DynamicBoundspODEsDiscrete
 ```
