@@ -12,135 +12,201 @@
 # Defines the relax! routine for the DiscretizeRelax integrator.
 #############################################################################
 
-function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY}
-
-    fill!(d.time, 0.0)
-
-    storage_len = length(d.storage)
-    for i=1:(1000-storage_len)
-        push!(d.storage, zeros(T, d.nx))
-        push!(d.storage_apriori, zeros(T, d.nx))
-        push!(d.time, 0.0)
+fill_zero!(x::Vector{T}) where T = fill!(x, zero(T))
+function fill_identity!(x::Vector{T}) where T
+    x[1] = one(T)
+end
+function fill_identity!(x::Matrix{T}) where T
+    fill!(x, zero(T))
+    nx = size(x, 1)
+    for i = 1:nx
+        x[i,i] = one(T)
     end
+end
 
-    # reset relax!
-    for i = 1:length(d.storage)
-        fill!(d.storage[i], zero(T))
-    end
-    for i = 1:length(d.storage_apriori)
-        fill!(d.storage_apriori[i], zero(T))
-    end
+function populate_storage_buffer!(z::Vector{T}, nt) where T
+    foreach(i -> push!(z, zero(T)), length(z):nt)
+    fill!(z, zero(T))
+end
+function populate_storage_buffer!(z::Vector{Vector{T}}, nt, nx) where T
+    foreach(i -> push!(z, zeros(T, nx)), length(z):nt)
+    foreach(fill_zero!, z)
+end
+
+# GOOD
+"""
+    reset_relax!
+
+AAA
+"""
+function initialize_relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY}
+
+    @unpack time, storage, storage_apriori, storage_buffer_size, tsupports, nx, tspan = d
+    @unpack A_Q, A_inv, Δ = d.contractor_result
+
+    # reset apriori and contracted set storage along with time storage
+    populate_storage_buffer!(storage_apriori, storage_buffer_size, nx)
+    populate_storage_buffer!(storage, storage_buffer_size, nx)
+    populate_storage_buffer!(time, storage_buffer_size)
+
+    # reset dictionarys used to map storage to supported points
     empty!(d.relax_t_dict_indx)
     empty!(d.relax_t_dict_flt)
+
+    # reset buffers used to hold parallelpepid representation state bound/relaxation
+    foreach(fill_identity!, A_Q)
+    foreach(fill_identity!, A_inv)
+    set_Δ!(Δ, storage)
+
+    d.step_count = 1
+    if length(tsupports) > 0
+        d.next_support_i = 1
+        if tsupports[1] > 0.0 
+            d.next_support = tsupports[1]
+        elseif length(tsupports) > 1
+            d.next_support = tsupports[2]
+        end
+    else
+        d.next_support_i = 1E10 
+        d.next_support = Inf
+    end
+
+    ex = d.exist_result
+    ex.hj = !(ex.hj <= 0.0) ? ex.hj : 0.05*(tspan[2] - d.contractor_result.times[1])
+    ex.predicted_hj = ex.hj
+    d.contractor_result.hj = ex.hj
+
     d.step_result.time = 0.0
+    d.time[1] = tspan[1]
+    d.contractor_result.times[1] = tspan[1]
 
-    set_P!(d)         # Functor set P and P - p values for calculations
-    compute_X0!(d)     # Compute initial condition values
+    set_P!(d)
 
-    # Get initial time and integration direction
-    t = d.tspan[1]
-    tmax = d.tspan[2]
-    sign_tstep = copysign(1, tmax - t)
-    d.time[1] = t
-    d.contractor_result.times[1] = t
-
-    # Computes maximum step size to take (either hit support or max time)
-    support_indx = 1
-    next_support = Inf
-    tsupports = d.tsupports
-    if !isempty(tsupports)
-        if (tsupports[1] == 0.0)
-            support_indx += 1
-        end
-        next_support = tsupports[support_indx]
-    end
-
-    # initialize QR type storage
-    set_Δ!(d.contractor_result.Δ, d.storage)
-    fill!(d.contractor_result.A_Q[1], 0.0)
-    fill!(d.contractor_result.A_inv[1], 0.0)
-    for i = 1:d.nx
-        d.contractor_result.A_Q[1][i,i] = 1.0
-        d.contractor_result.A_inv[1][i,i] = 1.0
-    end
-
+    # reset result flag
     d.exist_result.status_flag = RELAXATION_NOT_CALLED
+    return
+end
 
-    # Begin integration loop
-    hlast = 0.0
-    d.step_count = 0
-    is_adaptive = d.exist_result.hj <= 0.0
-    d.exist_result.hj = !is_adaptive ? d.exist_result.hj : 0.01*(tmax - d.contractor_result.times[1])
-    d.exist_result.predicted_hj = d.exist_result.hj
-    stored_value_count = length(d.relax_t_dict_indx)
-    for step_number = 2:(d.step_limit+2)
-        if (sign_tstep*d.step_result.time <= sign_tstep*tmax) &&
-           (d.exist_result.predicted_hj != 0.0)
+function set_starting_existence_bounds!(ex::ExistStorage{F,K,S,T}, c::ContractorStorage{T}, r::StepResult{T}) where {F,K,S,T}
+    ex.Xj_0 .= r.Xⱼ
+    ex.predicted_hj = c.hj
+    nothing
+end
 
-            delT = abs(sign_tstep*d.step_result.time - sign_tstep*tmax)
+function set_result_info!(r, hj, predicted_hj)
+    r.time = round(r.time + hj, digits=13)
+    r.predicted_hj = predicted_hj
+    nothing
+end
 
-            # max step size is min of predicted, when next support point occurs,
-            # or the last time step in the span
-            tv = d.step_result.time
-            d.exist_result.hj = min(d.exist_result.hj, next_support - tv, tmax - tv)
-            hj_limit = min(next_support - tv, tmax - tv)
-            d.exist_result.hj_max = tmax - tv
-            is_support_pnt = (hj_limit == next_support - tv)
+"""
+    store_step_result!
 
-            d.contractor_result.steps[1] = d.exist_result.hj
-            d.contractor_result.step_count = step_number
+Store result from step contractor to storage for state relaxation, apriori, times. Sets the dicts and updates the step count.    
+"""
+function store_step_result!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY}
+    @unpack time, storage, storage_apriori, storage_buffer_size, tsupports, step_count, nx, step_result = d
+    @unpack X_computed, hj = d.contractor_result
+    @unpack Xj_apriori = d.exist_result
 
-            # perform step size calculation and update bound information
-            single_step!(d.exist_result, d.contractor_result, d.step_params,
-                         d.step_result, d.method_f!, step_number-1, hj_limit,
-                         delT, d.constant_state_bounds, d.polyhedral_constraint)
+    set_result_info!(step_result, hj, hj)  # add time and predicted step size to results
+    set_starting_existence_bounds!(d.exist_result, d.contractor_result, step_result)
 
-            # unpack storage
-            if step_number - 1 > length(d.time)
-                push!(d.storage, copy(d.contractor_result.X_computed))
-                push!(d.storage_apriori, copy(d.exist_result.Xj_apriori))
-                push!(d.time, d.contractor_result.times[1])
-            else
-                copyto!(d.storage[step_number], d.contractor_result.X_computed)
-                copyto!(d.storage_apriori[step_number], d.exist_result.Xj_apriori)
-                d.time[step_number] = d.step_result.time
-                d.contractor_result.times[1] = d.step_result.time
-            end
-            if is_support_pnt
-                stored_value_count += 1
-                d.relax_t_dict_indx[stored_value_count] = step_number
-                d.relax_t_dict_flt[next_support] = step_number
-                support_indx += 1
-                if support_indx <= length(tsupports)
-                    next_support = tsupports[support_indx]
+    if step_count + 1 > length(time)
+        push!(storage, copy(X_computed))
+        push!(storage_apriori, copy(Xj_apriori))
+        push!(time, d.step_result.time)
+    else
+        storage_position = step_count + 1
+        copyto!(storage[storage_position], X_computed)
+        copyto!(storage_apriori[storage_position], Xj_apriori)
+        time[storage_position] = d.step_result.time
+    end
+
+    if d.step_result.time == d.next_support
+        d.relax_t_dict_indx[d.next_support_i] = d.step_count
+        d.relax_t_dict_flt[d.next_support] = d.step_count
+
+        if d.next_support_i <= length(tsupports)
+            d.next_support_i += 1 
+            if (0.0 in tsupports)
+                if d.next_support_i < length(tsupports)
+                    d.next_support = tsupports[d.next_support_i + 1]
                 else
-                    next_support = Inf
+                    d.next_support_i = typemax(Int)
+                    d.next_support = Inf
                 end
+            else
+                d.next_support = tsupports[d.next_support_i]
             end
-
-            # throw error if limit exceeded
-            if d.exist_result.status_flag !== RELAXATION_NOT_CALLED
-                d.error_code = d.exist_result.status_flag
-                break
-            end
-            d.step_count += 1
         else
-            break
+            d.next_support_i = typemax(Int)
+            d.next_support = Inf
         end
     end
 
-    if (d.step_count > d.step_limit) && (sign_tstep*d.time[d.step_count + 1] < sign_tstep*tmax)
-        d.error_code = LIMIT_EXCEEDED
-    end
+    d.step_count += 1
 
-    # cut out any unnecessary array elements
-    resize!(d.storage, d.step_count + 1)
-    resize!(d.storage_apriori, d.step_count + 1)
-    resize!(d.time, d.step_count + 1)
+    return
+end
 
-    if d.error_code === RELAXATION_NOT_CALLED
+"""
+    clean_results!
+
+Resize storage at the end to eliminate any unused values. If no error is set, record the error as COMPLETED.
+"""
+function clean_results!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M <: AbstractStateContractor, T <: Number, S <: Real, F, K, X, NY}
+    @unpack step_count, storage, storage_apriori, time = d
+
+    resize!(storage, step_count)
+    resize!(storage_apriori, step_count)
+    resize!(time, step_count)
+    if d.error_code == RELAXATION_NOT_CALLED
         d.error_code = COMPLETED
     end
 
-    return nothing
+    nothing
+end
+
+"""
+    relax_loop_terminated!
+
+Checks for termination at the start of each step. An error code is stored the limit is exceeded.
+"""
+function continue_relax_loop!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M,T,S,F,K,X,NY}
+    @unpack step_count, step_limit, time, tspan = d
+    @unpack predicted_hj, status_flag = d.exist_result
+
+    should_continue = true
+    sign_tstep = copysign(1, tspan[2] - d.step_result.time)
+    if step_count >= step_limit
+        if sign_tstep*time[step_count] < sign_tstep*tspan[2]
+            d.error_code = LIMIT_EXCEEDED
+        end
+        should_continue = false
+    end
+    should_continue &= sign_tstep*d.step_result.time < sign_tstep*tspan[2]
+    should_continue &= !iszero(predicted_hj)
+    should_continue &= (status_flag == RELAXATION_NOT_CALLED)
+    should_continue
+end
+
+function display_iteration_summary(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M,T,S,F,K,X,NY}
+    #println("Step = #$(d.step_count), Storage = $(d.storage[d.step_count]), Storage Apriori = $(d.storage_apriori[d.step_count])")
+end
+
+function DBB.relax!(d::DiscretizeRelax{M,T,S,F,K,X,NY}) where {M,T,S,F,K,X,NY}
+    initialize_relax!(d)               # Reset storage used when relaxations are computed and times
+    tstart = time()
+    compute_X0!(d)                     # Compute initial condition values
+    while continue_relax_loop!(d)
+        display_iteration_summary(d)   # Display a single step results
+        single_step!(d)                # Perform a single step
+        store_step_result!(d)          # Store results from a single step
+    end
+    display_iteration_summary(d)       # Display a single step results
+    clean_results!(d)                  # Resize storage to computed values and set completion code (if unset)
+    if d.print_relax_time 
+        println("relax time = $(time() - tstart)")
+    end
 end

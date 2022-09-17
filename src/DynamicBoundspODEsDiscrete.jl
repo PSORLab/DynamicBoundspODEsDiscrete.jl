@@ -15,7 +15,8 @@
 module DynamicBoundspODEsDiscrete
 
 using McCormick, DocStringExtensions, DynamicBoundsBase,
-      Reexport, LinearAlgebra, StaticArrays, ElasticArrays, Polynomials
+      Reexport, LinearAlgebra, StaticArrays, ElasticArrays, Polynomials,
+      UnPack
 
 using ForwardDiff: Chunk, Dual, Partials, construct_seeds, single_seed,
       JacobianConfig, vector_mode_dual_eval!, value, vector_mode_jacobian!,
@@ -86,18 +87,16 @@ function state_contractor_integrator(d::AbstractStateContractorName)
 end
 
 """
-μ!(out,xⱼ,x̂ⱼ,η)
+μ!(xⱼ,x̂ⱼ,η)
 
 Used to compute the arguments of Jacobians (`x̂ⱼ + η(xⱼ - x̂ⱼ)`) used by the parametric Mean Value
 Theorem. The result is stored to `out`.
 """
-function μ!(out::Vector{Interval{Float64}}, xⱼ::Vector{Interval{Float64}}, x̂ⱼ::Vector{Float64}, η::Interval{Float64})
-    out .= xⱼ
-    return nothing
+function μ!(z, xⱼ::Vector{Interval{Float64}}, x̂ⱼ::Vector{Float64}, η::Interval{Float64})
+    @. z = xⱼ
 end
-function μ!(out::Vector{MC{N,T}}, xⱼ::Vector{MC{N,T}}, x̂ⱼ::Vector{Float64}, η::Interval{Float64}) where {N, T<:RelaxTag}
-    @__dot__ out = x̂ⱼ + η*(xⱼ - x̂ⱼ)
-    return nothing
+function μ!(z, xⱼ::Vector{MC{N,T}}, x̂ⱼ::Vector{Float64}, η::Interval{Float64}) where {N, T<:RelaxTag}
+    @. z = x̂ⱼ + η*(xⱼ - x̂ⱼ)
 end
 
 """
@@ -106,15 +105,12 @@ end
 Used to compute the arguments of Jacobians (`p̂ⱼ + η(p - p̂ⱼ)`) used by the parametric Mean Value Theorem.
 The result is stored to `out`.
 """
-function ρ!(out::Vector{Interval{Float64}}, p::Vector{Interval{Float64}}, p̂::Vector{Float64}, η::Interval{Float64})
-    out .= p
-    return nothing
+function ρ!(z, p::Vector{Interval{Float64}}, p̂::Vector{Float64}, η::Interval{Float64})
+    @. z = p
 end
-function ρ!(out::Vector{MC{N,T}}, p::Vector{MC{N,T}}, p̂::Vector{Float64}, η::Interval{Float64}) where {N, T<:RelaxTag}
-    @__dot__ out = p̂ + η*(p - p̂)
-    return nothing
+function ρ!(z, p::Vector{MC{N,T}}, p̂::Vector{Float64}, η::Interval{Float64}) where {N, T<:RelaxTag}
+    @. z = p̂ + η*(p - p̂)
 end
-
 include("StaticTaylorSeries/StaticTaylorSeries.jl")
 using .StaticTaylorSeries
 
@@ -127,6 +123,62 @@ include("DiscretizeRelax/utilities/coeff_calcs.jl")
 include("DiscretizeRelax/utilities/taylor_functor.jl")
 include("DiscretizeRelax/utilities/jacobian_functor.jl")
 include("DiscretizeRelax/utilities/single_step.jl")
+
+print_iteration(x) = x > 98
+
+function contract_constant_state!(x::Vector{Interval{Float64}}, t::ConstantStateBounds)
+    for i in 1:length(t.xL)
+        xL = x[i].lo
+        xU = x[i].hi
+        xLc = t.xL[i]
+        xUc = t.xU[i]
+        if xL < xLc
+            x[i] = Interval(xLc, xU)
+        elseif xU > xUc
+            x[i] = Interval(xL, xUc)
+        elseif (xL < xLc) && (xU > xUc)
+            x[i] = Interval(xLc, xUc)
+        end
+    end
+    return
+end
+
+function contract_constant_state!(x::Vector{MC{N,T}}, t::ConstantStateBounds) where {N,T}
+    for i in 1:length(t.xL)
+        xmc = x[i]
+        xL = xmc.Intv.lo
+        xU = xmc.Intv.hi
+        xLc = t.xL[i]
+        xUc = t.xU[i]
+        if xL < xLc
+            x[i] = x[i] ∩ Interval(xLc, Inf)
+        elseif xU > xUc
+            x[i] = x[i] ∩ Interval(-Inf, xUc)
+        elseif (xL < xLc) && (xU > xUc)
+            x[i] = MC{N,T}(Interval(xLc, xUc))
+        end
+    end
+    return
+end
+
+function subgradient_expansion_interval_contract!(out::Vector{MC{N,T}}, p, pL, pU) where {N,T}
+    for i = 1:length(out)
+        x = out[i]
+        l = Interval(x.cv)
+        u = Interval(x.cc)
+        for j = 1:length(p)
+            P = Interval(pL[j], pU[j])
+            l += x.cv_grad[j]*(P - p[j])
+            u += x.cc_grad[j]*(P - p[j])
+        end
+        lower_x = max(x.Intv.lo, l.lo) # l.lo
+        upper_x = min(x.Intv.hi, u.hi) # u.hi
+        out[i] = MC{N,T}(x.cv, x.cc, Interval{Float64}(lower_x, upper_x), x.cv_grad, x.cc_grad, false)
+    end
+    nothing
+end
+subgradient_expansion_interval_contract!(out, p, pL, pU) = nothing
+
 
 include("DiscretizeRelax/method/higher_order_enclosure.jl")
 include("DiscretizeRelax/method/lohners_qr.jl")

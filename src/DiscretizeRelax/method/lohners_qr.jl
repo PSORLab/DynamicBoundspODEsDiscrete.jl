@@ -27,11 +27,11 @@ ordinary initial and boundary value problems, in: J.R. Cash, I. Gladwell (Eds.),
 Computational Ordinary Differential Equations, vol. 1, Clarendon Press, 1992,
 pp. 425–436.](http://www.goldsztejn.com/old-papers/Lohner-1992.pdf)
 """
-mutable struct LohnersFunctor{F <: Function, K, T <: Real, S <: Real, NY} <: AbstractStateContractor
-    set_tf!::TaylorFunctor!{F, K, T, S}
-    real_tf!::TaylorFunctor!{F, K, T, T}
-    jac_tf!::JacTaylorFunctor!{F, K, T, S, NY}
-    η::Interval{Float64}
+Base.@kwdef mutable struct LohnersFunctor{F <: Function, K, T <: Real, S <: Real, NY} <: AbstractStateContractor
+    set_tf!::TaylorFunctor!{F,K,T,S}
+    real_tf!::TaylorFunctor!{F,K,T,T}
+    jac_tf!::JacTaylorFunctor!{F,K,T,S,NY}
+    η::Interval{Float64} = Interval{Float64}(0.0,1.0)
     μX::Vector{S}
     ρP::Vector{S}
     f̃::Vector{Vector{S}}
@@ -44,41 +44,48 @@ mutable struct LohnersFunctor{F <: Function, K, T <: Real, S <: Real, NY} <: Abs
     Jxvec::Vector{S}
     Jpvec::Vector{S}
     rRⱼ₊₁::Vector{S}
-    YdRⱼ₊₁::Vector{S}
-    YJxmat::Matrix{S}
-    YJxvec::Vector{S}
-    YJpmat::Matrix{S}
-    YJpvec::Vector{S}
+    nx::Int
+    np::Int
+    Ai_rRj::Vector{S}
+    Ai_Jxm::Matrix{S}
+    Δ_Jx::Vector{S}
+    Ai_Jpm::Matrix{S}
+    Δ_Jp::Vector{S}
+    constant_state_bounds::Union{Nothing,DBB.ConstantStateBounds}
 end
 function LohnersFunctor(f!::F, nx::Int, np::Int, k::Val{K}, s::S, t::T) where {F, K, S <: Number, T <: Number}
-    set_tf! = TaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
-    real_tf! = TaylorFunctor!(f!, nx, np, k, zero(T), zero(T))
-    jac_tf! = JacTaylorFunctor!(f!, nx, np, k, zero(S), zero(T))
-    μX = zeros(S, nx)
-    ρP = zeros(S, np)
     f̃ = Vector{S}[]
     f̃val = Vector{Float64}[]
-    for i = 1:(K+1)
+    for i = 1:(K + 1)
         push!(f̃, zeros(S, nx))
         push!(f̃val, zeros(Float64, nx))
     end
-    Vⱼ₊₁ = zeros(Float64, nx)
-    Rⱼ₊₁ = zeros(S, nx)
-    mRⱼ₊₁ = zeros(Float64, nx)
-    Δⱼ₊₁ = zeros(S, nx)
-    Jxmat = zeros(S, nx, nx)
-    Jxvec = zeros(S, nx)
-    Jpvec = zeros(S, nx)
-    rRⱼ₊₁ = zeros(S, nx)
-    YdRⱼ₊₁ = zeros(S, nx)
-    YJxmat = zeros(S, nx, nx)
-    YJxvec = zeros(S, nx)
-    YJpmat = zeros(S, nx, np)
-    YJpvec = zeros(S, nx)
-    LohnersFunctor{F, K+1, T, S, nx+np}(set_tf!, real_tf!, jac_tf!, Interval{Float64}(0.0,1.0), μX, ρP,
-                                        f̃, f̃val, Vⱼ₊₁, Rⱼ₊₁, mRⱼ₊₁, Δⱼ₊₁, Jxmat, Jxvec, Jpvec,
-                                        rRⱼ₊₁, YdRⱼ₊₁, YJxmat, YJxvec, YJpmat, YJpvec)
+    LohnersFunctor{F, K + 1, T, S, nx + np}(set_tf!  = TaylorFunctor!(f!, nx, np, k, zero(S), zero(T)),
+                                            real_tf! = TaylorFunctor!(f!, nx, np, k, zero(T), zero(T)),
+                                            jac_tf!  = JacTaylorFunctor!(f!, nx, np, k, zero(S), zero(T)),
+                                            μX       = zeros(S, nx),
+                                            ρP       = zeros(S, np),
+                                            f̃        = f̃,
+                                            f̃val     = f̃val,
+                                            Vⱼ₊₁     = zeros(nx),
+                                            Rⱼ₊₁     = zeros(S, nx),
+                                            mRⱼ₊₁    = zeros(nx),
+                                            Δⱼ₊₁     = zeros(S, nx),
+                                            Jxmat    = zeros(S, nx, nx),
+                                            Jxvec    = zeros(S, nx),
+                                            Jpvec    = zeros(S, nx),
+                                            rRⱼ₊₁    = zeros(S, nx),
+                                            nx       = nx,
+                                            np       = np,
+                                            Ai_rRj   = zeros(S, nx),
+                                            Ai_Jxm   = zeros(S, nx, nx),
+                                            Δ_Jx     = zeros(S, nx),
+                                            Ai_Jpm   = zeros(S, nx, np),
+                                            Δ_Jp     = zeros(S, nx),
+                                            constant_state_bounds = nothing)
 end
+
+set_constant_state_bounds!(d::LohnersFunctor, v) = (d.constant_state_bounds = v;)
 
 """
 LohnerContractor{K}
@@ -88,96 +95,72 @@ of order K.
 """
 struct LohnerContractor{K} <: AbstractStateContractorName end
 LohnerContractor(k::Int) = LohnerContractor{k}()
-function state_contractor(m::LohnerContractor{K}, f, Jx!, Jp!, nx, np, style, s, h) where K
-    LohnersFunctor(f, nx, np, Val{K}(), style, s)
-end
+
+state_contractor(m::LohnerContractor{K}, f, Jx!, Jp!, nx, np, style, s, h) where K = LohnersFunctor(f, nx, np, Val{K}(), style, s)
 
 state_contractor_k(m::LohnerContractor{K}) where K = K
 state_contractor_γ(m::LohnerContractor{K}) where K = 1.0
 state_contractor_steps(m::LohnerContractor{K}) where K = 2
 state_contractor_integrator(m::LohnerContractor{K}) where K = CVODE_Adams()
 
-function (d::LohnersFunctor{F,K,S,T,NY})(contract::ContractorStorage{T},
-                                         result::StepResult{T},
-                                         count::Int) where {F <: Function, K, S <: Real, T <: Real, NY}
+function (d::LohnersFunctor{F,K,S,T,NY})(c, r, j, k) where {F,K,S,T,NY}
 
-    set_tf! = d.set_tf!
-    real_tf! = d.real_tf!
+    @unpack hj, xval_computed, X_computed, xval, pval, P, rP, A_Q, A_inv, Δ, Xj_0, Xj_apriori = c
+    @unpack f̃, f̃val, η, set_tf!, real_tf!, Jxmat, Jxvec, Jpvec, Rⱼ₊₁, mRⱼ₊₁, Vⱼ₊₁, nx, np = d
+    @unpack Ai_rRj, Ai_Jxm, Δ_Jx, Ai_Jpm, Δ_Jp, Δⱼ₊₁, μX, ρP, rRⱼ₊₁ = d
+    @unpack Jp, Jx, Jpsto, Jxsto = d.jac_tf!
+    @unpack k = d.set_tf!
     Jf! = d.jac_tf!
+    t = c.times[1]
 
-    k = set_tf!.k
-    nx = set_tf!.nx
-    np = length(contract.pval)
+    set_tf!(f̃, Xj_apriori, P, t)
+    @. Rⱼ₊₁ = (hj^k)*f̃[k + 1]
+    @. mRⱼ₊₁ = mid(Rⱼ₊₁)
 
-    hⱼ = contract.hj_computed
-    hjk = hⱼ^k
-    t = contract.times[1]
-
-    set_tf!(d.f̃, contract.Xj_apriori, contract.P, t)
-
-    # computes Rj and it's midpoint
-    for i = 1:nx
-        @inbounds d.Rⱼ₊₁[i] = hjk*d.f̃[k + 1][i]
-        @inbounds d.mRⱼ₊₁[i] = mid(d.Rⱼ₊₁[i])
+    # defunes new x point... k corresponds to k - 1 since taylor coefficients are zero indexed
+    real_tf!(f̃val, xval, pval, t)
+    @. Vⱼ₊₁ = xval
+    for i = 1:(k-1)
+        @. Vⱼ₊₁ += f̃val[i + 1]*hj^i
     end
-
-    # defunes new x point... k corresponds to k - 1 since taylor
-    # coefficients are zero indexed
-    real_tf!(d.f̃val, contract.xval, contract.pval, t)
-    hji1 = 0.0
-    fill!(d.Vⱼ₊₁, 0.0)
-    for i = 1:k
-        hji1 = hⱼ^i
-        @__dot__ d.Vⱼ₊₁ += hji1*d.f̃val[i + 1]
-    end
-    @__dot__ d.Vⱼ₊₁ += contract.xval
 
     # compute extensions of taylor cofficients for rhs
-    μ!(d.μX, contract.Xj_0, contract.xval, d.η)
-    ρ!(d.ρP, contract.P, contract.pval, d.η)
-    set_JxJp!(Jf!, d.μX, d.ρP, t)
-    for i = 1:k
-        hji1 = hⱼ^(i - 1)
-        if i == 1
-            fill!(Jf!.Jxsto, zero(S))
-            for j = 1:nx
-                Jf!.Jxsto[j,j] = one(S)
-            end
-        else
-            @__dot__ Jf!.Jxsto += hji1*Jf!.Jx[i]
-        end
-        @__dot__ Jf!.Jpsto += hji1*Jf!.Jp[i]
+    μ!(μX, Xj_0, xval, η)
+    ρ!(ρP, P, pval, η)
+    set_JxJp!(Jf!, μX, ρP, t)
+    fill!(Jxsto, zero(T))
+    Jxsto += I
+    @. Jpsto = Jp[1]
+    for i = 2:k
+        @. Jxsto += Jx[i]*hj^(i - 1)
+        @. Jpsto += Jp[i]*hj^(i - 1)
     end
 
     # update x floating point value
-    @__dot__ contract.xval_computed = d.Vⱼ₊₁ + d.mRⱼ₊₁
+    @. xval_computed = Vⱼ₊₁ + mRⱼ₊₁
+    mul!(Jxmat, Jxsto, A_Q[2])
+    mul!(Jxvec, Jxmat, Δ[2])
+    mul!(Jpvec, Jpsto, rP)
 
-    # update bounds on X at new time
-    mul_split!(d.Jxmat, Jf!.Jxsto, contract.A_Q[2], nx)
-    mul_split!(d.Jxvec, d.Jxmat, contract.Δ[2], nx)
-    mul_split!(d.Jpvec, Jf!.Jpsto, contract.rP, nx)
-
-    @__dot__ contract.X_computed = d.Vⱼ₊₁ + d.Rⱼ₊₁ + d.Jxvec + d.Jpvec
-    affine_contract!(contract.X_computed, contract.P, contract.pval, nx, np)
+    @. X_computed = Vⱼ₊₁ + Rⱼ₊₁ + Jxvec + Jpvec
+    contract_constant_state!(X_computed, d.constant_state_bounds)
+    affine_contract!(X_computed, P, pval, nx, np)
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
-    @__dot__ contract.B = mid(d.Jxmat)
-    calculateQ!(contract.A_Q[1], contract.B, nx)
-    calculateQinv!(contract.A_inv[1], contract.A_Q[1], nx)
+    calculateQ!(A_Q[1], mid.(Jxmat))
+    calculateQinv!(A_inv[1], A_Q[1])
 
     # update Delta
-    @__dot__ d.rRⱼ₊₁ = d.Rⱼ₊₁ - d.mRⱼ₊₁
-    mul_split!(d.YdRⱼ₊₁, contract.A_inv[1], d.rRⱼ₊₁, nx)
-    mul_split!(d.YJxmat, contract.A_inv[1], d.Jxmat, nx)
-    mul_split!(d.YJxvec, d.YJxmat, contract.Δ[2], nx)
-    mul_split!(d.YJpmat, contract.A_inv[1], Jf!.Jpsto, nx)
-    mul_split!(d.YJpvec, d.YJpmat, contract.rP, nx)
-    @__dot__ d.Δⱼ₊₁ = d.YdRⱼ₊₁ + d.YJxvec + d.YJpvec
-
-    contract.Δ[1] = copy(d.Δⱼ₊₁)
+    @. rRⱼ₊₁ = Rⱼ₊₁ - mRⱼ₊₁
+    mul!(Ai_rRj, A_inv[1], rRⱼ₊₁)
+    mul!(Ai_Jxm, A_inv[1], Jxmat)
+    mul!(Δ_Jx, Ai_Jxm, Δ[2])
+    mul!(Ai_Jpm, A_inv[1], Jpsto)
+    mul!(Δ_Jp, Ai_Jpm, rP)
+    @. Δ[1] = Ai_rRj + Δ_Jx + Δ_Jp
+    @. Δⱼ₊₁ = Δ[1]
 
     return RELAXATION_NOT_CALLED
 end
 
-get_Δ(lf::LohnersFunctor{F,K,S,T,NY}) where {F <: Function, K, S <: Real, T <: Real, NY} = copy(lf.Δⱼ₊₁)
-advance_contractor_buffer!(lf::LohnersFunctor) = nothing
+get_Δ(d::LohnersFunctor{F,K,S,T,NY}) where {F,K,S,T,NY} = copy(d.Δⱼ₊₁)

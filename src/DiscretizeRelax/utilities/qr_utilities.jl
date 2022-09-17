@@ -76,17 +76,18 @@ function calculateQinv!(qst::QRDenseStorage)
 end
 =#
 
-function calculateQ!(Q, A::Matrix{Float64}, nx::Int)
-    if nx == 1
+function calculateQ!(Q, A::Matrix{Float64})
+    nx = size(A,1)
+    if isone(nx)
         Q[1,1] = 1.0
     else
         F = LinearAlgebra.qr(A)
-        Q = view(F.Q, 1:nx, 1:nx)
+        Q .= view(F.Q, 1:nx, 1:nx)
     end
     nothing
 end
-function calculateQinv!(Qinv, Q, nx::Int)
-    if nx == 1
+function calculateQinv!(Qinv, Q)
+    if size(Q,1) == 1
         Qinv[1,1] = 1.0
     else
         transpose!(Qinv, Q)

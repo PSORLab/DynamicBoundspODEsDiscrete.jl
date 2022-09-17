@@ -83,7 +83,7 @@ function jetcoeffs!(eqsdiff!, t::T, x::Vector{STaylor1{N,U}}, xaux::Vector{STayl
           fill!(fnxt, Float64(ord))
 
           map!(truncuated_STaylor1, xaux, x, vnxt)
-          eqsdiff!(dx, xaux, params, ttaylor)::Nothing
+          eqsdiff!(dx, xaux, params, ttaylor)
           x .= copy_recurse.(dx, x, vnxt, fnxt)
       end
       nothing

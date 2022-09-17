@@ -18,22 +18,20 @@ mul_split!
 Multiples A*b as a matrix times a vector if nx > 1. Performs scalar
 multiplication otherwise.
 """
-function mul_split!(Y::Vector{R}, A::Matrix{S}, B::Vector{T}, nx) where {R,S,T}
-    if nx == 1
-        @inbounds Y[1] = A[1,1]*B[1]
+function mul_split!(Y::Vector{R}, A::Matrix{S}, B::Vector{T}) where {R,S,T}
+    if size(Y)[1] == 1
+        Y[1] = A[1,1]*B[1]
     else
         mul!(Y, A, B)
     end
-
-    return nothing
+    nothing
 end
 
-function mul_split!(Y::Matrix{R}, A::Matrix{S}, B::Matrix{T}, nx) where {R,S,T}
-    if nx == 1
-        @inbounds Y[1,1] = A[1,1]*B[1,1]
+function mul_split!(Y::Matrix{R}, A::Matrix{S}, B::Matrix{T}) where {R,S,T}
+    if size(Y)[1] == 1
+        Y[1,1] = A[1,1]*B[1,1]
     else
         mul!(Y, A, B)
     end
-
-    return nothing
+    nothing
 end

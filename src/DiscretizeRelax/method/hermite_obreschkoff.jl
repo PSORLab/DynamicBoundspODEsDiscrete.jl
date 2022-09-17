@@ -30,14 +30,16 @@ struct HermiteObreschkoff <: AbstractStateContractorName
     "gamma for method"
     γ::Float64
     "Explicit order Hermite-Obreschkoff"
-    p::Int64
+    p::Int
     "Implicit order Hermite-Obreschkoff"
-    q::Int64
+    q::Int
     "Total order Hermite-Obreschkoff"
-    k::Int64
+    k::Int
+    "Skips the contractor step of the Hermite Obreshkoff Contractor if set to `true`"
+    skip_contractor::Bool
 end
 
-function HermiteObreschkoff(p::Val{P}, q::Val{Q}) where {P, Q}
+function HermiteObreschkoff(p::Val{P}, q::Val{Q}, skip_contractor::Bool = false) where {P, Q}
     temp_cpq = 1.0
     temp_cqp = 1.0
     cpq = zeros(P + 1)
@@ -55,9 +57,10 @@ function HermiteObreschkoff(p::Val{P}, q::Val{Q}) where {P, Q}
         γ *= -i/(P+i)
     end
     K = P + Q + 1
-    HermiteObreschkoff(cpq, cqp, γ, P, Q, K)
+   # K = P + 1
+    HermiteObreschkoff(cpq, cqp, γ, P, Q, K, skip_contractor)
 end
-HermiteObreschkoff(p::Int, q::Int) = HermiteObreschkoff(Val(p), Val(q))
+HermiteObreschkoff(p::Int, q::Int, b::Bool = false) = HermiteObreschkoff(Val(p), Val(q), b)
 
 """
 HermiteObreschkoffFunctor
@@ -73,27 +76,30 @@ ordinary differential equation." Reliable Computing 5.3 (1999): 289-310.](https:
 initial value problem for an ordinary differential equation." University
 of Toronto. 2000.](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.633.9654&rep=rep1&type=pdf)
 """
-mutable struct HermiteObreschkoffFunctor{F <: Function, Pp1, Qp1, K, T <: Real, S <: Real, NY} <: AbstractStateContractor
+Base.@kwdef mutable struct HermiteObreschkoffFunctor{F <: Function, Pp, Pp1, Qp1, K, T <: Real, S <: Real, NY} <: AbstractStateContractor
+    lohners_functor::LohnersFunctor{F,Pp,T,S,NY}
     hermite_obreschkoff::HermiteObreschkoff
-    η::Interval{T}
+    η::Interval{T} = Interval{T}(0.0,1.0)
     μX::Vector{S}
     ρP::Vector{S}
     gⱼ₊₁::Vector{S}
-    nx::Int64
+    nx::Int
+    np::Int
     set_tf!_pred::TaylorFunctor!{F, K, T, S}
     real_tf!_pred::TaylorFunctor!{F, Pp1, T, T}
     Jf!_pred::JacTaylorFunctor!{F, Pp1, T, S, NY}
     Rⱼ₊₁::Vector{S}
     mRⱼ₊₁::Vector{T}
-    f̃val_pred::Vector{Vector{T}}
-    f̃_pred::Vector{Vector{S}}
+    f̃val_pred::Vector{Vector{T}} = Vector{T}[]
+    f̃_pred::Vector{Vector{S}} = Vector{S}[]
     Vⱼ₊₁::Vector{Float64}
     X_predict::Vector{S}
-    q_predict::Int64
+    xval_predict::Vector{Float64}
+    q_predict::Int
     real_tf!_correct::TaylorFunctor!{F, Qp1, T, T}
     Jf!_correct::JacTaylorFunctor!{F, Qp1, T, S, NY}
     xval_correct::Vector{T}
-    f̃val_correct::Vector{Vector{T}}
+    f̃val_correct::Vector{Vector{T}} = Vector{T}[]
     sum_p::Vector{S}
     sum_q::Vector{S}
     Δⱼ₊₁::Vector{S}
@@ -101,270 +107,244 @@ mutable struct HermiteObreschkoffFunctor{F <: Function, Pp1, Qp1, K, T <: Real, 
     pred_Jxvec::Vector{S}
     pred_Jpvec::Vector{S}
     δⱼ₊₁::Vector{S}
-    precond::Matrix{Float64}
+    pre::Matrix{Float64}
     precond2::Matrix{Float64}
     correct_B::Matrix{S}
     correct_Bvec::Vector{S}
     correct_C::Matrix{S}
-    Inx::UniformScaling{Bool}
+    Inx::UniformScaling{Bool} = I
     Uj::Vector{S}
     Jpdiff::Matrix{S}
-    Cp::Matrix{S}
-    CprP::Vector{S}
-    correct_Jmid::Matrix{S}
-    Uj2::Vector{S}
-    B2::Matrix{S}
-    B2vec::Vector{S}
-    rX::Vector{S}
-    Yδⱼ₊₁::Vector{S}
-    Y2δⱼ₊₁::Vector{S}
-    Y2Jpdiff::Matrix{S}
-    Y2Jpvec::Vector{S}
-    YC::Matrix{S}
-    YUj2::Vector{S}
+    Cj::Matrix{S}
+    C_temp::Matrix{S}
+    Bj::Matrix{S}
+    B_temp::Matrix{S}
+    constant_state_bounds::Union{Nothing,DBB.ConstantStateBounds}
 end
-function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q},
-                                   s::S, t::T) where {F,P,Q,S,T}
+function set_constant_state_bounds!(d::HermiteObreschkoffFunctor, v)
+    set_constant_state_bounds!(d.lohners_functor,v)
+    d.constant_state_bounds = v
+    nothing
+end
 
+function HermiteObreschkoffFunctor(f!::F, nx::Int, np::Int, p::Val{P}, q::Val{Q}, s::S, t::T, b) where {F,P,Q,S,T}
+
+    P1 = P + 1
+    P2 = P + 2
+    Q1 = Q + 1
     K = P + Q + 1
-    hermite_obreschkoff = HermiteObreschkoff(p, q)
-    η = Interval{T}(0.0,1.0)
-    μX = zeros(S, nx)
-    ρP = zeros(S, np)
-    gⱼ₊₁ = zeros(S, nx)
-    set_tf!_pred = TaylorFunctor!(f!, nx, np, Val(K), zero(S), zero(T))
-    real_tf!_pred = TaylorFunctor!(f!, nx, np, Val(P), zero(T), zero(T))
-    Jf!_pred = JacTaylorFunctor!(f!, nx, np, Val(P), zero(S), zero(T))
-    Rⱼ₊₁ = zeros(S, nx)
-    mRⱼ₊₁ = zeros(Float64, nx)
+
+    lon_func = LohnersFunctor(f!, nx, np, Val(P1), s, t)
 
     f̃val_pred = Vector{Float64}[]
-    for i = 1:(P + 1)
-        push!(f̃val_pred, zeros(Float64, nx))
-    end
-
     f̃_pred = Vector{S}[]
-    for i = 1:(K + 1)
-        push!(f̃_pred, zeros(S, nx))
-    end
+    f̃val_correct = Vector{Float64}[]
+    for i = 1:(P + 1); push!(f̃val_pred, zeros(nx)); end
+    for i = 1:(K + 1); push!(f̃_pred, zeros(S, nx)); end
+    for i = 1:(Q + 1); push!(f̃val_correct, zeros(nx)); end
 
-    Vⱼ₊₁ = zeros(nx)
-    X_predict = zeros(S, nx)
-    q_predict = P
+    hermite_obreschkoff = HermiteObreschkoff(p, q, b)
+    set_tf!_pred = TaylorFunctor!(f!, nx, np, Val(K), zero(S), zero(T))
+
+    real_tf!_pred = TaylorFunctor!(f!, nx, np, Val(P), zero(T), zero(T))
+    Jf!_pred = JacTaylorFunctor!(f!, nx, np, Val(P), zero(S), zero(T))
 
     real_tf!_correct = TaylorFunctor!(f!, nx, np, Val(Q), zero(T), zero(T))
     Jf!_correct = JacTaylorFunctor!(f!, nx, np, Val(Q), zero(S), zero(T))
-    xval_correct = zeros(Float64, nx)
 
-    f̃val_correct = Vector{Float64}[]
-    for i = 1:(Q + 1)
-        push!(f̃val_correct, zeros(Float64, nx))
-    end
-
-    sum_p = zeros(S, nx)
-    sum_q = zeros(S, nx)
-    P1 = P + 1
-    Q1 = Q + 1
-
-    Δⱼ₊₁ = zeros(S, nx)
-
-    pred_Jxmat = zeros(S, nx, nx)
-    pred_Jxvec = zeros(S, nx)
-    pred_Jpvec = zeros(S, nx)
-
-    δⱼ₊₁ = zeros(S, nx)
-    precond = zeros(Float64, nx, nx)
-    precond2 = zeros(Float64, nx, nx)
-    correct_B = zeros(S, nx, nx)
-    correct_Bvec = zeros(S, nx)
-    correct_C = zeros(S, nx, nx)
-    Inx = I
-
-    Uj = zeros(S, nx)
-    Jpdiff = zeros(S, nx, np)
-    Cp = zeros(S, nx, np)
-    CprP = zeros(S, nx)
-
-    correct_Jmid = zeros(S, nx, nx)
-    Uj2 = zeros(S, nx)
-    B2 = zeros(S, nx, nx)
-    B2vec = zeros(S, nx)
-    rX = zeros(S, nx)
-    Yδⱼ₊₁ = zeros(S, nx)
-
-    Y2δⱼ₊₁ = zeros(S, nx)
-    Y2Jpdiff = zeros(S, nx, np)
-    Y2Jpvec = zeros(S, nx)
-    YC = zeros(S, nx, nx)
-    YUj2 = zeros(S, nx)
-
-    HermiteObreschkoffFunctor{F, P1, Q1, K+1, T, S, nx + np}(hermite_obreschkoff, η, μX, ρP, gⱼ₊₁, nx,
-                                                             set_tf!_pred, real_tf!_pred, Jf!_pred, Rⱼ₊₁,
-                                                             mRⱼ₊₁, f̃val_pred, f̃_pred, Vⱼ₊₁,
-                                                             X_predict, q_predict, real_tf!_correct,
-                                                             Jf!_correct, xval_correct, f̃val_correct,
-                                                             sum_p, sum_q, Δⱼ₊₁, pred_Jxmat, pred_Jxvec,
-                                                             pred_Jpvec, δⱼ₊₁, precond, precond2,
-                                                             correct_B, correct_Bvec, correct_C, Inx,
-                                                             Uj, Jpdiff, Cp,
-                                                             CprP, correct_Jmid, Uj2, B2, B2vec, rX, Yδⱼ₊₁,
-                                                             Y2δⱼ₊₁, Y2Jpdiff, Y2Jpvec, YC, YUj2)
+    HermiteObreschkoffFunctor{F, P2, P1, Q1, K+1, T, S, nx + np}(; 
+                                                             lohners_functor = lon_func,
+                                                             hermite_obreschkoff = hermite_obreschkoff, 
+                                                             μX = zeros(S, nx), 
+                                                             ρP = zeros(S, np), 
+                                                             gⱼ₊₁ = zeros(S, nx), 
+                                                             nx = nx,
+                                                             np = np,
+                                                             set_tf!_pred = set_tf!_pred, 
+                                                             real_tf!_pred = real_tf!_pred, 
+                                                             Jf!_pred = Jf!_pred, 
+                                                             Rⱼ₊₁ = zeros(S, nx),
+                                                             mRⱼ₊₁ = zeros(nx), 
+                                                             f̃val_pred = f̃val_pred, 
+                                                             f̃_pred = f̃_pred, 
+                                                             Vⱼ₊₁ = zeros(nx),
+                                                             X_predict = zeros(S, nx),
+                                                             xval_predict = zeros(nx), 
+                                                             q_predict = P, 
+                                                             real_tf!_correct = real_tf!_correct,
+                                                             Jf!_correct = Jf!_correct, 
+                                                             xval_correct = zeros(nx), 
+                                                             f̃val_correct = f̃val_correct,
+                                                             sum_p = zeros(S, nx), 
+                                                             sum_q = zeros(S, nx), 
+                                                             Δⱼ₊₁ = zeros(S, nx), 
+                                                             pred_Jxmat = zeros(S, nx, nx), 
+                                                             pred_Jxvec = zeros(S, nx),
+                                                             pred_Jpvec = zeros(S, nx), 
+                                                             δⱼ₊₁ = zeros(S, nx), 
+                                                             pre = zeros(nx, nx), 
+                                                             precond2 = zeros(nx, nx),
+                                                             correct_B = zeros(S, nx, nx), 
+                                                             correct_Bvec = zeros(S, nx), 
+                                                             correct_C = zeros(S, nx, nx), 
+                                                             Uj = zeros(S, nx), 
+                                                             Jpdiff = zeros(S, nx, np),
+                                                             Cj = zeros(S, nx, nx),
+                                                             C_temp = zeros(S, nx, nx),
+                                                             Bj = zeros(S, nx, nx),
+                                                             B_temp = zeros(S, nx, nx),
+                                                             constant_state_bounds = nothing
+                                                             ) 
 end
 
 function state_contractor(m::HermiteObreschkoff, f, Jx!, Jp!, nx, np, style, s, h)
-    HermiteObreschkoffFunctor(f, nx, np, Val(m.p), Val(m.q), style, s)
+    HermiteObreschkoffFunctor(f, nx, np, Val(m.p), Val(m.q), style, s, m.skip_contractor)
 end
 state_contractor_k(m::HermiteObreschkoff) = m.k
 state_contractor_γ(m::HermiteObreschkoff) = m.γ
 state_contractor_steps(m::HermiteObreschkoff) = 2
 state_contractor_integrator(m::HermiteObreschkoff) = CVODE_Adams()
 
-
 function _pred_compute_Rj!(d, c, t)
-    q = d.q_predict
-    d.set_tf!_pred(d.f̃_pred, c.Xj_apriori, c.P, t)
-    hq = c.hj_computed^(d.q_predict + 1)
-    for i = 1:d.nx
-        @inbounds d.Rⱼ₊₁[i] = hq*d.f̃_pred[q + 2][i]
-    end
-    return nothing
-end
+    @unpack set_tf!_pred, Rⱼ₊₁, f̃_pred, q_predict = d
+    @unpack Xj_apriori, P, hj = c
 
+    set_tf!_pred(f̃_pred, Xj_apriori, P, t)
+    @. Rⱼ₊₁ = f̃_pred[q_predict + 1]*hj^q_predict
+    Rⱼ₊₁
+end
 function _pred_compute_real_pnt!(d, c, t)
-    d.real_tf!_pred(d.f̃val_pred, c.xval, c.pval, t)
-    @__dot__ d.Vⱼ₊₁ = c.xval
-    for i = 1:d.q_predict
-        h = c.hj_computed^i
-        @__dot__ d.Vⱼ₊₁ += h*d.f̃val_pred[i + 1]
+    @unpack Vⱼ₊₁, f̃val_pred, q_predict, real_tf!_pred = d
+    @unpack hj, xval, pval = c
+    
+    real_tf!_pred(f̃val_pred, xval, pval, t)
+    @. Vⱼ₊₁ = xval
+    for i = 1:(q_predict - 1)
+        @. Vⱼ₊₁ += f̃val_pred[i + 1]*hj^i
     end
-    return nothing
+    Vⱼ₊₁
 end
-
 function _pred_compute_rhs_jacobian!(d, c::ContractorStorage{S}, t) where S
-    hⱼ = c.hj_computed
     Jf!_pred = d.Jf!_pred
-    μ!(d.μX, c.Xj_0, c.xval, d.η)
-    ρ!(d.ρP, c.P, c.pval, d.η)
-    set_JxJp!(Jf!_pred, d.μX, d.ρP, t)
-    for i = 1:d.q_predict
-        hji1 = hⱼ^i
-        if i == 1
-            fill!(Jf!_pred.Jxsto, zero(S))
-            for j = 1:d.nx
-                Jf!_pred.Jxsto[j,j] = one(S)
-            end
+    @unpack η, q_predict, nx, μX, ρP, X_predict = d
+    @unpack Xj_0, xval, P, pval, hj = c
+    @unpack Jx, Jxsto, Jp, Jpsto = Jf!_pred
+
+    μ!(μX, X_predict, xval, η)
+    ρ!(ρP, P, pval, η)
+    set_JxJp!(Jf!_pred, μX, ρP, t)
+    for i = 1:q_predict
+        hji1 = hj^i
+        if isone(i)
+            fill!(Jxsto, zero(S))
+            Jxsto += I
         else
-            @__dot__ Jf!_pred.Jxsto += hji1*Jf!_pred.Jx[i+1]
+            @. Jxsto += hji1*Jx[i + 1]
         end
-        @__dot__ Jf!_pred.Jpsto += hji1*Jf!_pred.Jp[i+1]
+        @. Jpsto += hji1*Jp[i + 1]
     end
-    return nothing
+    return Jxsto, Jpsto
+end
+function _hermite_obreschkoff_predictor!(d::HermiteObreschkoffFunctor{F,Pp,P1,Q1,K,T,S,NY}, c::ContractorStorage{S}, r::StepResult{S}, j, k) where {F,Pp,P1,Q1,K,T,S,NY}
+    @unpack X_predict, pred_Jxmat, pred_Jxvec, pred_Jpvec, Rⱼ₊₁, Vⱼ₊₁ = d
+    @unpack A_Q, Δ, rP, times, Xj_apriori = c
+    
+    _pred_compute_Rj!(d, c, times[1])
+    _pred_compute_real_pnt!(d, c, times[1])
+    Jxsto, Jpsto = _pred_compute_rhs_jacobian!(d, c, times[1])
+
+    d.lohners_functor(c, r, j, k)
+    @. X_predict = c.X_computed ∩ Xj_apriori
+
+    # HERMITE OBRESCHKOFF PREDICTOR IS FAILING... WHY?
+    # THIS IS MORE EXPANSIVE THAN LOHNERS METHOD BASIC.... option 1 fix, option 2 lohners method....
+
+    #mul!(pred_Jxmat, Jxsto, A_Q[2])
+    #mul!(pred_Jxvec, pred_Jxmat, Δ[2])
+    #mul!(pred_Jpvec, Jpsto, rP)
+    #@. X_predict = Vⱼ₊₁ + Rⱼ₊₁ + pred_Jxvec + pred_Jpvec
+    d.lohners_functor.Δⱼ₊₁
 end
 
-function _hermite_obreschkoff_predictor!(d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY},
-                                         c::ContractorStorage{S}) where {F,P1,Q1,K,T,S,NY}
+predi(cpq, hj, y, i) = y[i + 1]*cpq[i + 1]*hj^i
+qi(cqp, hj, y, i) = y[i + 1]*cqp[i + 1]*((-hj)^i)
 
-    _pred_compute_Rj!(d, c, c.times[1])
-    _pred_compute_real_pnt!(d, c, c.times[1])
-    _pred_compute_rhs_jacobian!(d, c, c.times[1])
+"""
 
-    mul_split!(d.pred_Jxmat, d.Jf!_pred.Jxsto, c.A_Q[2], d.nx)
-    mul_split!(d.pred_Jxvec, d.pred_Jxmat,     c.Δ[2],   d.nx)
-    mul_split!(d.pred_Jpvec, d.Jf!_pred.Jpsto, c.rP,     d.nx)
-    @__dot__ d.X_predict = d.Vⱼ₊₁ + d.Rⱼ₊₁ + d.pred_Jxvec + d.pred_Jpvec
+Performs parametric version of algorithm 4.3 in Nedialkov...
+"""
+function (d::HermiteObreschkoffFunctor{F,Pp,P1,Q1,K,T,S,NY})(c::ContractorStorage{S}, r::StepResult{S}, j, k) where {F, Pp, P1, Q1, K, T, S, NY}
+   
+    @unpack X_computed, xval_computed, xval, pval, P, rP, A_inv, A_Q, Δ, hj = c    # unpack parameters and storage
+    @unpack Jxsto, Jpsto, Jx, Jp = d.Jf!_pred
+    @unpack γ, p, q, k, cpq, cqp = d.hermite_obreschkoff
+    @unpack f̃val_correct, f̃val_pred, f̃_pred, real_tf!_correct, η, X_predict, xval_predict, δⱼ₊₁, nx, np = d
+    @unpack Jpdiff, sum_p, sum_q, μX, ρP, pre, B_temp, C_temp, Bj, Cj, Δⱼ₊₁, Uj = d
 
-    return nothing
-end
+    cJx, cJp = d.Jf!_correct.Jx, d.Jf!_correct.Jp
+    t = c.times[1]                 
 
-function (d::HermiteObreschkoffFunctor{F,P1,Q1,K,T,S,NY})(contract::ContractorStorage{S},
-                                                          result::StepResult{S},
-                                                          count::Int) where {F, P1, Q1, K, T, S, NY}
+    ho_predict_Δⱼ₊₁ = _hermite_obreschkoff_predictor!(d, c, r, j, k) # calculate predictor --> sets d.X_predict
+    @. xval_predict = mid(X_predict)
 
-    _hermite_obreschkoff_predictor!(d, contract)
+    if !d.hermite_obreschkoff.skip_contractor
+        real_tf!_correct(f̃val_correct, xval_predict, pval, t)
+        @. sum_p = f̃val_pred[2]*cpq[2]*hj
+        for i = 2:p                                               
+            @. sum_p += f̃val_pred[i + 1]*cpq[i + 1]*hj^i      
+        end
+        @. sum_q = -hj*f̃val_correct[2]*cqp[2]
+        for i = 2:q
+            @. sum_q += f̃val_correct[i + 1]*cqp[i + 1]*((-hj)^i)
+        end  
 
-    map!(mid, d.xval_correct, d.X_predict)     # GOOD
+        @. δⱼ₊₁ = xval - xval_predict + sum_p - sum_q + γ*(hj^k)*f̃_pred[k + 1]
+        fill!(Jxsto, zero(S))
+        for i = 1:nx; Jxsto[i,i] = one(S); end
+        for i = 1:p
+            @. Jxsto += Jx[i + 1]*cpq[i + 1]*hj^i
+        end
+        @. Jpsto = Jp[2]*cpq[2]*hj
+        for i = 2:p
+            @. Jpsto += Jp[i + 1]*cpq[i + 1]*hj^i
+        end
 
-    # extract method constants
-    ho = d.hermite_obreschkoff
-    γ = ho.γ
-    p = ho.p                     # GOOD
-    q = ho.q                     # GOOD
-    k = ho.k                     # GOOD
-    nx = d.nx                    # GOOD
-    np = length(contract.pval)   # GOOD
+        μ!(μX, X_predict, xval, η)
+        ρ!(ρP, P, pval, η)
+        set_JxJp!(d.Jf!_correct, μX, ρP, t)
+        fill!(Jxsto, zero(S))
+        for i = 1:nx; Jxsto[i,i] = one(S); end
+        for i = 1:q
+            @. Jxsto += cJx[i + 1]*cqp[i + 1]*((-hj)^i)
+        end
+        d.Jf!_correct.Jpsto .= sum(i -> qi(cqp, hj, cJp, i), 1:q)
 
-    hⱼ = contract.hj_computed    # GOOD
-    t = contract.times[1]        # GOOD
-    hjk = hⱼ^k                   # GOOD
-    _sum_pred(y, i) = y[i+1]*ho.cpq[i+1]*hⱼ^(i)
-    _sum_q(y, i) = (ho.cqp[i+1]*(-hⱼ)^i)*y[i+1]
+        @. pre = mid(Jxsto)
+        lu!(pre)
+        mul!(B_temp, Jxsto, A_Q[2])
+        Bj .= pre/B_temp
+        C_temp .= pre/Jxsto
+        @. Cj = -C_temp
+        Cj += I
+        @. Uj = X_predict - xval_predict
 
-    d.sum_p .= mapreduce(i -> _sum_pred(d.f̃val_pred, i), +, 1:p)
+        @. Jpdiff = Jpsto - d.Jf!_correct.Jpsto
+        X_computed .= (xval_predict + Bj*Δ[2] + Cj*Uj + (pre\Jpdiff)*rP + pre*δⱼ₊₁) .∩ X_predict
 
-    d.real_tf!_correct(d.f̃val_correct, d.xval_correct, contract.pval, t)
-    d.sum_q .=  mapreduce(i -> _sum_q(d.f̃val_correct, i), +, 1:q)
+        contract_constant_state!(X_computed, d.constant_state_bounds)
+        affine_contract!(X_computed, P, pval, np, nx)
+        @. xval_computed = mid(X_computed)
 
-    @__dot__ d.δⱼ₊₁ = contract.xval - d.xval_correct + d.sum_p - d.sum_q + γ*hjk*d.f̃_pred[k + 1]   # Looks wrong based on impact....
-
-    d.Jf!_pred.Jxsto .= mapreduce(i -> _sum_pred(d.Jf!_pred.Jx, i), +, 1:p)
-    d.Jf!_pred.Jpsto .= mapreduce(i -> _sum_pred(d.Jf!_pred.Jp, i), +, 1:p)
-    d.Jf!_pred.Jxsto += d.Inx
-
-    μ!(d.μX, d.X_predict, d.xval_correct, d.η)
-    ρ!(d.ρP, contract.P, contract.pval, d.η)
-    set_JxJp!(d.Jf!_correct, d.μX, d.ρP, t)
-    d.Jf!_correct.Jxsto .= mapreduce(i -> _sum_q(d.Jf!_correct.Jx, i), +, 1:q)
-    d.Jf!_correct.Jpsto .= mapreduce(i -> _sum_q(d.Jf!_correct.Jp, i), +, 1:q)
-    d.Jf!_correct.Jxsto += d.Inx
-
-    map!(mid, d.precond, d.Jf!_correct.Jxsto)
-    lu!(d.precond)
-
-    mul_split!(d.pred_Jxmat, d.Jf!_pred.Jxsto, contract.A_Q[2], nx)
-    d.correct_B = d.precond\d.pred_Jxmat
-    mul_split!(d.correct_Bvec, d.correct_B, contract.Δ[2], nx)
-
-    d.correct_C = d.precond\d.Jf!_correct.Jxsto
-    @__dot__ d.correct_C *= -1.0
-    d.correct_C += d.Inx
-
-    @__dot__ d.rX = d.X_predict - d.xval_correct
-    mul_split!(d.Uj, d.correct_C, d.rX, nx)
-
-    @__dot__ d.Jpdiff = d.Jf!_pred.Jpsto - d.Jf!_correct.Jpsto
-    d.Cp = d.precond\d.Jpdiff
-    mul_split!(d.CprP, d.Cp, contract.rP, nx)
-    mul_split!(d.Yδⱼ₊₁, d.precond, d.δⱼ₊₁, nx)
-    @__dot__ contract.X_computed = d.xval_correct + d.correct_Bvec + d.Uj + d.CprP + d.Yδⱼ₊₁
-
-    @__dot__ contract.X_computed = contract.X_computed ∩ d.X_predict
-
-    affine_contract!(contract.X_computed, contract.P, contract.pval, nx, np)
-    @__dot__ contract.xval_computed = mid(contract.X_computed)
-
-    # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
-    mul_split!(d.correct_Jmid, d.Jf!_correct.Jxsto, contract.A_Q[2], nx)
-    @__dot__ contract.B = mid(d.correct_Jmid)
-    calculateQ!(contract.A_Q[1], contract.B, nx)
-    calculateQinv!(contract.A_inv[1], contract.A_Q[1], nx)
-
-    mul_split!(d.precond2, contract.A_inv[1], d.precond, nx)
-    @__dot__ d.Uj2 = contract.X_computed - d.xval_correct
-    mul_split!(d.B2, d.precond, d.correct_Jmid, nx)
-    mul_split!(d.B2vec, d.B2, contract.Δ[2], nx)
-
-    mul_split!(d.Y2δⱼ₊₁, d.precond2, d.δⱼ₊₁, nx)
-    mul_split!(d.Y2Jpdiff, d.precond2, d.Jpdiff, nx)
-    mul_split!(d.Y2Jpvec, d.Y2Jpdiff, contract.rP, nx)
-    mul_split!(d.YC, contract.A_inv[1], d.correct_C, nx)
-    mul_split!(d.YUj2, d.YC, d.Uj2, nx)
-
-    @__dot__ d.Δⱼ₊₁ = d.Y2δⱼ₊₁ + d.Y2Jpvec + d.B2vec + d.YUj2
-
-    contract.Δ[1] = copy(d.Δⱼ₊₁)
+        # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)
+        cJmid = Jxsto*A_Q[2]
+        calculateQ!(A_Q[1], mid.(cJmid))
+        calculateQinv!(A_inv[1], A_Q[1])
+        pre2 = A_inv[1]*pre
+        Δⱼ₊₁ .= pre2*δⱼ₊₁ + (pre2*Jpdiff)*rP + (pre*cJmid)*Δ[2] + A_inv[1]*(xval_computed - xval_predict) + (A_inv[1]*Cj)*(X_computed - xval_predict)
+        @. Δ[1] = Δⱼ₊₁ .∩ ho_predict_Δⱼ₊₁
+    end
 
     return RELAXATION_NOT_CALLED
 end
 
 get_Δ(f::HermiteObreschkoffFunctor) = f.Δⱼ₊₁
-advance_contractor_buffer!(lf::HermiteObreschkoffFunctor) = nothing

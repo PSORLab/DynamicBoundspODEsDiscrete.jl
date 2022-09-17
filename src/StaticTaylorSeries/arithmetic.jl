@@ -23,10 +23,23 @@ end
 function +(b::T, a::STaylor1{N,T}) where {N, T<:Number}
     STaylor1{N,T}(ntuple(i -> i == 1 ? a.coeffs[1] + b : a.coeffs[i], Val(N)))
 end
+function +(a::STaylor1{N,T}, b::Number) where {N, T<:Number}
+    STaylor1{N,T}(ntuple(i -> i == 1 ? a.coeffs[1] + b : a.coeffs[i], Val(N)))
+end
+function +(b::Number, a::STaylor1{N,T}) where {N, T<:Number}
+    STaylor1{N,T}(ntuple(i -> i == 1 ? a.coeffs[1] + b : a.coeffs[i], Val(N)))
+end
+
 function -(a::STaylor1{N,T}, b::T) where {N, T<:Number}
     STaylor1{N,T}(ntuple(i -> i == 1 ? a.coeffs[1] - b : a.coeffs[i], Val(N)))
 end
 -(b::T, a::STaylor1{N,T}) where {N, T<:Number}  = b + (-a)
+
+function -(a::STaylor1{N,T}, b::Number) where {N, T<:Number}
+    STaylor1{N,T}(ntuple(i -> i == 1 ? a.coeffs[1] - b : a.coeffs[i], Val(N)))
+end
+-(b::Number, a::STaylor1{N,T}) where {N, T<:Number}  = b + (-a)
+
 
 #+(a::STaylor1{N,T}, b::S) where {N, T<:NumberNotSeries, S<:NumberNotSeries} = +(promote(a,b)...)
 #+(a::STaylor1{N,T}, b::STaylor1{N,S}) where {N, T<:NumberNotSeries, S<:NumberNotSeries} = +(promote(a,b)...)
