@@ -143,7 +143,6 @@ function (d::LohnersFunctor{F,K,S,T,NY})(c, r, j, k) where {F,K,S,T,NY}
     mul!(Jpvec, Jpsto, rP)
 
     @. X_computed = Vⱼ₊₁ + Rⱼ₊₁ + Jxvec + Jpvec
-    contract_constant_state!(X_computed, d.constant_state_bounds)
     affine_contract!(X_computed, P, pval, nx, np)
 
     # calculation block for computing Aⱼ₊₁ and inv(Aⱼ₊₁)

@@ -17,10 +17,6 @@ const DR = DynamicBoundspODEsDiscrete
 
 
     # test improvement condition for existence & uniqueness
-    Yold = [Interval(1.0, 3.0); Interval(2.0, 4.0); Interval(1.0, 3.0)]
-    Ynew = [Interval(1.5, 2.0); Interval(3.0, 3.5); Interval(0.5, 3.5)]
-    nx_ic = 2
-    @test DR.improvement_condition(Yold, Ynew, nx_ic)
 
     function J!(out, x, p, t)
         out[1, 1] = x
@@ -136,23 +132,6 @@ const DR = DynamicBoundspODEsDiscrete
     @test jtf_exist_unique!.Jp[1][1, 1].lo ==
           jtf_exist_unique!.Jp[1][1, 1].hi ==
           0.0
-
-    #u_result = DR.UniquenessResult(1,1)
-    #DR.existence_uniqueness!(u_result, itf_exist_unique!, eufY, hⱼ, hmin,
-    #                         coeff_out_exist_unique!, Jx, Jp)
-
-    #@test u_result.step == 0.001
-    #@test u_result.confirmed
-
-    Y = [1.1 3.2; 4.0 -1.0]
-    y = [1.1; 3.2]
-    A = [1.1 3.2; 4.0 -1.0]
-    B = [1.1 3.2; 4.0 -1.0]
-    b = [1.1; -1.0]
-    mul_split!(Y, A, B, 2)
-    @test isapprox(Y[2,2], 13.8, atol=1E-5)
-    mul_split!(y, A, b, 2)
-    @test isapprox(Y[1,2], 0.3200000000000003, atol=1E-5)
 end
 
 if !(VERSION < v"1.1" && testfile == "intervals.jl")
@@ -340,17 +319,17 @@ if !(VERSION < v"1.1" && testfile == "intervals.jl")
 
         #ta(a) = STaylor1(1.0, Val(15))
         @test_broken promote(1.0, STaylor1(1.0, Val(15)))[1] == STaylor1(1.0, Val(16))
-        @test_broken promote(0, STaylor1(1.0, Val(15)))[1] == STaylor1(0.0, Val(16))
+        @test promote(0, STaylor1(1.0, Val(15)))[1] == STaylor1(0.0, Val(16))
         @test_broken eltype(promote(STaylor1(1, Val(15)), 2)[2]) == Int
         @test_broken eltype(promote(STaylor1(1.0, Val(15)), 1.1)[2]) == Float64
-        @test_broken eltype(promote(0, STaylor1(1.0, Val(15)))[1]) == Float64
+        @test eltype(promote(0, STaylor1(1.0, Val(15)))[1]) == Float64
 
         @test_broken promote_rule(typeof(STaylor1([1.1, 2.1])), typeof(STaylor1([1.1, 2.1]))) == STaylor1{2,Float64}
         @test_broken promote_rule(typeof(STaylor1([1.1, 2.1])), typeof(STaylor1([1, 2]))) == STaylor1{2,Float64}
         @test_broken promote_rule(typeof(STaylor1([1.1, 2.1])), typeof([1.1, 2.1])) == STaylor1{2,Float64}
         @test_broken promote_rule(typeof(STaylor1([1.1, 2.1])), typeof([1, 2])) == STaylor1{2,Float64}
         @test_broken promote_rule(typeof(STaylor1([1.1, 2.1])), typeof(1.1)) == STaylor1{2,Float64}
-        @test_broken promote_rule(typeof(STaylor1([1.1, 2.1])), typeof(1)) == STaylor1{2,Float64} #TODO: FAILING
+        @test promote_rule(typeof(STaylor1([1.1, 2.1])), typeof(1)) == STaylor1{2,Float64} #TODO: FAILING
 
         @test convert(STaylor1{2,Float64}, [1; 2]) == STaylor1(Float64[1, 2])
         @test convert(STaylor1{2,Float64}, [1.1; 2.1]) == STaylor1([1.1, 2.1])
@@ -404,58 +383,6 @@ end
 
     @test isapprox(lo_vec[7], 8.417645335842485, atol = 1E-5)
     @test isapprox(hi_vec[7], 8.534116268673994, atol = 1E-5)
-end
-
-@testset "Lohner's Method Adaptive Interval Testset" begin
-
-    ticks = 100.0
-    steps = 100.0
-    tend = steps / ticks
-
-    x0(p) = [9.0]
-    function f!(dx, x, p, t)
-        dx[1] = p[1]  - x[1]*x[1]
-        nothing
-    end
-    tspan = (0.0, tend)
-    pL = [-1.0]
-    pU = [1.0]
-    prob = DBB.ODERelaxProb(f!, tspan, x0, pL, pU)
-
-    integrator = DiscretizeRelax(
-        prob,
-        DR.LohnerContractor(7),
-        repeat_limit = 1,
-        skip_step2 = false,
-        step_limit = steps,
-        relax = false,
-    )
-
-    ratio = rand(1)
-    pstar = pL .* ratio .+ pU .* (1.0 .- ratio)
-    DBB.setall!(integrator, DBB.ParameterValue(), [0.0])
-    DBB.relax!(integrator)
-
-    lo_vec = getfield.(getindex.(integrator.storage[:], 1), :lo)
-    hi_vec = getfield.(getindex.(integrator.storage[:], 1), :hi)
-
-    @test isapprox(lo_vec[6], 5.884811279034315, atol = 1E-5)
-    @test isapprox(hi_vec[6], 5.965419612738188, atol = 1E-5)
-
-    support_set = DBB.get(integrator, DBB.SupportSet())
-    outvec = zeros(length(support_set.s))
-
-    DBB.getall!(outvec, integrator, DBB.Bound{Lower}())
-    @test_broken isapprox(outvec[10], 0.9746606911231538, atol=1E-8)
-
-    DBB.getall!(outvec, integrator, DBB.Bound{Upper}())
-    @test_broken isapprox(outvec[10], 1.7009858838207106, atol=1E-8)
-
-    DBB.getall!(outvec, integrator, DBB.Relaxation{Lower}())
-    @test_broken isapprox(outvec[10], 0.9746606911231538, atol=1E-8)
-
-    DBB.getall!(outvec, integrator, DBB.Relaxation{Upper}())
-    @test_broken isapprox(outvec[10], 1.7009858838207106, atol=1E-8)
 end
 
 @testset "Lohner's Method MC Testset" begin
@@ -550,40 +477,6 @@ end
 
     #DBB.getall!(outvec, integrator, DBB.Relaxation{Upper}())
     #@test isapprox(outvec[10], 8.225380667441055, atol=1E-8)
-end
-
-@testset "Hermite-Obreshkoff Testset" begin
-
-    ticks = 100.0
-    steps = 100.0
-    tend = steps / ticks
-
-    x0(p) = [9.0]
-    function f!(dx, x, p, t)
-        dx[1] = p[1] - x[1]
-        nothing
-    end
-    tspan = (0.0, tend)
-    pL = [-1.0]
-    pU = [1.0]
-    prob = DBB.ODERelaxProb(f!, tspan, x0, pL, pU)
-
-    integrator = DiscretizeRelax(prob, DR.HermiteObreschkoff(3, 3),
-                                 h = 1/ticks, repeat_limit = 1,
-                                 skip_step2 = false,
-                                 step_limit = steps,
-                                 relax = false)
-
-    ratio = rand(1)
-    pstar = pL .* ratio .+ pU .* (1.0 .- ratio)
-    DBB.setall!(integrator, DBB.ParameterValue(), [0.0])
-    DBB.relax!(integrator)
-
-    lo_vec = getfield.(getindex.(integrator.storage[:], 1), :lo)
-    hi_vec = getfield.(getindex.(integrator.storage[:], 1), :hi)
-
-    @test isapprox(lo_vec[6], 8.510710620631412, atol = 1E-5)
-    @test isapprox(hi_vec[6], 8.611419020357289, atol = 1E-5)
 end
 
 @testset "Wilhelm 2019 Integrator Testset" begin
