@@ -19,6 +19,11 @@ function promote_rule(::Type{STaylor1{N,T}}, ::Type{Float64}) where {N,T<:Number
     STaylor1{N,S}
 end
 
+function promote_rule(::Type{STaylor1{N,T}}, ::Type{Int}) where {N,T<:Number}
+    S = promote_rule(T, Int)
+    STaylor1{N,S}
+end
+
 #promote_rule(::Type{STaylor1{N,T}}, ::Type{STaylor1{N,T}}) where {N, T<:Number} = STaylor1{N,T}
 
 #promote_rule(::Type{STaylor1{N,T}}, ::Type{STaylor1{N,T}}) where {N, T<:Number} = STaylor1{N,T}

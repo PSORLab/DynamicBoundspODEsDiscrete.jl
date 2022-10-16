@@ -29,12 +29,12 @@ mutable struct TaylorFunctor!{F <: Function, N, T <: Real, S <: Real}
     "Right-hand side function for pODE which operates in place as g!(dx,x,p,t)"
     g!::F
     "Dimensionality of x"
-    nx::Int64
+    nx::Int
     "Dimensionality of p"
-    np::Int64
+    np::Int
     "Order of TaylorSeries, that is the first k terms are used in the approximation
     and N = k+1 term is bounded"
-    k::Int64
+    k::Int
     "State variables x"
     x::Vector{S}
     "Decision variables p"
@@ -46,32 +46,12 @@ mutable struct TaylorFunctor!{F <: Function, N, T <: Real, S <: Real}
     "Store temporary STaylor1 vector for calculations"
     dx::Vector{STaylor1{N,S}}
     taux::Vector{STaylor1{N,T}}
-    vnxt::Vector{Int64}
+    vnxt::Vector{Int}
     fnxt::Vector{Float64}
-end
-
-function (d::TaylorFunctor!{F, K, T, S})(out::Vector{Vector{S}}, x::Vector{S},
-          p::Vector{S}, t::T) where {F <: Function, K, T <: Real, S <: Real}
-
-    val = Val(K-1)
-    for i in eachindex(d.xtaylor)
-        d.xtaylor[i] = STaylor1(x[i], val)
-    end
-
-    jetcoeffs!(d.g!, t, d.xtaylor, d.xaux, d.dx, K-1, p, d.vnxt, d.fnxt)::Nothing
-    for i in eachindex(out)
-        for j in eachindex(d.xtaylor)
-            out[i][j] = d.xtaylor[j][i-1]
-        end
-    end
-
-    return nothing
 end
 
 function TaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K, T <: Number, Q <: Number}
 
-    x0 = zeros(T, nx)
-    Vⱼ = zeros(T, nx)
     f̃ = Vector{T}[]
     for i = 1:(K+1)
         push!(f̃, zeros(T, nx))
@@ -87,7 +67,6 @@ function TaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K, T
         push!(dx, temp)
         push!(taux, zero(STaylor1{K+1,Q}))
     end
-    #push!(xtaylor, fill(temp, nx))
     x = zeros(T, nx)
     p = zeros(T, np)
     vnxt = zeros(Int, nx)
@@ -95,4 +74,13 @@ function TaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K, T
 
     return TaylorFunctor!{typeof(g!), K+1, Q, T}(g!, nx, np, K, x, p, xtaylor,
                                                  xaux, dx, taux, vnxt, fnxt)
+end
+
+function (d::TaylorFunctor!{F,K,T,S})(out::Vector{Vector{S}}, x::Vector{S}, p::Vector{S}, t::T) where {F, K, T, S}
+    @__dot__ d.xtaylor = STaylor1(x, Val(K-1))
+    jetcoeffs!(d.g!, t, d.xtaylor, d.xaux, d.dx, K-1, p, d.vnxt, d.fnxt)::Nothing
+    for i = 1:d.nx, j = 1:(d.k + 1)
+        out[j][i] = d.xtaylor[i][j - 1]
+    end
+    nothing
 end

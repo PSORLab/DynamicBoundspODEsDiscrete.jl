@@ -104,10 +104,7 @@ function JacTaylorFunctor!(g!, nx::Int, np::Int, k::Val{K}, t::T, q::Q) where {K
                                                              dx, taux, t, vnxt, fnxt)
 end
 
-function (d::JacTaylorFunctor!{F,K,T,S,NY})(out::AbstractVector{Dual{Nothing,S,NY}},
-                                            y::AbstractVector{Dual{Nothing,S,NY}}) where {F <: Function,
-                                                                                          K, T <: Real, S, NY}
-
+function (d::JacTaylorFunctor!{F,K,T,S,NY})(out::AbstractVector{Dual{Nothing,S,NY}}, y::AbstractVector{Dual{Nothing,S,NY}}) where {F,K,T,S,NY}
 
     copyto!(d.x, 1, y, 1, d.nx)
     copyto!(d.p, 1, y, d.nx + 1, d.np)
@@ -122,7 +119,6 @@ function (d::JacTaylorFunctor!{F,K,T,S,NY})(out::AbstractVector{Dual{Nothing,S,N
             out[indx] = d.xtaylor[i].coeffs[q]
         end
     end
-
     return nothing
 end
 
@@ -159,17 +155,18 @@ the Taylor series is `s`, the dimensionality of x is `nx`, the dimensionality of
 p is `np`, and `tjac` is preallocated storage for the transpose of the Jacobian
 w.r.t. y = (x,p).
 """
-function set_JxJp!(g::JacTaylorFunctor!{F,K,T,S,NY}, X::Vector{S}, P, t) where {F,K,T,S,NY}
+set_JxJp!(g::JacTaylorFunctor!{F,K,T,S,NY}, X, P, t) where {F,K,T,S,NY} = set_JxJp!(g, X, P, t, g.nx, g.np, g.s)
 
+function set_JxJp!(g::JacTaylorFunctor!{F,K,T,S,NY}, X, P, t, nx, np, s) where {F,K,T,S,NY}
     jacobian_taylor_coeffs!(g, X, P, t)
     jac = g.result.derivs[1]
-    for i = 1:(g.s + 1)
-        for q = 1:g.nx
-            for z = 1:g.nx
-                g.Jx[i][q, z] = jac[q + g.nx*(i-1), z]
+    for i = 1:(s + 1)
+        for q = 1:nx
+            for z = 1:nx
+                g.Jx[i][q, z] = jac[q + nx*(i-1), z]
             end
-            for z = 1:g.np
-                g.Jp[i][q, z] = jac[q + g.nx*(i-1), g.nx + z]
+            for z = 1:np
+                g.Jp[i][q, z] = jac[q + nx*(i-1), nx + z]
             end
         end
     end

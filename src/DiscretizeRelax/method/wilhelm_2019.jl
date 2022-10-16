@@ -6,8 +6,11 @@ abstract type AbstractIntervalCallback end
 
 """
 $(TYPEDEF)
+
+Functor object `d` that computes `h(xmid, P)` and `hj(X,P)` in-place 
+using `X`, `P` information stored in the fields when `d()` is run. 
 """
-struct PICallback{FH,FJ} <:  AbstractIntervalCallback
+mutable struct PICallback{FH,FJ} <:  AbstractIntervalCallback
     h!::FH
     hj!::FJ
     H::Vector{Interval{Float64}}
@@ -26,13 +29,14 @@ function PICallback(h!::FH, hj!::FJ, P::Vector{Interval{Float64}}, nx::Int) wher
 end
 
 function (d::PICallback{FH,FJ})() where {FH,FJ}
-    fill!(d.H, Interval{Float64}(0.0,0.0))
-    fill!(d.J, Interval{Float64}(0.0,0.0))
-    @inbounds for i in 1:d.nx
-        d.xmid[i] = 0.5*(d.X[i].lo + d.X[i].hi)
+    @unpack H, J, X, P, xmid, nx, h!, hj! = d
+    fill!(H, zero(Interval{Float64}))
+    fill!(J, zero(Interval{Float64}))
+    for i in 1:nx
+        xmid[i] = 0.5*(X[i].lo + X[i].hi)
     end
-    d.h!(d.H, d.xmid, d.P)
-    d.hj!(d.J, d.X, d.P)
+    h!(H, xmid, P)
+    hj!(J, X, P)
     return
 end
 
@@ -41,7 +45,7 @@ $(TYPEDEF)
 """
 function precondition!(d::DenseMidInv, H::Vector{Interval{Float64}}, J::Array{Interval{Float64},2})
     for i in eachindex(J)
-        @inbounds d.Y[i] = 0.5*(J[i].lo + J[i].hi)
+        d.Y[i] = 0.5*(J[i].lo + J[i].hi)
     end
     F = lu!(d.Y)
     H .= F\H
@@ -57,7 +61,7 @@ abstract type AbstractContractor end
 """
 $(TYPEDEF)
 """
-struct NewtonInterval <: AbstractContractor
+@Base.kwdef struct NewtonInterval <: AbstractContractor
     N::Vector{Interval{Float64}}
     Ntemp::Vector{Interval{Float64}}
     X::Vector{Interval{Float64}}
@@ -65,66 +69,59 @@ struct NewtonInterval <: AbstractContractor
     inclusion::Vector{Bool}
     lower_inclusion::Vector{Bool}
     upper_inclusion::Vector{Bool}
-    kmax::Int
-    rtol::Float64
-    etol::Float64
+    kmax::Int = 3 
+    rtol::Float64 = 1E-6
+    etol::Float64 = 1E-6
 end
-function NewtonInterval(nx::Int; kmax::Int = 5, rtol::Float64 = 1E-6, etol::Float64 = 1E-6)
-    N = zeros(Interval{Float64}, nx)
-    Ntemp = zeros(Interval{Float64}, nx)
-    X = zeros(Interval{Float64}, nx)
-    Xdiv = zeros(Interval{Float64}, nx)
-    inclusion = fill(false, (nx,))
-    lower_inclusion = fill(false, (nx,))
-    upper_inclusion = fill(false, (nx,))
-    return NewtonInterval(N, Ntemp, X, Xdiv, inclusion, lower_inclusion,
-                          upper_inclusion, kmax, rtol, etol)
-end
-function (d::NewtonInterval)(callback::PICallback{FH,FJ}) where {FH,FJ}
+NewtonInterval(nx::Int) = NewtonInterval(N = zeros(Interval{Float64}, nx), 
+                          Ntemp = zeros(Interval{Float64}, nx), 
+                          X = zeros(Interval{Float64}, nx), 
+                          Xdiv = zeros(Interval{Float64}, nx), 
+                          inclusion = fill(false, (nx,)), 
+                          lower_inclusion = fill(false, (nx,)),
+                          upper_inclusion = fill(false, (nx,)))
 
-    ext_division_flag::Bool = false
-    exclusion_flag::Bool = false
+function (d::NewtonInterval)(cb::PICallback{FH,FJ}) where {FH,FJ}
+    @unpack X, Xdiv, N, Ntemp, inclusion, lower_inclusion, upper_inclusion, rtol = d
+    @unpack H, J, nx = cb
+    
+    ext_division_flag = false
+    exclusion_flag = false
 
-    @inbounds for i=1:callback.nx
+    for i = 1:nx
         S1 = zero(Interval{Float64})
         S2 = zero(Interval{Float64})
-        @inbounds for j=1:callback.nx
-            if (j < i)
-                S1 += callback.J[i,j]*(d.X[j] - 0.5*(d.X[j].lo + d.X[j].hi))
-            elseif (j > i)
-                S2 += callback.J[i,j]*(d.X[j] - 0.5*(d.X[j].lo + d.X[j].hi))
+        for j = 1:nx
+            if j < i
+                S1 += J[i,j]*(X[j] - 0.5*(X[j].lo + X[j].hi))
+            elseif j > i
+                S2 += J[i,j]*(X[j] - 0.5*(X[j].lo + X[j].hi))
             end
         end
-        @inbounds if callback.J[i,i].lo*callback.J[i,i].hi > 0.0
-            @inbounds d.N[i] = 0.5*(d.X[i].lo + d.X[i].hi) - (callback.H[i]+S1+S2)/callback.J[i,i]
+        if J[i,i].lo*J[i,i].hi > 0.0
+            N[i] = 0.5*(X[i].lo + X[i].hi) - (H[i] + S1 + S2)/J[i,i]
         else
-            @. d.Ntemp = d.N
-            eD, d.N[i], d.Ntemp[i] = extended_process(d.N[i], d.X[i], callback.J[i,i],
-                                                    S1+S2+callback.H[i], d.rtol)
-            if eD == 1
+            @. Ntemp = N
+            eD, N[i], Ntemp[i] = extended_process(N[i], X[i], J[i,i], S1 + S2 + H[i], rtol)
+            if isone(eD)
                 ext_division_flag = true
-                @. d.Xdiv = d.X
-                d.Xdiv[i] = d.Ntemp[i] ∩ d.X[i]
-                d.X[i] = d.N[i] ∩ d.X[i]
+                @. Xdiv = X
+                Xdiv[i] = Ntemp[i] ∩ X[i]
+                X[i] = N[i] ∩ X[i]
                 return ext_division_flag, exclusion_flag
             end
         end
-        @inbounds if strict_x_in_y(d.N[i], d.X[i])
-            d.inclusion[i] = true
-            d.lower_inclusion[i] = true
-            d.upper_inclusion[i] = true
+        if strict_x_in_y(N[i], X[i])
+            inclusion[i] = true
+            lower_inclusion[i] = true
+            upper_inclusion[i] = true
         else
-            d.inclusion[i] = false
-            d.lower_inclusion[i] = false
-            d.upper_inclusion[i] = false
-            if (d.N[i].lo > d.X[i].lo)
-                d.lower_inclusion[i] = true
-            elseif (d.N[i].hi < d.X[i].hi)
-                d.upper_inclusion[i] = true
-            end
+            inclusion[i] = false
+            lower_inclusion[i] = N[i].lo > X[i].lo
+            upper_inclusion[i] = N[i].hi < X[i].hi
         end
-        @inbounds if ~isdisjoint(d.N[i], d.X[i])
-            d.X[i] = d.N[i] ∩ d.X[i]
+        if ~isdisjoint(N[i], X[i])
+            X[i] = N[i] ∩ X[i]
         else
             return ext_division_flag, exclusion_flag
         end
@@ -132,33 +129,25 @@ function (d::NewtonInterval)(callback::PICallback{FH,FJ}) where {FH,FJ}
     return ext_division_flag, exclusion_flag
 end
 
-function parametric_interval_contractor(callback!::PICallback{FH,FJ}, precond!::P,
-                                        contractor::S) where {FH,
-                                                              FJ,
-                                                              P,
-                                                              S <: AbstractContractor}
+function parametric_interval_contractor(callback!::PICallback{FH,FJ}, precond!::P, contractor::S) where {FH, FJ, P, S <: AbstractContractor}
+
     exclusion_flag = false
     inclusion_flag = false
     ext_division_flag = false
     ext_division_num = 0
+    fill!(contractor.inclusion, false)
+    fill!(contractor.lower_inclusion, false)
+    fill!(contractor.upper_inclusion, false)
+    @. contractor.X = callback!.X
 
-    for i in eachindex(contractor.X)
-        @inbounds contractor.inclusion[i] = false
-        @inbounds contractor.lower_inclusion[i] = false
-        @inbounds contractor.upper_inclusion[i] = false
-        @inbounds contractor.X[i] = callback!.X[i]
-    end
-
-    for i=1:contractor.kmax
+    for i = 1:contractor.kmax
         callback!()::Nothing
         precondition!(precond!, callback!.H, callback!.J)::Nothing
         exclusion_flag, ext_division_flag = contractor(callback!)::Tuple{Bool,Bool}
         (exclusion_flag || ext_division_flag) && break
-        inclusion_flag = inclusion_test(inclusion_flag, contractor.inclusion,
-                                        callback!.nx)
-        for j in eachindex(callback!.X)
-            @inbounds callback!.X[j] = contractor.X[j]
-        end
+        inclusion_flag = inclusion_test(inclusion_flag, contractor.inclusion, callback!.nx)
+        @. callback!.X = contractor.X
+        @. callback!.xmid = mid(callback!.X)
     end
 
     return exclusion_flag, inclusion_flag, ext_division_flag
@@ -195,6 +184,11 @@ state_contractor_integrator(m::ImpEuler) = ImplicitEuler(autodiff = false)
 state_contractor_integrator(m::AM2) = Trapezoid(autodiff = false)
 state_contractor_integrator(m::BDF2) = ABDF2(autodiff = false)
 
+
+is_two_step(::ImpEuler) = false
+is_two_step(::AM2) = false
+is_two_step(::BDF2) = true
+
 """
 $(TYPEDEF)
 
@@ -208,35 +202,25 @@ mutable struct CallbackH{V,F,T<:W19T} <: Function
     t2::Float64
     t1::Float64
 end
-function CallbackH{V,F,T}(nx::Int,h!::F) where {V,F,T<:W19T}
-    return CallbackH{V,F,T}(zeros(V,nx), zeros(V,nx), zeros(V,nx), h!,0.0,0.0)
-end
-
+CallbackH{V,F,T}(nx::Int, h!::F) where {V,F,T<:W19T} = CallbackH{V,F,T}(zeros(V,nx), zeros(V,nx), zeros(V,nx), h!, 0.0, 0.0)
 function (cb::CallbackH{V,F,ImpEuler})(out, x, p) where {V,F}
-    cb.h!(out, x, p, cb.t2)
-    delT = cb.t2 - cb.t1
-    for j in eachindex(out)
-        @inbounds out[j] = out[j]*delT - x[j] + cb.xold1[j]
-    end
-    return
+    @unpack h!, xold1, t1, t2 = cb
+    h!(out, x, p, t2)
+    @. out = out*(t2 - t1) - x + xold1
+    nothing
 end
-
 function (cb::CallbackH{V,F,AM2})(out, x, p::Vector{V}) where {V,F}
-    cb.h!(out, x, p, cb.t2)
-    cb.h!(cb.temp, cb.xold1, p, cb.t1)
-    halfdelT = 0.5*(cb.t2 - cb.t1)
-    for j in eachindex(out)
-        @inbounds out[j] = halfdelT*(out[j] + cb.temp[j]) - x[j] + cb.xold1[j]
-    end
-    return
+    @unpack h!, temp, xold1, t1, t2 = cb
+    h!(out, x, p, t2)
+    h!(temp, xold1, p, t1)
+    @. out = 0.5*(t2 - t1)*(out + temp) - x + xold1
+    nothing
 end
 function (cb::CallbackH{V,F,BDF2})(out, x, p::Vector{V}) where {V,F}
-    cb.h!(out, x, p, cb.t2)
-    twothirddelT = 2.0*(cb.t2 - cb.t1)/3.0
-    for j in eachindex(out)
-        @inbounds out[j] = twothirddelT*out[j] - x[j] + (4.0/3.0)*cb.xold1[j] - (1.0/3.0)*cb.xold2[j]
-    end
-    return
+    @unpack h!, xold1, xold2, t1, t2 = cb
+    h!(out, x, p, t2)
+    @. out = (2.0/3.0)*(t2 - t1)*out - x + (4.0/3.0)*xold1 - (1.0/3.0)*xold2
+    nothing
 end
 
 """
@@ -244,42 +228,39 @@ $(FUNCTIONNAME)
 
 A callback function used for the Wilhelm2019 integrator.
 """
-mutable struct CallbackHJ{F, T <: W19T} <: Function
+Base.@kwdef mutable struct CallbackHJ{F, T <: W19T} <: Function
     hj!::F
-    tf::Float64
-    delT::Float64
+    tf::Float64 = 0.0
+    delT::Float64 = 0.0
 end
-CallbackHJ{F,T}(hj!::F) where {F, T <: W19T} = CallbackHJ{F,T}(hj!,0.0,0.0)
+CallbackHJ{F,T}(hj!::F) where {F, T <: W19T} = CallbackHJ{F,T}(; hj! = hj!)
 
 function (cb::CallbackHJ{F, ImpEuler})(out, x, p) where F
-    cb.hj!(out, x, p, cb.tf)
-    for j in eachindex(out)
-        @inbounds out[j] *= cb.delT
-    end
+    @unpack hj!, tf, delT = cb
+    hj!(out, x, p, tf)
+    @. out *= delT
     for j in diagind(out)
-        @inbounds out[j] -= 1.0
+        out[j] -= 1.0
     end
-    return
+    nothing
 end
 function (cb::CallbackHJ{F, AM2})(out, x, p) where F
-    cb.hj!(out, x, p, cb.tf)
-    for j in eachindex(out)
-        @inbounds out[j] *= 0.5*cb.delT
-    end
+    @unpack hj!, tf, delT = cb 
+    hj!(out, x, p, tf)
+    @. out *= 0.5*delT
     for j in diagind(out)
-        @inbounds out[j] -= 1.0
+        out[j] -= 1.0
     end
-    return
+    nothing
 end
 function (cb::CallbackHJ{F, BDF2})(out, x, p) where F
-    cb.hj!(out, x, p, cb.tf)
-    for j in eachindex(out)
-        @inbounds out[j] *= 2.0*cb.delT/3.0
-    end
+    @unpack hj!, tf, delT = cb
+    hj!(out, x, p, tf)
+    @. out *= 2.0*delT/3.0
     for j in diagind(out)
-        @inbounds out[j] -= 1.0
+        out[j] -= 1.0
     end
-    return
+    nothing
 end
 
 """
@@ -289,9 +270,8 @@ An integrator that bounds the numerical solution of the pODEs system.
 
 $(TYPEDFIELDS)
 """
-mutable struct Wilhelm2019{T <: W19T, ICB1 <: PICallback, ICB2 <: PICallback,
-                           PRE, CTR <: AbstractContractor,
-                           IC <: Function, F, Z, J, PRB, N, C, AMAT} <: DBB.AbstractODERelaxIntegrator
+mutable struct Wilhelm2019{T <: W19T, ICB1 <: PICallback, ICB2 <: PICallback, PRE, 
+                           CTR <: AbstractContractor, IC <: Function, F, Z, J, PRB, N, C, AMAT} <: DBB.AbstractODERelaxIntegrator
 
     # problem specifications
     integrator_type::T
@@ -344,20 +324,19 @@ mutable struct Wilhelm2019{T <: W19T, ICB1 <: PICallback, ICB2 <: PICallback,
     local_problem_storage
     prob
     constant_state_bounds::Union{Nothing,ConstantStateBounds}
+
+    relax_t_dict_flt::Dict{Float64,Int}
+    relax_t_dict_indx::Dict{Int,Int}
 end
 
 function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
 
-    h! = d.f
-    hj! = d.Jx!
+    h! = d.f; hj! = d.Jx!
     time = d.support_set.s
     steps = length(time) - 1
 
-    p = d.p
-    pL = d.pL
-    pU = d.pU
-    nx = d.nx
-    np = length(p)
+    p = d.p; pL = d.pL; pU = d.pU
+    nx = d.nx; np = length(p)
     xL = isempty(d.xL) ? zeros(nx,steps) : d.xL
     xU = isempty(d.xU) ? zeros(nx,steps) : d.xU
 
@@ -366,9 +345,7 @@ function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
     X0P = zeros(Interval{Float64}, nx)
     pi_precond! = DenseMidInv(zeros(Float64,nx,nx), zeros(Interval{Float64},1), nx, np)
     pi_contractor = NewtonInterval(nx)
-    inclusion_flag = false
-    exclusion_flag = false
-    extended_division_flag = false
+    inclusion_flag = exclusion_flag = extended_division_flag = false
     Z = MC{np,NS}
 
     ic = d.x0
@@ -384,9 +361,8 @@ function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
 
     pi_callback1 = PICallback(h1intv!, hj1intv!, P, nx)
     pi_callback2 = PICallback(h2intv!, hj2intv!, P, nx)
-
-    mc_callback1 = MCCallback(h1, hj1, nx, np)
-    mc_callback2 = MCCallback(h2, hj2, nx, np)
+    mc_callback1 = MCCallback(h1, hj1, nx, np, McCormick.NewtonGS(), McCormick.DenseMidInv(zeros(nx,nx), zeros(Interval{Float64},1), nx, np))
+    mc_callback2 = MCCallback(h2, hj2, nx, np, McCormick.NewtonGS(), McCormick.DenseMidInv(zeros(nx,nx), zeros(Interval{Float64},1), nx, np))
 
     # storage used for MC methods
     kmax = 1
@@ -401,6 +377,14 @@ function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
     local_integrator() = state_contractor_integrator(t)
     local_problem_storage = ODELocalIntegrator(d, local_integrator)
 
+    support_set = DBB.get(d, DBB.SupportSet())
+    relax_t_dict_flt = Dict{Float64,Int}()
+    relax_t_dict_indx = Dict{Int,Int}()
+    for (i,s) in enumerate(support_set.s)
+        relax_t_dict_flt[s] = i
+        relax_t_dict_indx[i] = i
+    end
+
     return Wilhelm2019{T, typeof(pi_callback1), typeof(pi_callback2),
                        typeof(pi_precond!), typeof(pi_contractor),
                        typeof(ic), typeof(h!), Z, typeof(hj!), nothing,
@@ -411,252 +395,247 @@ function Wilhelm2019(d::ODERelaxProb, t::T) where {T <: W19T}
                        extended_division_flag, ic, h1, h2, hj1, hj2,
                        mc_callback1, mc_callback2, IC_relax, state_relax,
                        var_relax, param, kmax, calculate_local_sensitivity, 
-                       local_problem_storage, d, constant_state_bounds)
+                       local_problem_storage, d, constant_state_bounds,
+                       relax_t_dict_flt, relax_t_dict_indx)
 end
 
-function relax!(d::Wilhelm2019)
+function get_val_loc(d::Wilhelm2019, i::Int, t::Float64)
+    (i <= 0 && t == -Inf) && error("Must set either index or time.")
+    (i > 0) ? d.relax_t_dict_indx[i] : d.relax_t_dict_flt[t]
+end
+
+is_new_box(d::Wilhelm2019) = d.integrator_states.new_decision_box
+use_relax(d::Wilhelm2019) = !d.evaluate_interval
+use_relax_new_pnt(d::Wilhelm2019) = d.integrator_states.new_decision_pnt && use_relax(d)
+
+function relax!(d::Wilhelm2019{T, ICB1, ICB2, PRE, CTR, IC, F, Z, J, PRB, N, C, AMAT}) where {T, ICB1, ICB2, PRE, CTR, IC, F, Z, J, PRB, N, C, AMAT}
+    pi_cb1 = d.pi_callback1; pi_cb2 = d.pi_callback2
+    mc_cb1 = d.mccallback1;  mc_cb2 = d.mccallback2
 
     # load state relaxation bounds at support values
-    if d.constant_state_bounds !== nothing
+    if !isnothing(d.constant_state_bounds)
         for i = 1:d.steps
             d.X[:,i] .= Interval{Float64}.(d.constant_state_bounds.xL, d.constant_state_bounds.xU)
         end
     end
 
-    # if P has been updated perform an parametric interval contraction,
-    # if evaluate_interval_only is false then generate the reference point
-    # for the relaxations and compute a relaxation value (and subgradients)
-    # at the reference point
-    if d.integrator_states.new_decision_box
+    if is_two_step(d.integrator_type)
+        if is_new_box(d)
+            d.X0P .= d.ic(d.P)                   # evaluate initial condition
 
-        # evaluate initial condition
-        d.X0P .= d.ic(d.P)
-
-        # loads CallbackH and CallbackHJ function with correct time and prior x values
-        @inbounds for j=1:d.nx
-            d.pi_callback1.X[j] = d.X[j,1]
-        end
-        d.pi_callback1.h!.xold1 .= d.X0P
-        d.pi_callback1.h!.t1 = 0.0
-        d.pi_callback1.h!.t2 = d.time[2]
-        d.pi_callback1.hj!.tf = d.time[2]
-        d.pi_callback1.hj!.delT = d.time[2]
-        d.pi_callback1.P .= d.P
-        d.pi_callback2.P .= d.P
-
-        # run interval contractor on first step
-        excl, incl, extd = parametric_interval_contractor(d.pi_callback1,
-                                                          d.pi_precond!,
-                                                          d.pi_contractor)
-
-        # break if solution is provden not to exist in (X,P)
-        if excl
-            d.integrator_states.termination_status = EMPTY
-            return
-        end
-
-        # save logical flags
-        d.exclusion_flag = excl
-        d.inclusion_flag = incl
-        d.extended_division_flag = extd
-
-        # store interval values to storage array in d
-        @inbounds for j=1:d.nx
-            d.X[j,1] = d.pi_contractor.X[j]
-        end
-
-        for i in 2:d.steps
             # loads CallbackH and CallbackHJ function with correct time and prior x values
-            @inbounds for j=1:d.nx
-                d.pi_callback2.X[j] = d.X[j,i]
-                d.pi_callback2.h!.xold1[j] = d.X[j,i-1]
-                if i == 2
-                    d.pi_callback2.h!.xold2[j] = d.X0P[j]
-                else
-                    d.pi_callback2.h!.xold2[j] = d.X[j,i-2]
-                end
-            end
-            @inbounds d.pi_callback2.h!.t1 = d.time[i]
-            @inbounds d.pi_callback2.h!.t2 = d.time[i+1]
-            @inbounds d.pi_callback2.hj!.delT = d.time[i+1] - d.time[i]
-            @inbounds d.pi_callback2.hj!.tf = d.time[i+1]
-
-            # run interval contractor on ith step
-            excl, incl, extd = parametric_interval_contractor(d.pi_callback2,
-                                                              d.pi_precond!,
-                                                              d.pi_contractor)
-
-            # break if solution is provden not to exist in (X,P)
-            if excl
-                d.integrator_states.termination_status = EMPTY
-                return
-            end
-
-            # save logical flags
+            @. pi_cb1.X = d.X[:,1]
+            pi_cb1.xmid .= mid.(pi_cb1.X)
+            pi_cb1.h!.xold1 .= d.X0P
+            pi_cb1.h!.t1 = 0.0
+            pi_cb1.h!.t2 = pi_cb1.hj!.tf = pi_cb1.hj!.delT = d.time[2]
+            @. pi_cb1.P = pi_cb2.P = d.P
+            
+            # run interval contractor on first step & break if solution is proven not to exist
+            excl, incl, extd = parametric_interval_contractor(pi_cb1, d.pi_precond!, d.pi_contractor)
+            excl && (d.integrator_states.termination_status = EMPTY; return)
             d.exclusion_flag = excl
             d.inclusion_flag = incl
             d.extended_division_flag = extd
+            @. d.X[:,1] = d.pi_contractor.X    # store interval values to storage array in d
 
-            # store interval values to storage array in d
-            @inbounds for j=1:d.nx
-                d.X[j,i] = d.pi_contractor.X[j]
-            end
-        end
-
-        # generate reference point relaxations
-        if ~d.evaluate_interval
-            # load MC mccallback function for implicit routine
-            @inbounds for j=1:d.np
-                d.mccallback1.P[j] = d.P[j]
-                d.mccallback1.p_mc[j] = MC{d.np,NS}(d.p[j], d.P[j], j)
-                d.mccallback1.pref_mc[j] = d.mccallback1.p_mc[j]
-                d.mccallback2.P[j] = d.P[j]
-                d.mccallback2.p_mc[j] = d.mccallback1.p_mc[j]
-                d.mccallback2.pref_mc[j] = d.mccallback1.pref_mc[j]
-            end
-            @inbounds for j=1:d.nx
-                d.mccallback1.X[j] = d.X[j,1]
-            end
-
-            # evaluate initial condition
-            d.IC_relax .= d.ic(d.mccallback1.pref_mc)
-
-            # loads CallbackH and CallbackHJ function with correct time and prior x values
-            d.mccallback1.h!.t1 = 0.0
-            d.mccallback1.h!.t2 = d.time[2]
-            d.mccallback1.h!.xold1 .= d.IC_relax
-            d.mccallback1.hj!.tf = d.time[2]
-            d.mccallback1.hj!.delT = d.time[2]
-
-            # generate and save reference point relaxations
-            gen_expansion_params!(d.mccallback1)
-            for q=1:d.kmax
-                for j=1:d.nx
-                    @inbounds d.param[1][q][j] = d.mccallback1.param[q][j]
+            # generate reference point relaxations
+            if use_relax(d)
+                for j=1:d.np
+                    p_mid = 0.5*(lo(d.P[j]) + hi(d.P[j]))
+                    mc_cb1.pref_mc[j] = MC{d.np,NS}(p_mid, d.P[j], j)
                 end
-                @show d.param[1][q][:]
-            end
+                @. mc_cb1.P = mc_cb2.P = d.P
+                @. mc_cb1.p_mc = mc_cb1.pref_mc
+                @. mc_cb2.p_mc = mc_cb1.pref_mc
+                @. mc_cb2.pref_mc = mc_cb1.pref_mc
+                @. mc_cb1.X = d.X[:,1]
 
-            # generate and save relaxation at reference point
-            implicit_relax_h!(d.mccallback1)
-            @inbounds for j=1:d.nx
-                d.state_relax[j,1] = d.mccallback1.x_mc[j]
-            end
-            @show d.state_relax[:,1]
+                # evaluate initial condition
+                d.IC_relax .= d.ic(mc_cb1.pref_mc)
 
-            for i=2:d.steps
-                # loads MCcallback, CallbackH and CallbackHJ function with correct time and prior x values
-                @inbounds for j=1:d.nx
-                    d.mccallback2.X[j] = d.X[i,j]
-                    d.mccallback2.h!.xold1[j] = d.state_relax[j,i-1]
-                    if i == 2
-                        d.mccallback2.h!.xold2[j] = d.IC_relax[j]
-                    else
-                        d.mccallback2.h!.xold2[j] = d.state_relax[j,i-2]
-                    end
-                end
-                @inbounds d.mccallback2.h!.t1 = d.time[i]
-                @inbounds d.mccallback2.h!.t2 = d.time[i+1]
-                @inbounds d.mccallback2.hj!.tf = d.time[i+1]
-                @inbounds d.mccallback2.hj!.delT = d.time[i+1] - d.time[i]
+                # loads CallbackH and CallbackHJ function with correct time and prior x values
+                mc_cb1.h!.t1 = 0.0
+                mc_cb1.h!.t2 = mc_cb1.hj!.tf = mc_cb1.hj!.delT = d.time[2]
+                @. mc_cb1.h!.xold1 = d.IC_relax
 
                 # generate and save reference point relaxations
-                gen_expansion_params!(d.mccallback2)
-                for q=1:d.kmax
-                    for j=1:d.nx
-                        @inbounds d.param[i][q][j] = d.mccallback2.param[q][j]
-                    end
+                gen_expansion_params!(mc_cb1)
+                for q = 1:d.kmax
+                    @. d.param[1][q] = mc_cb1.param[q]
                 end
 
                 # generate and save relaxation at reference point
-                implicit_relax_h!(d.mccallback2)
-                @inbounds for j=1:d.nx
-                    d.state_relax[j,i] = d.mccallback2.x_mc[j]
+                implicit_relax_h!(mc_cb1)
+                @. d.state_relax[:,1] = mc_cb1.x_mc
+            end
+        end
+
+        if use_relax_new_pnt(d)
+            for j = 1:d.np
+                d.var_relax[j] = MC{d.np,NS}(d.p[j], d.P[j], j)
+            end
+            d.IC_relax .= d.ic(d.var_relax)
+
+            # loads MC callback, CallbackH and CallbackHJ function with correct time and prior x values
+            @. mc_cb1.p_mc = mc_cb2.p_mc = d.var_relax
+            @. mc_cb1.X = d.X[:,1]
+            mc_cb1.h!.t1 = 0.0
+            mc_cb1.h!.t2 = mc_cb1.hj!.tf = mc_cb1.hj!.delT = d.time[2]
+            mc_cb1.h!.xold1 .= d.IC_relax
+            for q = 1:d.kmax
+                @. mc_cb1.param[q] = d.param[1][q]
+            end
+            implicit_relax_h!(mc_cb1) # computes relaxation
+
+            @. d.state_relax[:,1] = mc_cb1.x_mc
+        end
+    else
+        if is_new_box(d)
+            d.X0P .= d.ic(d.P)                   # evaluate initial condition
+            # loads CallbackH and CallbackHJ function with correct time and prior x values
+            @. pi_cb2.X = d.X[:,1]
+            pi_cb2.xmid .= mid.(pi_cb1.X)
+            pi_cb2.h!.xold1 .= d.X0P
+            pi_cb2.h!.t1 = 0.0
+            pi_cb2.h!.t2 = pi_cb2.hj!.tf = pi_cb2.hj!.delT = d.time[2]
+            @. pi_cb2.P = pi_cb2.P = d.P
+            
+            # run interval contractor on first step & break if solution is proven not to exist
+            excl, incl, extd = parametric_interval_contractor(pi_cb2, d.pi_precond!, d.pi_contractor)
+            excl && (d.integrator_states.termination_status = EMPTY; return)
+            d.exclusion_flag = excl
+            d.inclusion_flag = incl
+            d.extended_division_flag = extd
+            @. d.X[:,1] = d.pi_contractor.X    # store interval values to storage array in d
+
+            # generate reference point relaxations
+            if use_relax(d)
+                for j=1:d.np
+                    p_mid = 0.5*(lo(d.P[j]) + hi(d.P[j]))
+                    mc_cb2.pref_mc[j] = MC{d.np,NS}(p_mid, d.P[j], j)
                 end
-             end
+                @. mc_cb2.P = mc_cb2.P = d.P
+                @. mc_cb2.p_mc = mc_cb2.pref_mc
+                @. mc_cb2.p_mc = mc_cb2.pref_mc
+                @. mc_cb2.pref_mc = mc_cb2.pref_mc
+                @. mc_cb2.X = d.X[:,1]
+
+                # evaluate initial condition
+                d.IC_relax .= d.ic(mc_cb2.pref_mc)
+
+                # loads CallbackH and CallbackHJ function with correct time and prior x values
+                mc_cb2.h!.t1 = 0.0
+                mc_cb2.h!.t2 = mc_cb2.hj!.tf = mc_cb2.hj!.delT = d.time[2]
+                @. mc_cb2.h!.xold1 = d.IC_relax
+
+                # generate and save reference point relaxations
+                gen_expansion_params!(mc_cb2)
+                for q = 1:d.kmax
+                    @. d.param[1][q] = mc_cb2.param[q]
+                end
+
+                # generate and save relaxation at reference point
+                implicit_relax_h!(mc_cb2)
+                @. d.state_relax[:,1] = mc_cb2.x_mc
+                subgradient_expansion_interval_contract!(d.state_relax[:,1], d.p, d.pL, d.pU)
+                @. d.X[:,1] = Intv(d.state_relax[:,1])
+            end
+        end
+
+        if use_relax_new_pnt(d)
+            for j = 1:d.np
+                d.var_relax[j] = MC{d.np,NS}(d.p[j], d.P[j], j)
+            end
+            d.IC_relax .= d.ic(d.var_relax)
+
+            # loads MC callback, CallbackH and CallbackHJ function with correct time and prior x values
+            @. mc_cb2.p_mc = mc_cb2.p_mc = d.var_relax
+            @. mc_cb2.X = d.X[:,1]
+            mc_cb2.h!.t1 = 0.0
+            mc_cb2.h!.t2 = mc_cb2.hj!.tf = mc_cb2.hj!.delT = d.time[2]
+            mc_cb2.h!.xold1 .= d.IC_relax
+            for q = 1:d.kmax
+                @. mc_cb2.param[q] = d.param[1][q]
+            end
+            implicit_relax_h!(mc_cb2) # computes relaxation
+
+            @. d.state_relax[:,1] = mc_cb2.x_mc
         end
     end
 
-    # generate other point relaxations
-    if d.integrator_states.new_decision_pnt && ~d.evaluate_interval
+    for i in 2:d.steps
+        if is_new_box(d)
+            @. pi_cb2.X = d.X[:, i]          # load CallbackH and CallbackHJ with time and prior x
+            @. pi_cb2.h!.xold1 = d.X[:, i-1]
+            if i == 2
+                @. pi_cb2.h!.xold2 = d.X0P
+            else
+                @. pi_cb2.h!.xold2 = d.X[:,i-2]
+            end
+            pi_cb2.h!.t1 = d.time[i]
+            pi_cb2.h!.t2 = pi_cb2.hj!.tf = d.time[i + 1]
+            pi_cb2.hj!.delT = d.time[i + 1] - d.time[i]
 
-        # update relaxation of p on P
-        @inbounds for j=1:d.np
-            d.var_relax[j] = MC{d.np,NS}(d.p[j], d.P[j], j)
-            d.mccallback1.p_mc[j] = d.var_relax[j]
-            d.mccallback2.p_mc[j] = d.var_relax[j]
-        end
+            # run interval contractor on ith step
+            excl, incl, extd = parametric_interval_contractor(pi_cb2, d.pi_precond!, d.pi_contractor)
+            excl && (d.integrator_states.termination_status = EMPTY; return)
+            d.exclusion_flag = excl
+            d.inclusion_flag = incl
+            d.extended_division_flag = extd
+            @. d.X[:,i] = d.pi_contractor.X
 
-        # compute initial condition
-        d.IC_relax .= d.ic(d.var_relax)
-
-        # loads MC callback, CallbackH and CallbackHJ function with correct time and prior x values
-        @inbounds for j=1:d.nx
-            d.mccallback1.X[j] = d.X[j,1]
-        end
-        d.mccallback1.h!.t1 = 0.0
-        d.mccallback1.h!.t2 = d.time[2]
-        d.mccallback1.h!.xold1 .= d.IC_relax
-        d.mccallback1.hj!.tf = d.time[2]
-        d.mccallback1.hj!.delT = d.time[2]
-        for q=1:d.kmax
-            for j=1:d.nx
-                @inbounds d.mccallback1.param[q][j] = d.param[1][q][j]
+            if use_relax(d)
+                # loads CallbackH and CallbackHJ function with correct time and prior x values
+                mc_cb1.h!.t1 = 0.0
+                mc_cb1.h!.t2 = mc_cb1.hj!.tf = mc_cb1.hj!.delT = d.time[2]
+                @. mc_cb1.h!.xold1 = d.IC_relax
+    
+                # generate and save reference point relaxations
+                gen_expansion_params!(mc_cb1)
+                for q = 1:d.kmax
+                    @. d.param[i][q] = mc_cb1.param[q]
+                end
+    
+                # generate and save relaxation at reference point
+                implicit_relax_h!(mc_cb1)
+                @. d.state_relax[:,i] = mc_cb1.x_mc
+                subgradient_expansion_interval_contract!(d.state_relax[:,i], d.p, d.pL, d.pU)
+                @. d.X[:,i] = Intv(d.state_relax[:,i])
+                # update interval bounds for state relaxation...
             end
         end
-
-        # computes relaxation
-        implicit_relax_h!(d.mccallback1)
-        @inbounds for j=1:d.nx
-            d.state_relax[j, 1] = d.mccallback1.x_mc[j]
-        end
-        for i=2:d.steps
-            # loads MC callback, CallbackH and CallbackHJ function with correct time and prior x values
-            @inbounds for j=1:d.nx
-                d.mccallback2.X[j] = d.X[i,j]
-                d.mccallback2.h!.xold1[j] = d.state_relax[j,i-1]
-                if i == 2
-                    d.mccallback2.h!.xold2[j] = d.IC_relax[j]
-                else
-                    d.mccallback2.h!.xold2[j] = d.state_relax[j,i-2]
-                end
+        if use_relax_new_pnt(d)
+            # loads MC callback, CallbackH and CallbackHJ with correct time and prior x values
+            @. mc_cb2.X = d.X[:,i]
+            @. mc_cb2.h!.xold1 = d.state_relax[:, i-1]
+            if i == 2
+                @. mc_cb2.h!.xold2 = d.IC_relax
+            else
+                @. mc_cb2.h!.xold2 = d.state_relax[:,i-2]
             end
-            @inbounds d.mccallback2.h!.t1 = d.time[i]
-            @inbounds d.mccallback2.h!.t2 = d.time[i+1]
-            @inbounds d.mccallback2.hj!.tf = d.time[i+1]
-            @inbounds d.mccallback2.hj!.delT = d.time[i+1] - d.time[i]
-            for q=1:d.kmax
-                for j=1:d.nx
-                    @inbounds d.mccallback2.param[q][j] = d.param[i][q][j]
-                end
+            mc_cb2.h!.t1 = d.time[i]
+            mc_cb2.h!.t2 = mc_cb2.hj!.tf = d.time[i+1]
+            mc_cb2.hj!.delT = d.time[i+1] - d.time[i]
+           
+            for q = 1:d.kmax
+                @. mc_cb2.param[q] = d.param[i][q]
             end
 
             # computes relaxation
-            implicit_relax_h!(d.mccallback2)
-            @inbounds for j=1:d.nx
-                d.state_relax[j, i] = d.mccallback2.x_mc[j]
-            end
-        end
+            implicit_relax_h!(mc_cb2)
+            @. d.state_relax[:, i] = mc_cb2.x_mc
+        end 
     end
 
-    # unpack interval bounds to integrator bounds
-    if d.evaluate_interval
-        for i in 1:d.nx
-            for j in 1:d.steps
-                @inbounds d.xL[i,j] = d.X[i,j].lo
-                @inbounds d.xU[i,j] = d.X[i,j].hi
-            end
-        end
+    # unpack interval bounds to integrator bounds & set evaluation flags
+    if !use_relax(d)
+        map!(lo, d.xL, d.X)
+        map!(hi, d.xU, d.X)
     else
-        for i in 1:d.nx
-            for j in 1:d.steps
-                @inbounds d.xL[i,j] = d.state_relax[i,j].Intv.lo
-                @inbounds d.xU[i,j] = d.state_relax[i,j].Intv.hi
-            end
-        end
+        map!(lo, d.xL, d.state_relax)
+        map!(hi, d.xU, d.state_relax)
     end
-
-    # sets evaluation flags
     d.integrator_states.new_decision_box = false
     d.integrator_states.new_decision_pnt = false
     return
@@ -746,7 +725,7 @@ function DBB.getall!(out::Vector{Array{Float64,2}}, t::Wilhelm2019, g::DBB.Gradi
         if t.evaluate_interval
             fill!(out[i], 0.0)
         else
-            @inbounds for j in eachindex(out[i])
+            for j in eachindex(out[i])
                 out[i][j] = t.state_relax[j].cv_grad[i]
             end
         end
@@ -796,7 +775,10 @@ function DBB.getall!(out::Vector{Array{Float64,2}}, t::Wilhelm2019, g::DBB.Subgr
 end
 
 function DBB.getall!(out::Array{Float64,2}, t::Wilhelm2019, v::DBB.Bound{Lower})
-    out .= t.xL
+    for i in 1:t.nx
+        out[i,1] = t.X0P[i].lo
+    end
+    out[:,2:end] .= t.xL
     return
 end
 
@@ -806,7 +788,10 @@ function DBB.getall!(out::Vector{Float64}, t::Wilhelm2019, v::DBB.Bound{Lower})
 end
 
 function DBB.getall!(out::Array{Float64,2}, t::Wilhelm2019, v::DBB.Bound{Upper})
-    out .= t.xU
+    for i in 1:t.nx
+        out[i,1] = t.X0P[i].hi
+    end
+    out[:,2:end] .= t.xU
     return
 end
 
@@ -956,148 +941,81 @@ function DBB.setall!(t::Wilhelm2019, v::DBB.Bound{Upper}, values::Vector{Float64
     return
 end
 
-function DBB.get(t::Wilhelm2019, v::DBB.SupportSet{T}) where T
-    DBB.get(t.prob, v)
-end
-
+DBB.get(t::Wilhelm2019, v::DBB.SupportSet{T}) where T = DBB.get(t.prob, v)
 DBB.get(t::Wilhelm2019, v::DBB.LocalSensitivityOn) = t.calculate_local_sensitivity
 function DBB.set!(t::Wilhelm2019, v::DBB.LocalSensitivityOn, b::Bool) 
     t.calculate_local_sensitivity = b
 end
 
 function DBB.get!(out, t::Wilhelm2019, v::DBB.Bound{Lower})
-    if v.index > 1
-        if t.evaluate_interval
-            for i = 1:length(out) 
-                out[i] = t.xL[i,v.index-1]
-            end
-        else
-            for i = 1:length(out)
-                out[i] = t.state_relax[i,v.index-1].Intv.lo
-            end
-        end
+    vi = get_val_loc(t, v.index, v.time)
+    if vi <= 1
+        return t.evaluate_interval ? map!(lo, out, t.X0P) : map!(lo, out, t.IC_relax)
     end
     if t.evaluate_interval
-        for i = 1:length(out) 
-            out[i] = t.X0P[i].lo
-        end
+        out .= view(t.xL, :, vi - 1)
     else
-        for i = 1:length(out) 
-            out[i] = t.IC_relax[i].Intv.lo
-        end
+        map!(lo, out, view(t.state_relax, :, vi - 1))
     end
 end
 function DBB.get!(out, t::Wilhelm2019, v::DBB.Bound{Upper})
-    if v.index > 1
-        if t.evaluate_interval
-            for i = 1:length(out) 
-                out[i] = t.xU[i,v.index-1]
-            end
-        else
-            for i = 1:length(out)
-                out[i] = t.state_relax[i,v.index-1].Intv.hi
-            end
-        end
+    vi = get_val_loc(t, v.index, v.time)
+    if vi <= 1
+        return t.evaluate_interval ? map!(hi, out, t.X0P) : map!(hi, out, t.IC_relax)
     end
     if t.evaluate_interval
-        for i = 1:length(out) 
-            out[i] = t.X0P[i].hi
-        end
+        out .= view(t.xU, :, vi - 1)
     else
-        for i = 1:length(out) 
-            out[i] = t.IC_relax[i].Intv.hi
-        end
+        map!(hi, out, view(t.state_relax, :, vi - 1))
     end
 end
 function DBB.get!(out, t::Wilhelm2019, v::DBB.Relaxation{Lower})
-    if v.index > 1
-        if t.evaluate_interval
-            for i = 1:length(out) 
-                out[i] = t.xL[i,v.index-1]
-            end
-        else
-            for i = 1:length(out)
-                out[i] = t.state_relax[i,v.index-1].cv
-            end
-        end
+    vi = get_val_loc(t, v.index, v.time)
+    if vi <= 1
+        return t.evaluate_interval ? map!(lo, out, t.X0P) : map!(cv, out, t.IC_relax)
     end
     if t.evaluate_interval
-        for i = 1:length(out) 
-            out[i] = t.X0P[i].lo
-        end
+        out .= view(t.xL, :, vi - 1)
     else
-        for i = 1:length(out) 
-            out[i] = t.IC_relax[i].cv
-        end
+        map!(cv, out, view(t.state_relax, :, vi - 1))
     end
 end
 function DBB.get!(out, t::Wilhelm2019, v::DBB.Relaxation{Upper})
-    if v.index > 1
-        if t.evaluate_interval
-            for i = 1:length(out) 
-                out[i] = t.xU[i,v.index-1]
-            end
-        else
-            for i = 1:length(out)
-                out[i] = t.state_relax[i,v.index-1].cc
-            end
-        end
+    vi = get_val_loc(t, v.index, v.time)
+    if vi <= 1
+        return t.evaluate_interval ? map!(hi, out, t.X0P) : map!(cc, out, t.IC_relax)
     end
     if t.evaluate_interval
-        for i = 1:length(out) 
-            out[i] = t.X0P[i].hi
-        end
+        out .= view(t.xU, :, vi - 1)
     else
-        for i = 1:length(out) 
-            out[i] = t.IC_relax[i].cc
-        end
+        map!(cc, out, view(t.state_relax, :, vi - 1))
     end
 end
 function DBB.get!(out, t::Wilhelm2019, v::DBB.Subgradient{Lower})
-    if v.index > 1
-        if t.evaluate_interval
-            fill!(out, 0.0)
-        else
-            ni, nj = size(out)
-            for i = 1:ni
-                for j = 1:nj
-                    out[i, j] = t.state_relax[i,v.index-1].cv_grad[j]
-                end
-            end
+    vi = get_val_loc(t, v.index, v.time)
+    t.evaluate_interval && (return fill!(out, 0.0);)
+    ni, nj = size(out)
+    if vi <= 1
+        for i = 1:ni, j = 1:nj
+            out[i, j] = t.IC_relax[i].cv_grad[j]
         end
-    end
-    if t.evaluate_interval
-        fill!(out, 0.0)
     else
-        ni, nj = size(out)
-        for i = 1:ni
-            for j = 1:nj
-                out[i, j] = t.IC_relax[i].cv_grad[j]
-            end
+        for i = 1:ni, j = 1:nj
+            out[i, j] = t.state_relax[i,vi-1].cv_grad[j]
         end
     end
 end
 function DBB.get!(out, t::Wilhelm2019, v::DBB.Subgradient{Upper})
-    if v.index > 1
-        if t.evaluate_interval
-            fill!(out, 0.0)
-        else
-            ni, nj = size(out)
-            for i = 1:ni
-                for j = 1:nj
-                    out[i, j] = t.state_relax[i,v.index-1].cc_grad[j]
-                end
-            end
+    vi = get_val_loc(t, v.index, v.time)
+    t.evaluate_interval && (return fill!(out, 0.0);)
+    ni, nj = size(out)
+    if vi <= 1
+        for i = 1:ni, j = 1:nj
+            out[i, j] = t.IC_relax[i].cc_grad[j]
         end
-    end
-    if t.evaluate_interval
-        fill!(out, 0.0)
     else
-        ni, nj = size(out)
-        for i = 1:ni
-            for j = 1:nj
-                out[i, j] = t.IC_relax[i].cc_grad[j]
-            end
+        for i = 1:ni, j = 1:nj
+            out[i, j] = t.state_relax[i,vi-1].cc_grad[j]
         end
     end
 end
@@ -1134,14 +1052,12 @@ end
 $(FUNCTIONNAME)
 """
 function inclusion_test(inclusion_flag::Bool, inclusion_vector::Vector{Bool}, nx::Int)
-    if inclusion_flag == false
-        @inbounds for i=1:nx
-            if inclusion_vector[i]
+    if !inclusion_flag
+        for i=1:nx
+            if @inbounds inclusion_vector[i]
                 inclusion_flag = true
-                continue
             else
-                inclusion_flag = false
-                break
+                inclusion_flag = false; break
             end
         end
     end

@@ -3,7 +3,6 @@ export AdamsMoulton
 struct AdamsMoulton <: AbstractStateContractorName
     steps::Int
 end
-
 mutable struct AdamsMoultonFunctor{S} <: AbstractStateContractor
     f!
     Jx!
@@ -15,12 +14,21 @@ mutable struct AdamsMoultonFunctor{S} <: AbstractStateContractor
     μX::Vector{S}
     ρP::Vector{S}
     Dk::Vector{S}
+    Xold_computed::Vector{S}
+    Xk::Vector{Vector{S}}
+    fk1::Vector{S}
+    fk_val::Vector{Float64}
     Jxsto::FixedCircularBuffer{Matrix{S}}
     Jpsto::FixedCircularBuffer{Matrix{S}}
-    Jxsum::Vector{S}
+    Jxsum::Matrix{S}
     Jpsum::Matrix{S}
     Jxvec::Vector{S}
     Jpvec::Vector{S}
+    Ainv_Jxvec::Vector{S}
+    Ainv_Jpvec::Vector{S}
+    Ainv_fk_val::Vector{S}
+    Ainv_Xk2::Vector{S}
+    Ainv_Rk::Vector{S}
     fval::FixedCircularBuffer{Vector{Float64}}
     fk_apriori::FixedCircularBuffer{Vector{S}}
     Rk::Vector{S}
@@ -32,6 +40,7 @@ mutable struct AdamsMoultonFunctor{S} <: AbstractStateContractor
     YJxAff::Matrix{S}
     YJxΔx::Vector{S}
     Xj_delta::Vector{S}
+    X_last::Vector{S}
     Ysumx::Vector{S}
     YsumP::Matrix{S}
     YJpΔp::Vector{S}
@@ -45,10 +54,16 @@ mutable struct AdamsMoultonFunctor{S} <: AbstractStateContractor
     Δ::FixedCircularBuffer{Vector{S}}
     X::FixedCircularBuffer{Vector{S}}
     xval::FixedCircularBuffer{Vector{Float64}}
+    Δx::Vector{S}
+    constant_state_bounds::Union{Nothing, ConstantStateBounds}
+end
+function set_constant_state_bounds!(d::AdamsMoultonFunctor, v)
+    d.constant_state_bounds = v
+    set_constant_state_bounds!(d.lohners_start, v)
+    nothing
 end
 
-function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S,
-                             t::T, steps::Int, lohners_start) where {F,JX,JP,S,T}
+function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S, t::T, steps::Int, lohners_start) where {F,JX,JP,S,T}
     η = Interval{T}(0.0,1.0)
     μX = zeros(S, nx)
     ρP = zeros(S, np)
@@ -67,6 +82,7 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S,
     YJxAff = zeros(S, nx, nx)
     JxAff = zeros(S, nx, nx)
     Xj_delta = zeros(S, nx)
+    X_last = zeros(S, nx)
     YJxΔx = zeros(S, nx)
     Ysumx = zeros(S, nx)
     YsumP = zeros(S, nx, nx)
@@ -78,10 +94,21 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S,
         push!(Jxsto, zeros(S, nx, nx))
         push!(Jpsto, zeros(S, nx, np))
     end
-    Jxsum = zeros(S, nx)
-    Jpsum = zeros(S, nx, nx)
+    Jxsum = zeros(S, nx, nx)
+    Jpsum = zeros(S, nx, np)
     Jxvec = zeros(S, nx)
     Jpvec = zeros(S, nx)
+    Ainv_Jxvec = zeros(S, nx)
+    Ainv_Jpvec = zeros(S, nx)
+    Ainv_fk_val = zeros(S, nx)
+    Ainv_Xk2 = zeros(S, nx)
+    Ainv_Rk = zeros(S, nx)
+
+    Xold_computed = zeros(S, nx)
+    Δx = zeros(S, nx)
+    fk1 = zeros(S, nx)
+    fk_val = zeros(Float64, nx)
+    Xk = Vector{S}[zeros(S, nx)]
 
     fval = FixedCircularBuffer{Vector{Float64}}(method_step)
     fk_apriori = FixedCircularBuffer{Vector{S}}(method_step)
@@ -90,6 +117,7 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S,
     Δ = FixedCircularBuffer{Vector{S}}(method_step)
     X = FixedCircularBuffer{Vector{S}}(method_step)
     xval = FixedCircularBuffer{Vector{Float64}}(method_step)
+    #@show method_step
     for i = 1:method_step
         push!(xval, zeros(Float64, nx))
         push!(fval, zeros(Float64, nx))
@@ -98,6 +126,7 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S,
         push!(A_inv, Float64.(Matrix(I, nx, nx)))
         push!(X, zeros(S, nx))
         push!(Δ, zeros(S, nx))
+        push!(Xk, zeros(S, nx))
     end
 
     Rk = zeros(S, nx)
@@ -108,248 +137,246 @@ function AdamsMoultonFunctor(f::F, Jx!::JX, Jp!::JP, nx::Int, np::Int, s::S,
     γ = 0.0
 
     AdamsMoultonFunctor{S}(f, Jx!, Jp!, nx, np, method_step, η, μX, ρP,
-                           Dk, Jxsto, Jpsto, Jxsum, Jpsum, Jxvec, Jpvec, fval,
-                           fk_apriori, Rk, Y0, Y, Jxmid_sto, precond, JxAff, YJxAff,
-                           YJxΔx, Xj_delta, Ysumx, YsumP, YJpΔp, coeffs, Δⱼ₊₁,
+                           Dk, Xold_computed, Xk, fk1, fk_val,
+                           Jxsto, Jpsto, Jxsum, Jpsum, Jxvec, Jpvec, Ainv_Jxvec, Ainv_Jpvec, Ainv_fk_val,
+                           Ainv_Xk2, Ainv_Rk, fval, fk_apriori, Rk, Y0, Y, Jxmid_sto, precond, JxAff, YJxAff,
+                           YJxΔx, Xj_delta, X_last, Ysumx, YsumP, YJpΔp, coeffs, Δⱼ₊₁,
                            is_adaptive, γ, lohners_start, A_Q, A_inv,
-                           Δ, X, xval)
+                           Δ, X, xval, Δx, nothing)
 end
 
-function compute_coefficients!(d::AdamsMoultonFunctor{S}, h::Float64, t::Float64, s::Int) where S
-    if !d.is_adaptive
+function compute_coefficients!(c::ContractorStorage{S}, d::AdamsMoultonFunctor{S}, h::Float64, t::Float64, s::Int) where S
+    @unpack is_adaptive, coeffs = d
+
+    if !is_adaptive
         if s == 1
-            d.coeffs[1] = 1.0
-            d.coeffs[2] = 0.5
+            coeffs[1] = 1.0
+            coeffs[2] = 0.5
         elseif s == 2
-            d.coeffs[1] = 0.5
-            d.coeffs[2] = 0.5
-            d.coeffs[3] = -1.0/12.0
+            coeffs[1] = 0.5
+            coeffs[2] = 0.5
+            coeffs[3] = -1.0/12.0
         elseif s == 3
-            d.coeffs[1] = 5.0/12.0
-            d.coeffs[2] = 8.0/12.0
-            d.coeffs[3] = -1.0/12.0
-            d.coeffs[4] = -1.0/24.0
+            coeffs[1] = 5.0/12.0
+            coeffs[2] = 8.0/12.0
+            coeffs[3] = -1.0/12.0
+            coeffs[4] = -1.0/24.0
         elseif s == 4
-            d.coeffs[1] = 9.0/24.0
-            d.coeffs[2] = 19.0/24.0
-            d.coeffs[3] = -5.0/24.0
-            d.coeffs[4] = 1.0/24.0
-            d.coeffs[5] = -19.0/720.0
+            coeffs[1] = 9.0/24.0
+            coeffs[2] = 19.0/24.0
+            coeffs[3] = -5.0/24.0
+            coeffs[4] = 1.0/24.0
+            coeffs[5] = -19.0/720.0
         else
-            #compute_fixed_higher_coeffs!(d, s)
+           error("order greater than 4 for fixed size PILMS currently not supported")
         end
     else
-        #compute_adaptive_coeffs!(d, h, t, s)
+        compute_adaptive_coeffs!(d, h, t, s)
     end
+    d.γ = coeffs[s + 1]
+    c.γ = d.γ
 
-    d.γ = d.coeffs[s + 1]
-
-    return nothing
+    nothing
 end
 
-function compute_Rk!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{T},
-                     h::Float64, s::Int) where T<:Number
+function compute_Rk!(d::AdamsMoultonFunctor{T}, c::ContractorStorage{T}, h, s) where T<:Number
+    @unpack fk_apriori, Rk, method_step, γ = d
 
-    #println("------------")
-    #println("-compute_Rk-")
-    #println("------------")
-
-    coeff = d.γ*h^(d.method_step + 1)
-    cycle_copyto!(d.fk_apriori, contract.fk_apriori, contract.step_count - 1)
-
-    @__dot__ d.Rk = d.fk_apriori[1]
-    #println("d.Rk[1] = $(d.Rk)")
+    cycle_copyto!(fk_apriori, c.fk_apriori, c.step_count - 1)
+    @. Rk = fk_apriori[1]
     for i = 2:s
-        @__dot__ d.Rk = d.Rk ∪ d.fk_apriori[i]
-        #println("d.fk_apriori[$i] = $(d.fk_apriori[i])")
-        #println(" d.Rk[$i] = $(d.Rk)")
+        @. Rk = Rk ∪ fk_apriori[i]
     end
-    #@show d.γ
-    #@show h^(d.method_step + 1)
-    @__dot__ d.Rk *= coeff
+    @. Rk *= γ*h^(method_step+1)
 
-    return nothing
+    nothing
 end
 
 # TODO: Check block
-function compute_real_sum!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{T},
-                           result::StepResult{T}, h::Float64, t::Float64,
-                           s::Int) where T<:Number
+function compute_real_sum!(d::AdamsMoultonFunctor{T}, c::ContractorStorage{T}, r::StepResult{T}, h::Float64, t::Float64, s::Int) where T<:Number
 
-    old_xval = mid.(contract.Xj_0)
-    cycle_eval!(d.f!, d.fval, old_xval, contract.pval, t)
-    @__dot__ d.Dk = old_xval
-    #@show old_xval
+    @unpack Dk, coeffs, fval, f!, X_last = d
+    @unpack Xj_0, pval, X_computed = c
+    #println("real sum Xj_0 = $(Xj_0)")
+
+    #=
+    @. X_last = X_computed
+    @show mid.(X_last), pval, t, h
+
+    cycle_eval!(f!, fval, mid.(Xj_0), pval, t)
+    @. Dk = mid(X_last) # TODO: REPLACE WITH (X_K-1) NOT EXISTENCE TEST... Maybe fixed...
     for i = 1:s
-        @__dot__ d.Dk += h*d.coeffs[i]*d.fval[i]
-        #println("$i-th coeffs = $(d.coeffs[i]), fvals = $(d.fval[i])")
+        @show coeffs[i]
+        @. Dk += h*coeffs[i]*fval[i]
     end
-    return nothing
+    =#
+    
+    nothing
 end
 
-function compute_jacobian_sum!(d::AdamsMoultonFunctor{T},
-                           contract::ContractorStorage{T},
-                           h::Float64, t::Float64, s::Int) where T<:Number
+# Compute components of sum for prior timesteps --> then update original
+function compute_jacobian_sum!(d::AdamsMoultonFunctor{T}, c::ContractorStorage{T}, h::Float64, t::Float64, s::Int) where T<:Number
 
-    μ!(d.μX, contract.Xj_0, contract.xval, d.η)
-    ρ!(d.ρP, contract.P, contract.pval, d.η)
-    cycle_eval!(d.Jx!, d.Jxsto, d.μX, d.ρP, t)
-    cycle_eval!(d.Jp!, d.Jpsto, d.μX, d.ρP, t)
+    @unpack Xj_delta, Jx!, Jp!, JxAff, Jxsto, Jpsto, Jxsum, Jpsum, Jpvec, μX, ρP, η, coeffs = d
+    @unpack Xj_0, Xj_apriori, xval, P, pval, A_Q, Δ = c
 
-    #println("------------")
-    #println("-compute_jacobian_sum!-")
-    #println("------------")
-    #@show d.Jxsto
-    #@show d.Jpsto
+    μ!(μX, Xj_0, xval, η)
+    ρ!(ρP, P, pval, η)
+    cycle_eval!(Jx!, Jxsto, μX, ρP, t)
+    cycle_eval!(Jp!, Jpsto, μX, ρP, t)
 
-    @__dot__ d.JxAff = d.Jxsto[1]
+    @. JxAff = Jxsto[1]
+    @. Xj_delta = Xj_apriori - mid(Xj_apriori)
 
-    #@show d.JxAff
-
-    # contract.Xj_apriori GOOD
-    # d.Xj_delta GOOD
-    @__dot__ d.Xj_delta = contract.Xj_apriori - mid(contract.Xj_apriori)
-
-    # TODO: CHECK RIGHT DELTAS...
-    d.Jxsum = (h*d.coeffs[1])*d.Jxsto[1]*d.Xj_delta
-    @show h, d.coeffs[1], d.Jxsto[1], d.Xj_delta
+    #=
+    @show size(Jxsum)
+    @show size(Jxsto[1])
+    @show size(Xj_delta)
+    Jxsum = h*coeffs[1]*(Jxsto[1]*Xj_delta)
     if s > 1
-        d.Jxsum += ((d.η*I + h*d.coeffs[2]*d.Jxsto[2])*contract.A_Q[1])*contract.Δ[1]
-        @show h, d.coeffs[2], d.Jxsto[2], contract.A_Q[1], contract.Δ[1]
+        println("s = $s")
+        @show size(((I + h*coeffs[2]*Jxsto[2])*A_Q[1])*Δ[1])
+        @show size(Jxsum)
+        Jxsum += ((I + h*coeffs[2]*Jxsto[2])*A_Q[1])*Δ[1]
     end
     for i = 3:s
-        d.Jxsum += (h*d.coeffs[i])*(d.Jxsto[i]*contract.A_Q[i])*contract.Δ[i]
-        #@show h, d.coeffs[i], d.Jxsto[i], contract.A_Q[i], contract.Δ[i]
+        println("s = $s of 3")
+        Jxsum += h*coeffs[i]*(Jxsto[i]*A_Q[i])*Δ[i]
     end
+    =#
 
-    # JpSum is correct
-    @__dot__ d.Jpsum = h*d.coeffs[1]*d.Jpsto[1]
+    nothing
+end
+
+@inline function union_mc_dbb(x::MC{N,T}, y::MC{N,T}) where {N, T <: RelaxTag}
+    cv_MC = min(x, y)
+    cc_MC = max(x, y)
+    return MC{N, NS}(cv_MC.cv, cc_MC.cc, Interval(cv_MC.Intv.lo, cc_MC.Intv.hi),
+                     cv_MC.cv_grad, cc_MC.cc_grad, x.cnst && y.cnst)
+end
+union_mc_dbb(x::Interval{T}, y::Interval{T}) where T = x ∪ y
+
+
+function compute_X!(d::AdamsMoultonFunctor{T}, c::ContractorStorage{S}) where {S, T<:Number}
+    @unpack Jx!, Jp!, Jxsum, Jpsum, Jxvec, Jpvec, Dk, Rk, f!, X_last, μX, ρP, X, method_step, Δx, coeffs = d 
+    @unpack Xold_computed, Xk, fk1, fk_val, fk_apriori, γ, Jxmid_sto, Jxsto, Δ, A_inv = d
+    @unpack Ainv_fk_val, Ainv_Jpvec, Ainv_Jxvec, Ainv_Xk2, Ainv_Rk, Δⱼ₊₁ = d
+    @unpack X_computed, xval_computed, Xj_apriori, rP, Xj_0, xval, pval, hj, A_Q, A_inv, B = c
+    t = c.times[1]
+
+    s = min(c.step_count - 1, method_step)
+    cycle_copyto!(fk_apriori, c.fk_apriori, c.step_count - 1) # TODO: Fix when variable stepsize
+    @. Rk = fk_apriori[1]
     for i = 2:s
-        @__dot__ d.Jpsum += h*d.coeffs[i]*d.Jpsto[i]
+        @. Rk = union_mc_dbb(Rk, fk_apriori[i])
+    end
+    @. Rk *= γ*hj^(method_step+1)
+
+
+    @. Xk[1] = Xj_apriori
+    @. Xk[2] = Xj_0
+    for j = 3:method_step
+        @. Xk[j] = X[j - 2]
     end
 
-    return nothing
-end
+    @. Xold_computed = Xj_apriori
+    @. X_computed = Xj_apriori
 
-function compute_X!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}) where {S, T<:Number}
+    for i = 1:2
+        @. Xk[1] = X_computed
+        f!(fk_val, xval, pval, t)
+        Jx!(Jxsum, Xk[1], ρP, t)
+        Jp!(Jpsum, Xk[1], ρP, t)
 
-    #println("------------")
-    #println("-compute_X!-")
-    #println("------------")
+        @. Δx = Xk[1] - xval
+        Aj_inv = A_inv[2] # TODO: Not sure if set correct...
+        Δj = Δ[2]         # TODO: Not sure if set correct...
+        mul!(Δx, Aj_inv, Δj)
+        mul!(Jxvec, Jxsum, Δx)
 
-    #mul!(d.Jxvec, d.JxAff, d.Xj_delta)
-    mul!(d.Jpvec, d.Jpsum, contract.rP)
+        @. Jpsum = hj*coeffs[1]*Jpsum
+        #for i = 2:s
+        #    @. Jpsum += h*coeffs[i]*Jpsto[i]
+        #end
+        mul!(Jpvec, Jpsum, ρP)
+ 
+        @. Xold_computed = X_computed
+        @. X_computed = Xk[2] + Rk + hj*coeffs[1]*(fk_val + Jpvec + Jxvec)
+        for j = 1:method_step
+            f!(fk1, Xk[j + 1], ρP, t)
+            @. X_computed += hj*coeffs[j + 1]*fk1
+        end 
 
-    #@show d.Jxvec
-    @show d.Jxsum
-    # d.Jpvec is correct...
-    @show d.Jpvec
-    @show d.Dk
-    @show d.Rk
-    #@__dot__ contract.X_computed = d.Jxvec + d.Jxsum + d.Jpvec + d.Dk + d.Rk
-    @__dot__ contract.X_computed = d.Jxsum + d.Jpvec + d.Dk + d.Rk
-    @show contract.X_computed
-    @show contract.Xj_apriori
-    @__dot__ contract.X_computed = contract.X_computed ∩ contract.Xj_apriori
-    @show contract.X_computed
-    return nothing
-end
+        # Finish computing X
+        @. X_computed = X_computed ∩ Xold_computed
+        contract_constant_state!(X_computed, d.constant_state_bounds)
 
-function compute_xval!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}, t) where {S, T<:Number}
-    @__dot__ contract.xval_computed = mid(contract.X_computed)
-    @show contract.xval_computed
-    d.f!(d.fval[1], contract.xval_computed, contract.pval, t)
-    return nothing
-end
+        # Compute x
+        @. xval_computed = mid(X_computed)
 
-function compute_Ainv!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}, s::Int) where {S, T<:Number}
-    if s > 1
-        mul!(d.Jxmid_sto, d.Jxsto[1], contract.A_Q[2])
-        @__dot__ contract.B = mid(d.Jxmid_sto)
-        calculateQ!(contract.A_Q[1], contract.B, d.nx)
-        calculateQinv!(contract.A_inv[1], contract.A_Q[1], d.nx)
+        # Compute Delta
+        if s > 1
+            Ak_m_1 =  A_Q[2]
+            mul!(Jxmid_sto, Jxsto[1], Ak_m_1)
+            @. B = mid(Jxmid_sto)
+            calculateQ!(A_Q[1], B)
+            calculateQinv!(A_inv[1], A_Q[1])
+        end
+        mul!(Ainv_fk_val, A_inv[1], fk_val)
+        mul!(Ainv_Jpvec,  A_inv[1], Jpvec)
+        mul!(Ainv_Jxvec,  A_inv[1], Jxvec)
+        mul!(Ainv_Xk2, A_inv[1], Xk[2])
+        mul!(Ainv_Rk,  A_inv[1], Rk)
+
+        @. Δⱼ₊₁ = hj*coeffs[1]*(Ainv_fk_val + Ainv_Jpvec + Ainv_Jxvec)
+        for j = 1:method_step
+            f!(fk1, Xk[j + 1], ρP, t)
+            mul!(Ainv_fk_val, A_inv[1], fk1)
+            @. Δⱼ₊₁ += hj*coeffs[j + 1]*Ainv_fk_val
+        end 
+
     end
-    return nothing
+
+    nothing
 end
 
-function update_delta!(d::AdamsMoultonFunctor{T}, contract::ContractorStorage{S}, s::Int) where {S, T<:Number}
-    println("update delta for s = $s order")
-    if s > 0
-        println("ran delta update...")
-        @show d.Y0
-        @show contract.A_Q[2]
-        d.Y = I - d.Y0*contract.A_Q[2]
-        @show d.Y
-        d.precond = lu!(d.Y)
-        d.YJxAff = d.precond\d.JxAff
-        @show d.YJxAff
-        mul!(d.YJxΔx, d.YJxAff, d.Xj_delta)
-        @show d.YJxΔx
-        d.Ysumx = d.precond\d.Jxsum
-        d.YsumP = d.precond\d.Jpsum
-        @show d.Ysumx
-        @show d.YsumP
-        mul!(d.YJpΔp, d.YsumP, contract.rP)
-        @show d.YJpΔp
-        @__dot__ d.Δⱼ₊₁ = d.YJxΔx + d.Ysumx + d.YJpΔp
-        @show d.Δⱼ₊₁
-    end
-    return nothing
-end
+function store_starting_buffer!(d::AdamsMoultonFunctor{T}, c::ContractorStorage{T}, r::StepResult{T}, t::Float64) where T
+    @unpack η, X, xval, fk_apriori, Δ, A_Q, A_inv, μX, ρP, Jx!, Jp!, f!, Jxsto, Jpsto, fval = d
+    @unpack pval, P, step_count = c
 
-
-function store_starting_buffer!(d::AdamsMoultonFunctor{T},
-                                contract::ContractorStorage{T},
-                                result::StepResult{T}, t::Float64) where T
-
-    count = contract.step_count - 1
-    cycle_copyto!(d.X, result.Xⱼ, count)
-    cycle_copyto!(d.xval, result.xⱼ, count)
-    cycle_copyto!(d.fk_apriori, contract.fk_apriori, count)
-    cycle_copyto!(d.Δ, result.Δ[1], count)
-    cycle_copyto!(d.A_Q, result.A_Q[1], count)
-    cycle_copyto!(d.A_inv, result.A_inv[1], count)
+    k = step_count - 1
+    cycle_copyto!(X, r.Xⱼ, k)
+    cycle_copyto!(xval, r.xⱼ, k)
+    cycle_copyto!(fk_apriori, c.fk_apriori, k)
+    cycle_copyto!(Δ, r.Δ[1], k)
+    cycle_copyto!(A_Q, r.A_Q[1], k)
+    cycle_copyto!(A_inv, r.A_inv[1], k)
 
     # update Jacobian storage
-    μ!(d.μX, result.Xⱼ, result.xⱼ, d.η)
-    ρ!(d.ρP, contract.P, contract.pval, d.η)
+    μ!(μX, r.Xⱼ, r.xⱼ, η)
+    ρ!(ρP, P, pval, η)
 
-    cycle_eval!(d.Jx!, d.Jxsto, d.μX, d.ρP, t)
-    cycle_eval!(d.Jp!, d.Jpsto, d.μX, d.ρP, t)
-    cycle_eval!(d.f!, d.fval, result.xⱼ, contract.pval, t)
+    cycle_eval!(Jx!, Jxsto, μX, ρP, t)
+    cycle_eval!(Jp!, Jpsto, μX, ρP, t)
+    cycle_eval!(f!, fval, r.xⱼ, pval, t)
 
-    return nothing
+    nothing
 end
 
-function (d::AdamsMoultonFunctor{T})(contract::ContractorStorage{S},
-                                  result::StepResult{S},
-                                  count::Int) where {S, T<:Number}
-
-
-    println("\n BEGIN MAIN - step: $(contract.step_count-1), method step: $(d.method_step) \n")
-
-    t = contract.times[1]
-    s = min(contract.step_count-1, d.method_step)
-    #@show s
-    #@show d.method_step
-    if s < d.method_step - 1
-        #println("---- LOHNERS STEP -----")
-        d.lohners_start(contract, result, count)
-        (count == 0) && store_starting_buffer!(d, contract, result, t)
+function (d::AdamsMoultonFunctor{T})(c::ContractorStorage{S}, r::StepResult{S}, count::Int, k) where {S, T<:Number}
+    t = c.times[1]
+    s = min(c.step_count-1, d.method_step)
+    if s < d.method_step
+        d.lohners_start(c, r, count, k)
+        iszero(count) && store_starting_buffer!(d, c, r, t)
         return nothing
     end
 
-    #println("---- PILMS STEP -----")
-    h = contract.hj_computed
-    #@show contract.hj_computed
-    compute_coefficients!(d, h, t, s)
-    compute_Rk!(d, contract, h, s)
-    compute_real_sum!(d, contract, result, h, t, s)
-    compute_jacobian_sum!(d, contract, h, t, s)
-    compute_X!(d, contract)
-    compute_xval!(d, contract, t)
-    compute_Ainv!(d, contract, s)
-    update_delta!(d, contract, s)
+    h = c.hj
+    compute_coefficients!(c, d, h, t, s)
+    compute_real_sum!(d, c, r, h, t, s)
+    compute_jacobian_sum!(d, c, h, t, s)
+    compute_X!(d, c)
     return nothing
 end
 
@@ -359,15 +386,16 @@ function get_Δ(d::AdamsMoultonFunctor)
     end
     return copy(d.Δⱼ₊₁)
 end
-function advance_contractor_buffer!(d::AdamsMoultonFunctor)
-    return nothing
-end
 
 function state_contractor(m::AdamsMoulton, f, Jx!, Jp!, nx, np, style, s, h)
     lohners_functor = state_contractor(LohnerContractor{m.steps}(), f, Jx!, Jp!, nx, np, style, s, h)
     AdamsMoultonFunctor(f, Jx!, Jp!, nx, np, style, s, m.steps, lohners_functor)
 end
 state_contractor_k(m::AdamsMoulton) = m.steps + 1
-state_contractor_γ(m::AdamsMoulton) = 0.0
+state_contractor_γ(m::AdamsMoulton) = 1.0  #  Same value as Lohners for initial step then set later...
 state_contractor_steps(m::AdamsMoulton) = m.steps
 state_contractor_integrator(m::AdamsMoulton) = CVODE_Adams()
+
+function set_γ!(sc::AdamsMoulton, c, ex, result, params)
+    nothing
+end

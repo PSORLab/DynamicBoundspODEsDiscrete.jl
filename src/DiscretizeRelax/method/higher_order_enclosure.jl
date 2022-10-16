@@ -12,105 +12,81 @@
 # Defines higher-order existence and uniqueness tests.
 #############################################################################
 
-"""
-improvement_condition
+set_mag(x::Interval{Float64}) = mag(x)
+set_mag(x::MC{N,T}) where {N, T<:RelaxTag} = mag(x.Intv)
 
-Fast check for to see if the ratio of the L∞ norm is improving in a given iteration
-using a hard-code ratio tolerance of 1.01. This is the improvement condition from
-Nedialko S. Nedialkov. Computing rigorous bounds on the solution of an initial
-value problem for an ordinary differential equation. 1999. Universisty of Toronto,
-PhD Dissertation, Algorithm 5.1, page 73-74).
-"""
-function improvement_condition(X̃ⱼ::Vector{Interval{T}}, X̃ⱼ₀::Vector{Interval{T}}, nx::Int) where {T <: Real}
-    Y0norm = 0.0
-    Ynorm = 0.0
-    diam1 = 0.0
-    diam2 = 0.0
-    for i in 1:nx
-        diam1 = diam(X̃ⱼ[i])
-        diam2 = diam(X̃ⱼ₀[i])
-        Ynorm = (diam1 > Ynorm) ? diam1 : Ynorm
-        Y0norm = (diam2 > Y0norm) ? diam2 : Y0norm
-    end
-    return (Ynorm/Y0norm) > 1.01
-end
+const SUBSET_TOL = 1E-8
+is_subset_tol(x::Interval{T}, y::Interval{T}) where {T<:Real} = (x.lo > y.lo - SUBSET_TOL) && (x.hi < y.hi + SUBSET_TOL) 
+contains(x::Vector{Interval{T}}, y::Vector{Interval{T}}) where {T<:Real} = mapreduce(is_subset_tol, &, x, y)
+contains(x::Vector{MC{N,T}}, y::Vector{MC{N,T}}) where {N,T<:RelaxTag} = mapreduce((x,y)->is_subset_tol(x.Intv,y.Intv), &, x, y)
 
-"""
-contains
-
-Checks that an interval vector `Vⱼ` of length `nx` is contained in `Uⱼ`.
-"""
-function contains(Vⱼ::Vector{Interval{T}}, Uⱼ::Vector{Interval{T}}, nx::Int) where {T <: Real}
-    flag = true
+function round_β!(β::Vector{S}, ϵ, nx) where S
     for i = 1:nx
-        if (Vⱼ[i].hi >= Uⱼ[i].hi) || (Vⱼ[i].lo <= Uⱼ[i].lo)
-            flag = false
-            break
+        if isapprox(β[i], zero(S), atol=1E-10)
+            β[i] = ϵ
         end
     end
-    return flag
 end
 
-function contains(Vⱼ::Vector{MC{N,T}}, Uⱼ::Vector{MC{N,T}}, nx::Int) where {N, T <: RelaxTag}
-    flag = true
-    for i = 1:nx
-        if (Vⱼ[i].Intv.hi >= Uⱼ[i].Intv.hi) || (Vⱼ[i].Intv.lo <= Uⱼ[i].Intv.lo)
-            flag = false
-            break
-        end
-    end
-    return flag
+const ALPHA_ATOL = 1E-10
+const ALPHA_RTOL = 1E-10
+const ALPHA_BOUND_TOL = 1E-13
+const ALPHA_ITERATION_LIMIT = 1000
+
+function inner_α_func(z::MC{N,T}, u::MC{N,T}) where {N,T}
+    max(abs(max(z.Intv.lo, z.Intv.hi) - u.Intv.hi), abs(u.Intv.lo - min(z.Intv.lo, z.Intv.hi)))
 end
+function inner_α_func(z::Interval{Float64}, u::Interval{Float64})
+    max(abs(max(z.lo, z.hi) - u.hi), abs(u.lo - min(z.lo, z.hi)))
+end
+α_func(Vⱼ, Uⱼ, α, k) = mapreduce(inner_α_func, max, Interval(0.0, α^k).*Vⱼ, Uⱼ)
 
 """
 calc_alpha
 
-Computes the stepsize for the adaptive step-routine.
+Computes the stepsize for the adaptive step-routine via a golden section rootfinding method.
+The step size is rounded down.
 """
-function calc_alpha(Vⱼ::Vector{T}, Uⱼ::Vector{T}, αfrac::Float64, nx::Int64, k::Int64) where T <: Number
-    α = Inf
-    for i = 1:nx
-        # unpack values from ElasticArrays
-        Ui = @inbounds Uⱼ[i]
-        Vi = @inbounds Vⱼ[i]
-        lUi = lo(Ui); hUi = hi(Ui)
-        lVi = lo(Vi); hVi = hi(Vi)
+function α(Vⱼ::Vector{T}, Uⱼ::Vector{T}, k) where T <: Number
+    αL = 0.0 + ALPHA_BOUND_TOL
+    αU = 1.0 - ALPHA_BOUND_TOL
+    golden_ratio = 0.5*(3.0 - sqrt(5.0))
+    α = αL + golden_ratio*(αU - αL)
+    fα = α_func(Vⱼ, Uⱼ, α, k)
+    iteration = 0
+    converged = false
 
-        # skip update of α if vL is zero and step is attainable
-        # return if no step is attainable
-        if lVi == 0.0
-            if lUi > 0.0 || hUi < 0.0
-                return 0.0
+    while iteration < ALPHA_ITERATION_LIMIT
+        if abs(α - (αU + αL)/2) <= 2*(ALPHA_RTOL*abs(α) + ALPHA_ATOL) - (αU - αL)/2
+            converged = true
+            break
+        end
+        iteration += 1
+        if αU - α > α - αL
+            new_α = α + golden_ratio*(αU - α)
+            new_f = α_func(Vⱼ, Uⱼ, new_α, k)
+            if new_f < fα
+                αL = α
+                α = new_α
+                fα = new_f
+            else
+                αU = new_α
             end
         else
-            α = min(α, exp(log(lUi/lVi)/k))
-        end
-
-        # skip update of α if vU is zero and step is attainable
-        # return if no step is attainable
-        if hVi == 0.0
-            if lUi > 0.0 || hUi < 0.0
-                return 0.0
+            new_α = α - golden_ratio*(α - αL)
+            new_f = α_func(Vⱼ, Uⱼ, new_α, k)
+            if new_f < fα
+                αU = α
+                α = new_α
+                fα = new_f
+            else
+                αL = new_α
             end
-        else
-            α = min(α, exp(log(hUi/hVi)/k))
         end
     end
-
-    return α*(1.0 - αfrac)
+    !converged && error("Alpha calculation not converged.")
+    return min(α - ALPHA_ATOL, α*(1-ALPHA_RTOL))  
 end
-
-function round_β!(β::Vector{S}, ϵ::Float64, nx::Int64) where S
-    for i = 1:nx
-        if isapprox(β[i], 0.0, atol=1E-10)
-            β[i] = ϵ
-        end
-    end
-    nothing
-end
-
-set_mag(x::Interval{Float64}) = mag(x)
-set_mag(x::MC{N,T}) where {N, T<:RelaxTag} = mag(x.Intv)
 
 """
 existence_uniqueness!
@@ -121,75 +97,56 @@ an initial value problem for an ordinary differential equation. 1999. Universist
 of Toronto, PhD Dissertation, Algorithm 5.1, page 73-74). The arguments are
 `s::ExistStorage{F,K,S,T}, params::StepParams, t::Float64, j::Int64`.
 """
-function existence_uniqueness!(s::ExistStorage{F,K,S,T}, params::StepParams, t::Float64, j::Int64) where {F, K, S, T <: Number}
+function existence_uniqueness!(s::ExistStorage{F,K,S,T}, params::StepParams, t, j) where {F, K, S, T <: Number}
 
-    # if  X_apriori is too large Taylor series bounds are [-infty, infty] and the algorithm fails
-    predicted_hj = min(s.predicted_hj, s.hj_max)
-    accepted = false
-    accepted_count = 0
-    accepted_limit = 10
-    while !accepted && (accepted_count < accepted_limit)
-        hj_interval = Interval(0.0, predicted_hj)
-        hj_rnd = 2.0*Interval(-1.0, 1.0)*predicted_hj^s.k
+    @unpack predicted_hj, Xj_0, Xj_apriori, poly_term, f_coeff, f_temp_tilde, f_temp_PU = s
+    @unpack k, ϵ, P, Vⱼ, Uⱼ, Z, β, fk, tf!, nx, hfk = s
+    @unpack hmin, is_adaptive = params
 
-        # compute taylor cofficient and interval polynomial bounds via horner's method
-        s.tf!(s.f_coeff, s.Xj_0, s.P, t)
-        s.poly_term .+= s.f_coeff[s.k]
-        for i = 1:s.k
-            s.poly_term .= s.f_coeff[s.k + 1 - i] .+ s.poly_term*hj_interval
-        end
-
-        # get initial guess for highest order taylors series term
-        if j === 1
-            fk_abs = Interval.(set_mag.(s.f_coeff[s.k + 1]))
-            tempU = hj_rnd*fk_abs
-            s.Uⱼ .= tempU
-            s.tf!(s.f_temp_PU, s.poly_term + s.Uⱼ, s.P, t)
-            s.β .= set_mag.(s.f_temp_PU[s.k + 1])
-        else
-            s.β .= set_mag.(s.fk)
-        end
-        round_β!(s.β, s.ϵ, s.nx)
-
-        # adds estimate of remainder with polynomial
-        # and computes new estimate of remainder
-        s.Uⱼ .= hj_rnd*Interval.(s.β)
-        s.Xj_apriori .= s.poly_term .+ s.Uⱼ
-
-        s.tf!(s.f_temp_tilde, s.Xj_apriori, s.P, t)
-        s.Z .= (predicted_hj^s.k)*s.f_temp_tilde[s.k + 1]
-
-        if !any(x -> (set_mag(x) == Inf), s.Z)
-            accepted = true
-        else
-            predicted_hj *= 0.1
-        end
-        accepted_count += 1
+    # compute coefficients
+    tf!(f_coeff, Xj_0, P, t)
+    @. poly_term = f_coeff[k]
+    for i in (k-1):-1:1
+        @. poly_term = f_coeff[i] + poly_term*Interval(0.0, predicted_hj)
     end
 
-    s.Vⱼ .= Interval(0.0, 1.0)*s.Z
-
-    # checks existence and uniqueness by proper
-    # enclosure of Vⱼ & Uⱼ and computes the
-    # next appropriate step size
-    if !contains(s.Vⱼ, s.Uⱼ, s.nx)
-        if params.is_adaptive
-            α = calc_alpha(s.Vⱼ, s.Uⱼ, s.αfrac, s.nx, s.k)
-            s.computed_hj = α*predicted_hj
-            if s.computed_hj < params.hmin
-                s.status_flag = NUMERICAL_ERROR
-            end
-        else
-            s.status_flag = NUMERICAL_ERROR
-        end
+    if isone(j)
+        @. Uⱼ = 2.0*Interval(-1.0, 1.0)*abs(predicted_hj^k)*Interval(set_mag(f_coeff[k + 1]))
+        tf!(f_temp_PU, poly_term + Uⱼ, P, t)
+        @. β = set_mag(f_temp_PU[k + 1])
     else
+        @. β = set_mag(fk)
+    end
+    round_β!(β, ϵ, nx)
+
+    @. Uⱼ = 2.0*(predicted_hj^k)*Interval(-β, β)
+    @. Xj_apriori = poly_term + Uⱼ
+
+    tf!(f_temp_tilde, Xj_apriori, P, t)
+    @. Z = (predicted_hj^(k+1))*f_temp_tilde[k + 1]
+    @. Vⱼ = Interval(0.0, 1.0)*Z
+
+    # checks existence and uniqueness by proper enclosure of Vⱼ & Uⱼ and computes the next appropriate step size
+    if !contains(Vⱼ, Uⱼ)
+        if !is_adaptive
+            print_iteration(j) && @show Vⱼ, Uⱼ
+            s.status_flag = NUMERICAL_ERROR
+            return false
+        end
+        s.computed_hj = α(Vⱼ, Uⱼ, k)*predicted_hj
+    else 
         s.computed_hj = predicted_hj
+    end
+    if s.computed_hj < hmin
+        print_iteration(j) && @show s.computed_hj
+        s.status_flag = NUMERICAL_ERROR
+        return false
     end
 
     # save outputs
-    s.hfk .= s.Z
-    s.fk .= s.f_temp_tilde[s.k + 1]
-    s.f_coeff[s.k + 1] .= s.fk
+    @. hfk = Z
+    @. fk = f_temp_tilde[k + 1]
+    @. f_coeff[k + 1] = fk
 
-    return nothing
+    return true
 end

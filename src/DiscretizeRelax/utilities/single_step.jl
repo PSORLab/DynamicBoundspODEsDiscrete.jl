@@ -20,12 +20,14 @@ LEPUS and Integration parameters.
 $(TYPEDFIELDS)
 """
 Base.@kwdef struct StepParams
-    "Error tolerance of integrator"
-    tol::Float64 = 1E-5
+    "Absolute error tolerance of integrator"
+    atol::Float64 = 1E-5
+    "Relative error tolerance of integrator"
+    rtol::Float64 = 1E-5
     "Minimum stepsize"
     hmin::Float64 = 1E-8
     "Number of repetitions allowed for refinement"
-    repeat_limit::Int64 = 3
+    repeat_limit::Int = 3
     "Indicates an adaptive stepsize is used"
     is_adaptive::Bool = true
     "Indicates the contractor step should be skipped"
@@ -66,12 +68,11 @@ mutable struct ExistStorage{F,K,S,T}
     hmin::Float64
     is_adaptive::Bool
     ϵ::Float64
-    αfrac::Float64
-    k::Int64
+    k::Int
     predicted_hj::Float64
     computed_hj::Float64
     hj_max::Float64
-    nx::Int64
+    nx::Int
     f_coeff::Vector{Vector{T}}
     f_temp_PU::Vector{Vector{T}}
     f_temp_tilde::Vector{Vector{T}}
@@ -87,9 +88,10 @@ mutable struct ExistStorage{F,K,S,T}
     Z::Vector{T}
     P::Vector{T}
     tf!::TaylorFunctor!{F,K,S,T}
+    constant_state_bounds::Union{Nothing,ConstantStateBounds}
 end
 
-function ExistStorage(tf!::TaylorFunctor!{F,K,S,T}, s::T, P, nx::Int64, np::Int64, k::Int64, h::Float64, cap::Int64) where {F,K,S,T}
+function ExistStorage(tf!::TaylorFunctor!{F,K,S,T}, s::T, P, nx::Int, np::Int, k::Int, h::Float64, cap::Int) where {F,K,S,T}
 
 
     flag = RELAXATION_NOT_CALLED
@@ -111,7 +113,6 @@ function ExistStorage(tf!::TaylorFunctor!{F,K,S,T}, s::T, P, nx::Int64, np::Int6
     Z = zeros(T, nx)
 
     ϵ = 0.5
-    αfrac = 0.5
 
     poly_term = zeros(T, nx)
     β = zeros(Float64, nx)
@@ -120,9 +121,9 @@ function ExistStorage(tf!::TaylorFunctor!{F,K,S,T}, s::T, P, nx::Int64, np::Int6
     Uⱼ = zeros(T, nx)
     Z = zeros(T, nx)
 
-    return ExistStorage{F,K,S,T}(flag, h, h, (h === 0.0), ϵ, αfrac, k, h, h, Inf, nx,
+    return ExistStorage{F,K,S,T}(flag, h, h, (h === 0.0), ϵ, k, h, h, Inf, nx,
                                  f_coeff, fPU, ftilde, f_flt, hfk, fk, β, poly_term,
-                                 Xj_0, Xj_apriori, Vⱼ, Uⱼ, Z, P, tf!)
+                                 Xj_0, Xj_apriori, Vⱼ, Uⱼ, Z, P, tf!, nothing)
 end
 
 """
@@ -144,12 +145,12 @@ mutable struct ContractorStorage{S}
     rP::Vector{S}
     pval::Vector{Float64}
     fk_apriori::Vector{S}
-    hj_computed::Float64
+    hj::Float64
     X_computed::Vector{S}
     xval_computed::Vector{Float64}
     B::Matrix{Float64}
     γ::Float64
-    step_count::Int64
+    step_count::Int
     nx::Int
 end
 function ContractorStorage(style::S, nx, np, k, h, method_steps) where S
@@ -163,7 +164,7 @@ function ContractorStorage(style::S, nx, np, k, h, method_steps) where S
     rP = zeros(S, np)
     pval = zeros(Float64, np)
     fk_apriori = zeros(S, nx)
-    hj_computed = 0.0
+    hj = 0.0
     X_computed = zeros(S, nx)
     xval_computed = zeros(Float64, nx)
     B = zeros(Float64, nx, nx)
@@ -184,22 +185,34 @@ function ContractorStorage(style::S, nx, np, k, h, method_steps) where S
 
     return ContractorStorage{S}(is_adaptive, times, steps, Xj_0, Xj_apriori, xval,
                                 A_Q, A_inv, Δ, P, rP, pval, fk_apriori,
-                                hj_computed, X_computed, xval_computed, B, γ, step_count, nx)
+                                hj, X_computed, xval_computed, B, γ, step_count, nx)
 end
 
 function advance_contract_storage!(d::ContractorStorage{S}) where {S <: Number}
     cycle!(d.A_Q)
     cycle!(d.A_inv)
     cycle!(d.Δ)
-    return nothing
+    nothing
+end
+
+function load_existence_info_to_contractor!(c::ContractorStorage{T}, ex::ExistStorage{F,K,S,T}) where {F,K,S,T}
+    c.Xj_apriori .= ex.Xj_apriori
+    c.hj = min(ex.computed_hj, ex.hj_max)
+    c.fk_apriori .= ex.fk
+    nothing
 end
 
 function set_xX!(result::StepResult{S}, contract::ContractorStorage{S}) where {S <: Number}
+    pL = lo.(contract.P)
+    pU = hi.(contract.P)
+    pval = contract.pval
+    subgradient_expansion_interval_contract!(contract.X_computed, pval, pL, pU)
+    subgradient_expansion_interval_contract!(contract.Xj_0, pval, pL, pU)
     result.Xⱼ .= contract.X_computed
     result.xⱼ .= contract.xval_computed
     contract.Xj_0 .= contract.X_computed
     contract.xval .= contract.xval_computed
-    return nothing
+    nothing
 end
 
 """
@@ -207,32 +220,27 @@ excess_error
 
 Computes the excess error using a norm-∞ of the diameter of the vectors.
 """
-function excess_error(Z::Vector{S}, hj::Float64, hj_eu::Float64, γ::Float64, k::Int64, nx::Int64) where S
+function excess_error(Z::Vector{S}, hj, hj_eu, γ, k, nx) where S
     errⱼ = 0.0; dₜ = 0.0
     for i = 1:nx
-        dₜ = (hj/hj_eu)*diam(@inbounds Z[i])
+        dₜ = hj*diam(Z[i])
         errⱼ = (dₜ > errⱼ) ? dₜ : errⱼ
     end
-    γ*errⱼ
+    abs(γ*errⱼ)
 end
 
-function affine_contract!(X::Vector{Interval{Float64}}, P::Vector{Interval{Float64}},
-                          pval::Vector{Float64}, np::Int, nx::Int)
-    return nothing
-end
-
-function affine_contract!(X::Vector{MC{N,T}}, P::Vector{MC{N,T}}, pval::Vector{Float64},
-                          np::Int, nx::Int) where {N,T<:RelaxTag}
+affine_contract!(X::Vector{Interval{Float64}}, P::Vector{Interval{Float64}}, pval, np, nx) = nothing
+function affine_contract!(X::Vector{MC{N,T}}, P::Vector{MC{N,T}}, pval::Vector{Float64}, np, nx) where {N,T<:RelaxTag}
     x_Intv_cv = 0.0
     x_Intv_cc = 0.0
     for i = 1:nx
-        Xt = @inbounds X[i]
+        Xt = X[i]
         x_Intv_cv = Xt.cv
         x_Intv_cc = Xt.cc
-        for j = 1:np
-            p = @inbounds pval[j]
-            pL = @inbounds P[j].Intv.lo
-            pU = @inbounds P[j].Intv.hi
+        for j = 1:N
+            p = pval[j]
+            pL = P[j].Intv.lo
+            pU = P[j].Intv.hi
             cv_gradj = Xt.cv_grad[j]
             cc_gradj = Xt.cc_grad[j]
             x_Intv_cv += (cv_gradj > 0.0) ? cv_gradj*(pL - p) : cv_gradj*(pU - p)
@@ -246,97 +254,96 @@ function affine_contract!(X::Vector{MC{N,T}}, P::Vector{MC{N,T}}, pval::Vector{F
 end
 
 contract_apriori!(exist::ExistStorage{F,K,S,T}, n::Nothing) where {F, K, S <: Real, T} = nothing
-function contract_apriori!(exist::ExistStorage{F,K,S,T}, p::PolyhedralConstraint) where {F, K, S <: Real, T}
-    nothing
-end
+contract_apriori!(exist::ExistStorage{F,K,S,T}, p::PolyhedralConstraint) where {F, K, S <: Real, T} = nothing
 function contract_apriori!(exist::ExistStorage{F,K,S,T}, c::ConstantStateBounds) where {F, K, S <: Real, T}
-    for i = 1:exist.nx
-        exist.Xj_apriori[i] = exist.Xj_apriori[i] ∩ Interval(c.xL[i], c.xU[i])
-    end
+    exist.Xj_apriori .= exist.Xj_apriori .∩ Interval.(c.xL, c.xU)
+    return nothing
+end
+
+function store_parallelepid_enclosure!(c::ContractorStorage{T}, r::StepResult{T}, j) where T
+    cycle_copyto!(r.A_Q, c.A_Q[1], j)
+    cycle_copyto!(r.A_inv, c.A_inv[1], j)
+    cycle_copyto!(r.Δ, c.Δ[1], j)
     nothing
 end
 
+function reset_step_limit!(d)
+    @unpack next_support, tspan = d
+    @unpack time = d.step_result
+
+    tval = round(next_support - time, digits=13)
+    if tval < 0.0
+        tval = Inf
+    end
+    d.exist_result.hj = min(d.exist_result.hj, tval, tspan[2] - time)
+    d.exist_result.hj_max = tspan[2] - time
+    d.exist_result.predicted_hj = min(d.exist_result.predicted_hj, tval, tspan[2] - time)
+
+    d.contractor_result.steps[1] = d.exist_result.hj
+    d.contractor_result.step_count = d.step_count
+end
+
+set_γ!(sc, c, ex, result, params) =  nothing
 """
 single_step!
 
 Performs a single-step of the validated integrator. Input stepsize is out.step.
 """
-function single_step!(exist::ExistStorage{F,K,S,T}, contract::ContractorStorage{T},
-                      params::StepParams, result::StepResult{T}, sc::M,
-                      j::Int64, hj_limit::Float64, delT,
-                      constant_state_bounds::C,
-                      polyhedral_constraint::P) where {M <: AbstractStateContractor, F, K, S <: Real, T, C, P}
+function single_step!(ex::ExistStorage{F,K,S,T}, c::ContractorStorage{T}, params::StepParams, result::StepResult{T}, sc::M, j, csb::C, pc::P, tspan) where {M <: AbstractStateContractor, F, K, S <: Real, T, C, P}
 
-    contract.is_adaptive = params.is_adaptive
+    @unpack repeat_limit, hmin, atol, rtol, skip_step2, is_adaptive = params
+    @unpack hj, γ, X_computed, Δ = c
+    @unpack k, nx = ex
 
-
-    # validate existence & uniqueness (returns if E&U cannot be shown)
-    existence_uniqueness!(exist, params, result.time, j)
-    if exist.status_flag === NUMERICAL_ERROR
-        if delT > 1E-6
-            return nothing
-        else
-            exist.status_flag = COMPLETED
-        end
+    set_γ!(sc, c, ex, result, params)
+    if !existence_uniqueness!(ex, params, result.time, j)  # validate existence & uniqueness
+        return nothing
     end
+    advance_contract_storage!(c)                           # Advance polyhedral storage
+    contract_apriori!(ex, csb)::Nothing                    # Apply constant state bound contractor (if set)
+    contract_apriori!(ex, pc)::Nothing                     # Apply polyhedral contractor (if set)
+    load_existence_info_to_contractor!(c, ex)
+    hj_eu = c.hj
 
-    advance_contractor_buffer!(sc)::Nothing
-    advance_contract_storage!(contract)
-
-    # copy info from existence to contractor storage
-    contract_apriori!(exist, constant_state_bounds)::Nothing
-    contract_apriori!(exist, polyhedral_constraint)::Nothing
-    contract.Xj_apriori .= exist.Xj_apriori
-    contract.hj_computed = min(exist.computed_hj, hj_limit)
-    contract.fk_apriori .= exist.fk
-
-    hj = contract.hj_computed
-    hj_eu = hj
-    predicted_hj = 0.0
-
-    # begin contractor step
-    count = 0
-    if !params.skip_step2
-        if params.is_adaptive
-            while hj > params.hmin && count < params.repeat_limit
-                sc(contract, result, count)
-                # LEPUS STEPSIZE PREDICTION
-                errj = excess_error(exist.Z, hj, hj_eu, contract.γ, exist.k, exist.nx)
-                if errj < hj*params.tol
-                    contract.hj_computed = 0.9*hj*(0.5*hj*params.tol/errj)^(1/(exist.k-1))
+    if skip_step2                                          # Skip contractor and use state values for existence test
+        result.xⱼ .= mid.(ex.Xj_apriori)
+        result.Xⱼ .= ex.Xj_apriori
+        c.X_computed .= ex.Xj_apriori
+    else                                               # Apply contractor in LEPUS stepsize scheme
+        if is_adaptive
+            count = 0
+            while (c.hj > hmin) & (count < repeat_limit)
+                count += 1
+                sc(c, result, count, j)
+                errj = excess_error(ex.Z, c.hj, hj_eu, γ, k, nx)
+                if (errj < c.hj*rtol) || (errj < atol)
+                    sign_tstep = copysign(1, tspan[2] - result.time)
+                    next_t = sign_tstep*(result.time + c.hj)
+                    t_end = sign_tstep*tspan[2]
+                    if (next_t < t_end) & !isapprox(next_t, t_end, atol = 1E-8)
+                        δerrj = max(1E-11, errj)
+                        max_new_step = 1.015*c.hj
+                        c.hj = 0.9*c.hj*(0.5*c.hj*rtol/δerrj)^(1/(k-1))
+                        c.hj = min(max_new_step, c.hj, t_end - result.time)
+                    end
                     break
                 else
-                    hj_reduced = hj*(hj*params.tol/errj)^(1/(exist.k-1))
-                    exist.Z *= (hj_reduced/hj)^exist.k
-                    hj = hj_reduced
-                    contract.hj_computed = hj
+                    hj_reduced = c.hj*(c.hj*atol/errj)^(1/(k-1))
+                    ex.Z *= (hj_reduced/c.hj)^k
+                    c.hj = hj_reduced
                 end
-                count += 1
             end
 
-            set_xX!(result, contract)::Nothing
+            set_xX!(result, c)::Nothing
         else
-            # perform corrector step
-            sc(contract, result, 0)
-            set_xX!(result, contract)::Nothing
+            sc(c, result, 0, k)
+            set_xX!(result, c)::Nothing
         end
-    else
-        result.xⱼ .= mid.(exist.Xapriori)
-        result.Xⱼ .= exist.Xapriori
+        store_parallelepid_enclosure!(c, result, j)        # update parallelepid enclosure
     end
-
-    # update parallelepid enclosure
-    cycle_copyto!(result.A_Q, contract.A_Q[1], j)
-    cycle_copyto!(result.A_inv, contract.A_inv[1], j)
-    cycle_copyto!(result.Δ, contract.Δ[1], j)
-
-    # store times and step sizes to time/step buffer
-    # and updated prediced step size
-    result.time += hj
-    result.predicted_hj = predicted_hj
-
-    exist.Xj_0 .= result.Xⱼ
-    exist.predicted_hj = contract.hj_computed
-
-    return nothing
+end
+function single_step!(d)
+    @unpack next_support, next_support_i, tspan = d
+    reset_step_limit!(d)
+    single_step!(d.exist_result, d.contractor_result, d.step_params, d.step_result, d.method_f!, d.step_count, d.constant_state_bounds, d.polyhedral_constraint, tspan)
 end
